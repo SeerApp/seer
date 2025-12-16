@@ -1,0 +1,9 @@
+[package]
+name = "seer-interface"
+version = "0.8.2"
+edition.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

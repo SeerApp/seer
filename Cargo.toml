@@ -1,0 +1,37 @@
+[workspace]
+members = [
+    "seer-core",
+    "seer-interface",
+    "seer-rpc"
+]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+seer-core = { path = "seer-core" }
+seer-interface = { path = "seer-interface" }
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(feature, values("frozen-abi", "no-entrypoint"))',
+]
+
+# Clippy lint configuration that can not be applied in clippy.toml
+[workspace.lints.clippy]
+arithmetic_side_effects = "deny"
+default_trait_access = "deny"
+manual_let_else = "deny"
+used_underscore_binding = "deny"
+
+[patch.crates-io]
+solana-sbpf = { path = "../sbpf/" }
+solana-svm-log-collector = { path = "../agave/svm-log-collector/" }
+solana-program-runtime = { path = "../agave/program-runtime/" }
+seer-core = { path = "seer-core" }
+seer-interface = { path = "seer-interface" }
