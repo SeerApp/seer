@@ -79,7 +79,7 @@ impl TraceNode {
         &mut children[len - 1]
     }
 
-    pub fn clean_trace_nodes(project_root: &str, trace_nodes: &mut Vec<TraceNode>) {
+    pub fn _clean_trace_nodes(project_root: &str, trace_nodes: &mut Vec<TraceNode>) {
         let root = Path::new(project_root);
 
         for node in trace_nodes.iter_mut() {
@@ -87,7 +87,7 @@ impl TraceNode {
                 node.step.file = stripped.to_path_buf();
             }
 
-            Self::clean_trace_nodes(project_root, &mut node.children);
+            Self::_clean_trace_nodes(project_root, &mut node.children);
         }
     }
 }
@@ -158,7 +158,7 @@ impl SeerHook {
         }
     }
 
-    fn _build_trace_tree(
+    fn build_trace_tree(
         &self,
         sequential_instruction_traces: Vec<InstructionTrace>,
     ) -> Vec<TraceNode> {
@@ -177,7 +177,7 @@ impl SeerHook {
         roots
     }
 
-    fn _push_to_last_leaf(&self, mut roots: Vec<TraceNode>, new_node: TraceNode) -> Vec<TraceNode> {
+    fn push_to_last_leaf(&self, mut roots: Vec<TraceNode>, new_node: TraceNode) -> Vec<TraceNode> {
         fn get_last_mut(node: &mut TraceNode) -> &mut TraceNode {
             if !node.children.is_empty() {
                 let last_index = node.children.len() - 1;
@@ -202,21 +202,21 @@ impl SeerHook {
         roots
     }
 
-    fn _save_trace_to_json(&self, trace_nodes: &Vec<TraceNode>, path: &str) -> std::io::Result<()> {
+    fn save_trace_to_json(&self, trace_nodes: &Vec<TraceNode>, path: &str) -> std::io::Result<()> {
         let json: String = serde_json::to_string_pretty(trace_nodes).unwrap();
         let mut file = File::create(path)?;
         file.write_all(json.as_bytes())?;
         Ok(())
     }
 
-    fn _save_state_to_json(&self, path: &str) -> std::io::Result<()> {
+    fn save_state_to_json(&self, path: &str) -> std::io::Result<()> {
         let json: String = serde_json::to_string_pretty(&self.state).unwrap();
         let mut file = File::create(path)?;
         file.write_all(json.as_bytes())?;
         Ok(())
     }
 
-    fn _get_output_path(&self, project_root: &str, filename: &str) -> PathBuf {
+    fn get_output_path(&self, project_root: &str, filename: &str) -> PathBuf {
         let mut path = PathBuf::from(project_root);
         path.push("seer");
         create_dir_all(&path).unwrap();
@@ -224,7 +224,7 @@ impl SeerHook {
         path
     }
 
-    fn _get_current_parser<'a>(
+    fn get_current_parser<'a>(
         dwarf_parser: &'a DwarfParser,
         current_program: &Pubkey,
     ) -> (&'a String, &'a DwarfProgram) {
@@ -237,7 +237,7 @@ impl SeerHook {
         )
     }
 
-    fn _interpolate_logs(&self, mut trace: Vec<TraceNode>) -> Vec<TraceNode> {
+    fn interpolate_logs(&self, mut trace: Vec<TraceNode>) -> Vec<TraceNode> {
         fn find_best_path(
             nodes: &Vec<TraceNode>,
             instr: u64,
@@ -336,11 +336,11 @@ impl SeerHook {
         trace
     }
 
-    fn _wrap_steps(&mut self, err: Option<InstructionError>) {
+    fn wrap_steps(&mut self, err: Option<InstructionError>) {
         if self.steps.len() > 0 {
             let current_program = self.program_trace.last().unwrap();
             let (project_root, current_dwarf_program) =
-                SeerHook::_get_current_parser(&self.parser.as_ref().unwrap(), current_program);
+                SeerHook::get_current_parser(&self.parser.as_ref().unwrap(), current_program);
             let mut sequential_instruction_traces = Vec::new();
 
             for i in &self.steps {
@@ -471,10 +471,10 @@ impl SeerHook {
             }
 
             let mut trace_tree: Vec<TraceNode> =
-                self._build_trace_tree(sequential_instruction_traces);
-            trace_tree = self._interpolate_logs(trace_tree);
+                self.build_trace_tree(sequential_instruction_traces);
+            trace_tree = self.interpolate_logs(trace_tree);
 
-            TraceNode::clean_trace_nodes(project_root, &mut trace_tree);
+            // TraceNode::clean_trace_nodes(project_root, &mut trace_tree);
 
             let cwd = env::current_dir()
                 .expect("Failed to get current dir!")
@@ -493,7 +493,7 @@ impl SeerHook {
                     },
                     children: Vec::new(),
                 };
-                trace_tree = self._push_to_last_leaf(trace_tree, error_node);
+                trace_tree = self.push_to_last_leaf(trace_tree, error_node);
 
                 let filename = format!(
                     "{}_{}_{}_error.json",
@@ -502,9 +502,9 @@ impl SeerHook {
                     current_program.to_string(),
                 );
 
-                let output_path = self._get_output_path(&cwd, &filename);
+                let output_path = self.get_output_path(&cwd, &filename);
 
-                let _ = self._save_state_to_json(output_path.to_str().unwrap());
+                let _ = self.save_state_to_json(output_path.to_str().unwrap());
             }
 
             let filename = format!(
@@ -515,9 +515,9 @@ impl SeerHook {
                 self.depth,
             );
 
-            let output_path = self._get_output_path(&cwd, &filename);
+            let output_path = self.get_output_path(&cwd, &filename);
 
-            let _ = self._save_trace_to_json(&trace_tree, output_path.to_str().unwrap());
+            let _ = self.save_trace_to_json(&trace_tree, output_path.to_str().unwrap());
         }
     }
 
@@ -587,7 +587,7 @@ impl SeerHook {
                     .then(|| panic!("current_tx is not defined by start_program call!"));
 
                 if !self.program_trace.is_empty() {
-                    self._wrap_steps(None);
+                    self.wrap_steps(None);
                     self.steps = Vec::new();
                     self.steps_logs = Vec::new();
                     self.depth += 1;
@@ -611,7 +611,7 @@ impl SeerHook {
                     .is_empty()
                     .then(|| panic!("program_trace empty by end_program call!"));
 
-                self._wrap_steps(err);
+                self.wrap_steps(err);
                 self.steps = Vec::new();
                 self.steps_logs = Vec::new();
                 self.depth += 1;
@@ -629,14 +629,14 @@ impl SeerHook {
                         .then(|| panic!("current_tx is not defined by step call!"));
 
                     let current_program = self.program_trace.last().unwrap();
-                    let (project_root, current_dwarf_program) = SeerHook::_get_current_parser(
+                    let (project_root, current_dwarf_program) = SeerHook::get_current_parser(
                         &self.parser.as_ref().unwrap(),
                         current_program,
                     );
 
                     let pc_lookup = pc.clone();
 
-                    self.state.extend(self._parse_local_variables(
+                    self.state.extend(self.parse_local_variables(
                         &pc_lookup,
                         current_dwarf_program,
                         mem,
@@ -681,7 +681,7 @@ impl SeerHook {
     }
 
     // Illustration of a specific, ungeneralised case of parsing a complex structure
-    fn _parse_local_variables<M: GuestMemory>(
+    fn parse_local_variables<M: GuestMemory>(
         &self,
         pc_lookup: &u64,
         dwarf_program: &DwarfProgram,
