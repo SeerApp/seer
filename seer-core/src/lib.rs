@@ -1,8 +1,8 @@
 pub mod collect_inputs;
 pub mod dwarf;
+pub mod logger;
 
 use gimli::Reader;
-use log::debug;
 use seer_interface::GuestMemory;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,10 +21,12 @@ use crate::collect_inputs::collect_inputs;
 use crate::dwarf::types::account_info::AccountInfoRepr;
 use crate::dwarf::types::guest_fetch::GuestFetch;
 use crate::dwarf::{source_location, DwarfParser, DwarfProgram, VariableInterval};
+use crate::logger::{SeerLogger, SeerLoggerLevel, seer_logger, init_seer_logger};
 
 pub struct SeerHook {
     active: bool,
     current_tx: Option<Signature>,
+    completed_txns: Vec<Signature>,
     current_instruction: u8,
     program_trace: Vec<Pubkey>,
     depth: u8,
@@ -143,6 +145,7 @@ impl SeerHook {
         Self {
             active: false,
             current_tx: None,
+            completed_txns: Vec::new(),
             current_instruction: 0,
             program_trace: Vec::new(),
             depth: 0,
@@ -524,31 +527,37 @@ impl SeerHook {
 
     pub fn activate(&mut self) {
         self.active = true;
-        debug!("Activated");
+        seer_trace!("Activated");
     }
 
     pub fn deactivate(&mut self) {
         self.active = false;
-        debug!("Deactivated");
+        seer_trace!("Deactivated");
     }
 
     pub fn set_current_tx(&mut self, tx: Signature) {
         if self.active {
-            debug!("New tx: {:?}", tx);
-            self.current_tx = Some(tx);
+            seer_trace!("New tx: {:?}", tx);
+            if self.completed_txns.contains(&tx) {
+                seer_debug!("Tx already complete");
+                self.deactivate();
+            } else {
+                self.current_tx = Some(tx);
+            }
         }
     }
 
     pub fn unset_current_tx(&mut self) {
         if self.active {
-            debug!("Tx unset: {:?}", self.current_tx);
+            seer_trace!("Tx unset: {:?}", self.current_tx);
+            self.completed_txns.push(self.current_tx.unwrap().clone());
             self.current_tx = None;
         }
     }
 
     pub fn start_instruction(&mut self, instruction: u8) {
         if self.active {
-            debug!("New instruction: {:?}", instruction);
+            seer_trace!("New instruction: {:?}", instruction);
             self.current_tx
                 .is_none()
                 .then(|| panic!("current_tx is not defined by start_instruction call!"));
@@ -558,7 +567,7 @@ impl SeerHook {
 
     pub fn end_instruction(&mut self) {
         if self.active {
-            debug!("Instruction unset: {:?}", self.current_instruction);
+            seer_trace!("Instruction unset: {:?}", self.current_instruction);
             self.current_instruction = 0;
         }
     }
@@ -572,7 +581,7 @@ impl SeerHook {
                 .dwarf_programs
                 .contains_key(&program)
             {
-                debug!("Starting program: {:?}", program);
+                seer_trace!("Starting program: {:?}", program);
                 self.current_tx
                     .is_none()
                     .then(|| panic!("current_tx is not defined by start_program call!"));
@@ -593,7 +602,7 @@ impl SeerHook {
     pub fn end_program(&mut self, program: Pubkey, err: Option<InstructionError>) {
         if self.active {
             if !self.unknown_programs.contains(&program) {
-                debug!("Ending program: {:?}", program);
+                seer_trace!("Ending program: {:?}", program);
 
                 self.current_tx
                     .is_none()
@@ -718,6 +727,8 @@ static SEER: OnceLock<Mutex<SeerHook>> = OnceLock::new();
 pub fn init(maybe_source_project_root: Option<PathBuf>, maybe_deploy_folder_root: Option<PathBuf>) {
     let (source_project_root, dwarf_sources) =
         collect_inputs(maybe_source_project_root, maybe_deploy_folder_root);
+
+    init_seer_logger(SeerLogger::from_env());
 
     SEER.set(Mutex::new(SeerHook::new(
         source_project_root,
