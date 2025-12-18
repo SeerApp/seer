@@ -21,7 +21,7 @@ use crate::collect_inputs::collect_inputs;
 use crate::dwarf::types::account_info::AccountInfoRepr;
 use crate::dwarf::types::guest_fetch::GuestFetch;
 use crate::dwarf::{source_location, DwarfParser, DwarfProgram, VariableInterval};
-use crate::logger::{SeerLogger, SeerLoggerLevel, seer_logger, init_seer_logger};
+use crate::logger::{init_seer_logger, seer_logger, SeerLogger, SeerLoggerLevel};
 
 pub struct SeerHook {
     active: bool,
@@ -30,12 +30,11 @@ pub struct SeerHook {
     current_instruction: u8,
     program_trace: Vec<Pubkey>,
     depth: u8,
-    steps: Vec<u64>,
-    steps_lines: HashMap<u64, TraceStep>,
-    steps_logs: Vec<(u64, String)>,
     state: HashMap<String, Value>,
     parser: Option<DwarfParser>,
     unknown_programs: Vec<Pubkey>,
+    sequential_instruction_traces: Vec<InstructionTrace>,
+    die_instruction_cache: HashMap<(Pubkey, u64), InstructionTrace>,
 }
 
 #[derive(Clone)]
@@ -50,6 +49,21 @@ struct TraceStep {
     line: u64,
     call: bool,
     function: Option<String>,
+}
+
+impl TraceStep {
+    pub fn from_log(msg: String) -> Self {
+        Self {
+            file: PathBuf::new(),
+            line: 0,
+            call: false,
+            function: Some(msg),
+        }
+    }
+
+    pub fn is_log (&self) -> bool {
+        self.file == PathBuf::new() && self.line == 0 && self.call == false && self.function.is_some()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +93,16 @@ impl TraceNode {
         &mut children[len - 1]
     }
 
+    fn get_last_mut(&mut self) -> &mut TraceNode {
+        if !self.children.is_empty() {
+            let last_index = self.children.len() - 1;
+            let last_child = &mut self.children[last_index];
+            last_child.get_last_mut()
+        } else {
+            self
+        }
+    }
+
     pub fn _clean_trace_nodes(project_root: &str, trace_nodes: &mut Vec<TraceNode>) {
         let root = Path::new(project_root);
 
@@ -98,7 +122,6 @@ impl fmt::Debug for SeerHook {
             .field("program_trace", &self.program_trace)
             .field("current_instruction", &self.current_instruction)
             .field("depth", &self.depth)
-            .field("steps", &self.steps)
             .field("parser", &self.parser.as_ref().map(|_| "<parser>"))
             .finish()
     }
@@ -149,22 +172,18 @@ impl SeerHook {
             current_instruction: 0,
             program_trace: Vec::new(),
             depth: 0,
-            steps: Vec::new(),
-            steps_lines: HashMap::new(),
-            steps_logs: Vec::new(),
             state: HashMap::new(),
-            parser: parser,
+            parser,
             unknown_programs: Vec::new(),
+            sequential_instruction_traces: Vec::new(),
+            die_instruction_cache: HashMap::new(),
         }
     }
 
-    fn build_trace_tree(
-        &self,
-        sequential_instruction_traces: Vec<InstructionTrace>,
-    ) -> Vec<TraceNode> {
+    fn build_trace_tree(&self) -> Vec<TraceNode> {
         let mut roots: Vec<TraceNode> = vec![];
 
-        for instr_trace in sequential_instruction_traces {
+        for instr_trace in self.sequential_instruction_traces.iter().as_slice() {
             let mut current_level = &mut roots;
 
             for step in &instr_trace.trace {
@@ -178,18 +197,8 @@ impl SeerHook {
     }
 
     fn push_to_last_leaf(&self, mut roots: Vec<TraceNode>, new_node: TraceNode) -> Vec<TraceNode> {
-        fn get_last_mut(node: &mut TraceNode) -> &mut TraceNode {
-            if !node.children.is_empty() {
-                let last_index = node.children.len() - 1;
-                let last_child = &mut node.children[last_index];
-                get_last_mut(last_child)
-            } else {
-                node
-            }
-        }
-
         if let Some(last_root) = roots.last_mut() {
-            let deepest = get_last_mut(last_root);
+            let deepest = last_root.get_last_mut();
             if deepest.step.line > 0 {
                 deepest.children.push(new_node);
             } else {
@@ -237,244 +246,180 @@ impl SeerHook {
         )
     }
 
-    fn interpolate_logs(&self, mut trace: Vec<TraceNode>) -> Vec<TraceNode> {
-        fn find_best_path(
-            nodes: &Vec<TraceNode>,
-            instr: u64,
-            depth: usize,
-            path_prefix: Vec<usize>,
-        ) -> Option<(Vec<usize>, i64, usize)> {
-            let mut best: Option<(Vec<usize>, i64, usize)> = None;
+    fn get_ordered_insutrction_trace(
+        &self,
+        project_root: &String,
+        current_dwarf_program: &DwarfProgram,
+        i: u64,
+    ) -> InstructionTrace {
+        let mut ordered_instruction_trace: VecDeque<TraceStep> = VecDeque::new();
 
-            for (i, node) in nodes.iter().enumerate() {
-                let node_instr = node.instruction;
+        if let Some(interval) = current_dwarf_program.interval_tree.search_deepest(&i) {
+            let mut tracing = true;
+            let mut current_offset = interval.die_offset;
 
-                if node_instr == instr {
-                    let mut p = path_prefix.clone();
-                    p.push(i);
-                    return Some((p, 0, depth));
-                } else if node_instr == instr + 8 {
-                    let mut p = path_prefix.clone();
-                    p.push(i);
-                    return Some((p, 1, depth));
-                } else if node_instr <= instr {
-                    let diff = (instr as i64 - node_instr as i64).abs();
-                    let replace = match best {
-                        None => true,
-                        Some((_, best_diff, best_depth)) => {
-                            diff < best_diff || (diff == best_diff && depth > best_depth)
-                        }
-                    };
-                    if replace {
-                        let mut p = path_prefix.clone();
-                        p.push(i);
-                        best = Some((p, diff, depth));
-                    }
-                }
+            while tracing {
+                let trace_die_node = current_dwarf_program
+                    .significant_instruction_map
+                    .get(&current_offset)
+                    .unwrap();
 
-                let mut child_path = path_prefix.clone();
-                child_path.push(i);
-                if let Some((child_best_path, child_diff, child_depth)) =
-                    find_best_path(&node.children, instr, depth + 1, child_path)
-                {
-                    match &best {
-                        None => best = Some((child_best_path, child_diff, child_depth)),
-                        Some((_, best_diff, best_depth)) => {
-                            if child_diff < *best_diff
-                                || (child_diff == *best_diff && child_depth > *best_depth)
-                            {
-                                best = Some((child_best_path, child_diff, child_depth));
-                            }
-                        }
-                    }
-                }
-            }
+                ordered_instruction_trace.push_front(TraceStep {
+                    file: trace_die_node.decl_mapping.file.clone(),
+                    line: trace_die_node.decl_mapping.line,
+                    call: false,
+                    function: Some(trace_die_node.function_signature.clone()),
+                });
 
-            best
-        }
-
-        for (instr, log_str) in &self.steps_logs {
-            if let Some((path, _, _)) = find_best_path(&trace, *instr, 0, vec![]) {
-                // Traverse down the path
-                let mut current: &mut Vec<TraceNode> = &mut trace;
-                for (depth, &idx) in path.iter().enumerate() {
-                    if depth == path.len() - 1 {
-                        if let Some(target_node) = current.get(idx) {
-                            if target_node.step.line == 0 {
-                                current.push(TraceNode {
-                                    instruction: *instr,
-                                    step: TraceStep {
-                                        file: PathBuf::new(),
-                                        line: 0,
-                                        call: false,
-                                        function: Some(log_str.clone()),
-                                    },
-                                    children: vec![],
-                                });
-                                continue;
-                            }
-                        }
-
-                        let target_children = &mut current[idx].children;
-                        target_children.push(TraceNode {
-                            instruction: *instr,
-                            step: TraceStep {
-                                file: PathBuf::new(),
-                                line: 0,
-                                call: false,
-                                function: Some(log_str.clone()),
-                            },
-                            children: vec![],
-                        });
-                    } else {
-                        current = &mut current[idx].children;
-                    }
-                }
-            }
-        }
-
-        trace
-    }
-
-    fn wrap_steps(&mut self, err: Option<InstructionError>) {
-        if self.steps.len() > 0 {
-            let current_program = self.program_trace.last().unwrap();
-            let (project_root, current_dwarf_program) =
-                SeerHook::get_current_parser(&self.parser.as_ref().unwrap(), current_program);
-            let mut sequential_instruction_traces = Vec::new();
-
-            for i in &self.steps {
-                if let Some(interval) = current_dwarf_program.interval_tree.search_deepest(i) {
-                    let mut ordered_instruction_trace: VecDeque<TraceStep> = VecDeque::new();
-                    let mut tracing = true;
-                    let mut current_offset = interval.die_offset;
-
-                    while tracing {
-                        let trace_die_node = current_dwarf_program
-                            .significant_instruction_map
-                            .get(&current_offset)
-                            .unwrap();
-
-                        ordered_instruction_trace.push_front(TraceStep {
-                            file: trace_die_node.decl_mapping.file.clone(),
-                            line: trace_die_node.decl_mapping.line,
-                            call: false,
-                            function: Some(trace_die_node.function_signature.clone()),
-                        });
-
-                        if let Some(call_mapping) = trace_die_node.call_mapping.clone() {
-                            ordered_instruction_trace.push_front(TraceStep {
-                                file: call_mapping.file,
-                                line: call_mapping.line,
-                                call: true,
-                                function: Some(trace_die_node.function_signature.clone()),
-                            });
-                        }
-
-                        if trace_die_node.parent_offset == current_offset {
-                            let uheader = current_dwarf_program
-                                .root_instruction_unit
-                                .get(&current_offset)
-                                .expect("CU header not found for root offset!");
-
-                            let dwarf = current_dwarf_program.owned_dwarf.dwarf();
-                            let unit = dwarf
-                                .unit(*uheader)
-                                .expect("Did not find CU for CU header!");
-
-                            let (loc_file, loc_line) =
-                                match source_location(&dwarf, &unit, *i, project_root) {
-                                    Ok(v) => v,
-                                    Err(_) => (None, None),
-                                };
-
-                            if let Some(file) = loc_file {
-                                if let Some(line) = loc_line {
-                                    let last_trace_step = ordered_instruction_trace.back();
-                                    if let Some(lti) = last_trace_step {
-                                        if lti.file != file || lti.line != line {
-                                            ordered_instruction_trace.push_back(TraceStep {
-                                                file: file,
-                                                line: line,
-                                                call: false,
-                                                function: None,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-
-                            tracing = false;
-                        } else {
-                            current_offset = trace_die_node.parent_offset;
-                        }
-                    }
-
-                    loop {
-                        let first_instruction_trace = ordered_instruction_trace.front();
-                        if let Some(first) = first_instruction_trace {
-                            if !first
-                                .file
-                                .to_string_lossy()
-                                .to_string()
-                                .contains(project_root)
-                            {
-                                ordered_instruction_trace.pop_front();
-                                continue;
-                            }
-                        }
-                        break;
-                    }
-
-                    sequential_instruction_traces.push(InstructionTrace {
-                        instruction: *i,
-                        trace: Vec::from(ordered_instruction_trace),
+                if let Some(call_mapping) = trace_die_node.call_mapping.clone() {
+                    ordered_instruction_trace.push_front(TraceStep {
+                        file: call_mapping.file,
+                        line: call_mapping.line,
+                        call: true,
+                        function: Some(trace_die_node.function_signature.clone()),
                     });
                 }
 
-                if self.steps_lines.contains_key(i) {
-                    if !sequential_instruction_traces.is_empty() {
-                        let trace_step = self.steps_lines.get(i).unwrap().clone();
+                if trace_die_node.parent_offset == current_offset {
+                    let uheader = current_dwarf_program
+                        .root_instruction_unit
+                        .get(&current_offset)
+                        .expect("CU header not found for root offset!");
 
-                        let mut ordered_instruction_trace =
-                            sequential_instruction_traces.last().unwrap().trace.clone();
-                        let mut j = ordered_instruction_trace.len();
+                    let dwarf = current_dwarf_program.owned_dwarf.dwarf();
+                    let unit = dwarf
+                        .unit(*uheader)
+                        .expect("Did not find CU for CU header!");
 
-                        while j > 0 {
-                            j -= 1;
+                    let (loc_file, loc_line) = match source_location(&dwarf, &unit, i, project_root)
+                    {
+                        Ok(v) => v,
+                        Err(_) => (None, None),
+                    };
 
-                            let current_trace_step = &ordered_instruction_trace[j];
-
-                            if current_trace_step.function.is_some()
-                                && current_trace_step.call == false
-                                && current_trace_step.file == trace_step.file
-                            {
-                                ordered_instruction_trace.push(trace_step);
-                                break;
-                            } else {
-                                ordered_instruction_trace.pop();
+                    if let Some(file) = loc_file {
+                        if let Some(line) = loc_line {
+                            let last_trace_step = ordered_instruction_trace.back();
+                            if let Some(lti) = last_trace_step {
+                                if lti.file != file || lti.line != line {
+                                    ordered_instruction_trace.push_back(TraceStep {
+                                        file: file,
+                                        line: line,
+                                        call: false,
+                                        function: None,
+                                    });
+                                }
                             }
-
-                            if ordered_instruction_trace.is_empty() {
-                                break;
-                            }
-                        }
-
-                        if !ordered_instruction_trace.is_empty() {
-                            sequential_instruction_traces.push(InstructionTrace {
-                                instruction: *i,
-                                trace: ordered_instruction_trace,
-                            })
                         }
                     }
+
+                    tracing = false;
+                } else {
+                    current_offset = trace_die_node.parent_offset;
                 }
             }
 
-            let mut trace_tree: Vec<TraceNode> =
-                self.build_trace_tree(sequential_instruction_traces);
-            trace_tree = self.interpolate_logs(trace_tree);
+            loop {
+                let first_instruction_trace = ordered_instruction_trace.front();
+                if let Some(first) = first_instruction_trace {
+                    if !first
+                        .file
+                        .to_string_lossy()
+                        .to_string()
+                        .contains(project_root)
+                    {
+                        ordered_instruction_trace.pop_front();
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
 
-            // TraceNode::clean_trace_nodes(project_root, &mut trace_tree);
+        InstructionTrace {
+            instruction: i,
+            trace: Vec::from(ordered_instruction_trace),
+        }
+    }
+
+    /// Create InstructionTrace with exact step at the end of the previous ordered_instruction_trace
+    /// if it exists.
+    fn get_extra_line_instruction_trace(
+        &self,
+        project_root: &String,
+        current_dwarf_program: &DwarfProgram,
+        mut ordered_instruction_trace: Vec<TraceStep>,
+        i: &u64,
+    ) -> Option<InstructionTrace> {
+        let dwarf = current_dwarf_program.owned_dwarf.dwarf();
+
+        let Some(unit) = find_cu_for_pc(&dwarf, *i).unwrap() else {
+            return None;
+        };
+
+        let (Some(best_file), Some(best_line)) =
+            source_location(&dwarf, &unit, *i, project_root).unwrap()
+        else {
+            return None;
+        };
+
+        let trace_step = TraceStep {
+            file: best_file,
+            line: best_line,
+            call: false,
+            function: None,
+        };
+
+        let mut j = ordered_instruction_trace.len();
+
+        while j > 0 {
+            j -= 1;
+
+            let current_trace_step = &ordered_instruction_trace[j];
+
+            if current_trace_step.function.is_some()
+                && current_trace_step.call == false
+                && current_trace_step.file == trace_step.file
+            {
+                ordered_instruction_trace.push(trace_step);
+                break;
+            } else {
+                ordered_instruction_trace.pop();
+            }
+
+            if ordered_instruction_trace.is_empty() {
+                break;
+            }
+        }
+
+        if !ordered_instruction_trace.is_empty() {
+            return Some(InstructionTrace {
+                instruction: *i,
+                trace: ordered_instruction_trace,
+            });
+        }
+
+        None
+    }
+
+    pub fn log(&mut self, message: &str) {
+        if let Some(prev_instruction) = self.sequential_instruction_traces.last_mut() {
+            if prev_instruction.trace.last().unwrap().is_log() {
+                let mut new_instruction = prev_instruction.clone();
+                new_instruction.trace.pop();
+                new_instruction.trace.push(TraceStep::from_log(message.to_string()));
+                self.sequential_instruction_traces.push(new_instruction);
+            } else {
+                prev_instruction.trace.push(TraceStep::from_log(message.to_string()));
+            }
+        }
+    }
+
+    fn wrap_steps(&mut self, err: Option<InstructionError>) {
+        if self.sequential_instruction_traces.len() > 0 {
+            let current_program = self.program_trace.last().unwrap();
+
+            let mut trace_tree: Vec<TraceNode> = self.build_trace_tree();
 
             let cwd = env::current_dir()
                 .expect("Failed to get current dir!")
@@ -484,7 +429,7 @@ impl SeerHook {
 
             if let Some(error) = err {
                 let error_node = TraceNode {
-                    instruction: *self.steps.last().unwrap(),
+                    instruction: self.sequential_instruction_traces.last().unwrap().instruction,
                     step: TraceStep {
                         file: PathBuf::new(),
                         line: 0,
@@ -588,9 +533,8 @@ impl SeerHook {
 
                 if !self.program_trace.is_empty() {
                     self.wrap_steps(None);
-                    self.steps = Vec::new();
-                    self.steps_logs = Vec::new();
                     self.depth += 1;
+                    self.sequential_instruction_traces = Vec::new();
                 }
             } else {
                 self.unknown_programs.push(program.clone());
@@ -612,9 +556,8 @@ impl SeerHook {
                     .then(|| panic!("program_trace empty by end_program call!"));
 
                 self.wrap_steps(err);
-                self.steps = Vec::new();
-                self.steps_logs = Vec::new();
                 self.depth += 1;
+                self.sequential_instruction_traces = Vec::new();
             }
             self.program_trace.pop();
         }
@@ -643,34 +586,36 @@ impl SeerHook {
                         reg,
                     ));
 
-                    if current_dwarf_program
-                        .interval_tree
-                        .search_first(&pc_lookup)
-                        .is_some()
-                        || self.steps_lines.contains_key(&pc_lookup)
+                    let instruction_trace = match self
+                        .die_instruction_cache
+                        .get(&(current_program.clone(), pc_lookup))
                     {
-                        self.steps.push(pc_lookup);
-                    } else {
-                        let dwarf = current_dwarf_program.owned_dwarf.dwarf();
-                        if let Some(unit) = find_cu_for_pc(&dwarf, pc_lookup).unwrap() {
-                            let loc =
-                                source_location(&dwarf, &unit, pc_lookup, project_root).unwrap();
-                            if let Some(best_file) = loc.0 {
-                                if let Some(best_line) = loc.1 {
-                                    if best_file.starts_with(project_root) {
-                                        self.steps.push(pc_lookup);
-                                        self.steps_lines.insert(
-                                            pc_lookup,
-                                            TraceStep {
-                                                file: best_file,
-                                                line: best_line,
-                                                call: false,
-                                                function: None,
-                                            },
-                                        );
-                                    }
-                                }
-                            }
+                        Some(trace) => trace.clone(),
+                        None => {
+                            let trace = self.get_ordered_insutrction_trace(
+                                project_root,
+                                current_dwarf_program,
+                                pc_lookup,
+                            );
+
+                            self.die_instruction_cache
+                                .insert((*current_program, pc_lookup), trace.clone());
+
+                            trace
+                        }
+                    };
+
+                    let instruction_trace_copy = instruction_trace.trace.clone();
+
+                    if instruction_trace_copy.len() > 0 {
+                        self.sequential_instruction_traces.push(instruction_trace);
+                        if let Some(trace) = self.get_extra_line_instruction_trace(
+                            project_root,
+                            current_dwarf_program,
+                            instruction_trace_copy,
+                            &pc_lookup,
+                        ) {
+                            self.sequential_instruction_traces.push(trace);
                         }
                     }
                 }
@@ -708,13 +653,6 @@ impl SeerHook {
         }
 
         return step_variables;
-    }
-
-    pub fn log(&mut self, message: &str) {
-        let prev_step = self.steps.last();
-        if let Some(ps) = prev_step {
-            self.steps_logs.push((*ps, message.to_string()));
-        }
     }
 }
 
