@@ -9,11 +9,11 @@ use serde_json::Value;
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
+use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
-use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::{collections::VecDeque, env, path::PathBuf};
 
@@ -34,13 +34,43 @@ pub struct SeerHook {
     parser: Option<DwarfParser>,
     unknown_programs: Vec<Pubkey>,
     sequential_instruction_traces: Vec<InstructionTrace>,
+    #[allow(dead_code)]
     die_instruction_cache: HashMap<(Pubkey, u64), InstructionTrace>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 struct InstructionTrace {
     instruction: u64,
     trace: Vec<TraceStep>,
+}
+
+#[derive(Debug, PartialEq)]
+enum SetStatus {
+    Subset,
+    Superset,
+    Neither,
+}
+
+impl InstructionTrace {
+    pub fn get_set_status_of(&self, other_instruction_trace: &InstructionTrace) -> SetStatus {
+        let self_len = self.trace.len();
+        let other_len = other_instruction_trace.trace.len();
+
+        for i in 0..min(self_len, other_len) {
+            let own_trace = self.trace.get(i).unwrap();
+            let other_trace = other_instruction_trace.trace.get(i).unwrap();
+
+            if own_trace != other_trace {
+                return SetStatus::Neither;
+            }
+        }
+
+        if self_len < other_len {
+            SetStatus::Superset
+        } else {
+            SetStatus::Subset
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +82,16 @@ struct TraceStep {
 }
 
 impl TraceStep {
+    #[cfg(test)]
+    pub fn new_for_test(line: u64) -> Self {
+        Self {
+            file: PathBuf::new(),
+            line,
+            call: false,
+            function: None,
+        }
+    }
+
     pub fn from_log(msg: String) -> Self {
         Self {
             file: PathBuf::new(),
@@ -61,39 +101,23 @@ impl TraceStep {
         }
     }
 
-    pub fn is_log (&self) -> bool {
-        self.file == PathBuf::new() && self.line == 0 && self.call == false && self.function.is_some()
+    pub fn is_log(&self) -> bool {
+        self.file == PathBuf::new()
+            && self.line == 0
+            && self.call == false
+            && self.function.is_some()
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TraceNode {
+struct TraceTree {
     instruction: u64,
     step: TraceStep,
-    children: Vec<TraceNode>,
+    children: Vec<TraceTree>,
 }
 
-impl TraceNode {
-    fn find_or_create_child<'a>(
-        children: &'a mut Vec<TraceNode>,
-        step: &TraceStep,
-        instruction: u64,
-    ) -> &'a mut TraceNode {
-        if let Some(pos) = children.iter().position(|c| c.step == *step) {
-            return &mut children[pos];
-        }
-
-        children.push(TraceNode {
-            step: step.clone(),
-            instruction,
-            children: vec![],
-        });
-
-        let len = children.len();
-        &mut children[len - 1]
-    }
-
-    fn get_last_mut(&mut self) -> &mut TraceNode {
+impl TraceTree {
+    fn get_last_mut(&mut self) -> &mut TraceTree {
         if !self.children.is_empty() {
             let last_index = self.children.len() - 1;
             let last_child = &mut self.children[last_index];
@@ -103,16 +127,59 @@ impl TraceNode {
         }
     }
 
-    pub fn _clean_trace_nodes(project_root: &str, trace_nodes: &mut Vec<TraceNode>) {
-        let root = Path::new(project_root);
-
-        for node in trace_nodes.iter_mut() {
-            if let Ok(stripped) = node.step.file.strip_prefix(root) {
-                node.step.file = stripped.to_path_buf();
-            }
-
-            Self::_clean_trace_nodes(project_root, &mut node.children);
+    fn get_root_trace_tree() -> Self {
+        Self {
+            instruction: 0,
+            step: TraceStep {
+                file: PathBuf::new(),
+                line: 0,
+                call: false,
+                function: None,
+            },
+            children: vec![],
         }
+    }
+
+    fn grow(&mut self, instruction_trace: &InstructionTrace, counter: usize) {
+        if counter < instruction_trace.trace.len() {
+            let instruction_trace_step = instruction_trace.trace[counter].clone();
+            let last_index = if self.children.is_empty() {
+                self.children.push(TraceTree {
+                    instruction: instruction_trace.instruction,
+                    step: instruction_trace_step,
+                    children: vec![],
+                });
+
+                0
+            } else {
+                let last_index = self.children.len() - 1;
+                let last_child = &self.children[last_index];
+
+                if last_child.step == instruction_trace_step {
+                    last_index
+                } else {
+                    self.children.push(TraceTree {
+                        instruction: instruction_trace.instruction,
+                        step: instruction_trace_step,
+                        children: vec![],
+                    });
+                    last_index + 1
+                }
+            };
+
+            let last_child = &mut self.children[last_index];
+            last_child.grow(instruction_trace, counter + 1);
+        }
+    }
+
+    fn unroot(self) -> Vec<TraceTree> {
+        let mut trace_tree = vec![];
+
+        for child in self.children {
+            trace_tree.push(child);
+        }
+
+        trace_tree
     }
 }
 
@@ -180,23 +247,41 @@ impl SeerHook {
         }
     }
 
-    fn build_trace_tree(&self) -> Vec<TraceNode> {
-        let mut roots: Vec<TraceNode> = vec![];
+    fn prune_instruction_trace_subsets(instruction_traces: &mut Vec<InstructionTrace>) {
+        let mut i = 1;
+        while i < instruction_traces.len() {
+            let trace_0 = instruction_traces.get(i - 1).unwrap();
+            let trace_1 = instruction_traces.get(i).unwrap();
 
-        for instr_trace in self.sequential_instruction_traces.iter().as_slice() {
-            let mut current_level = &mut roots;
+            let set_status = trace_0.get_set_status_of(trace_1);
 
-            for step in &instr_trace.trace {
-                let node =
-                    TraceNode::find_or_create_child(current_level, step, instr_trace.instruction);
-                current_level = &mut node.children;
+            match set_status {
+                SetStatus::Superset => {
+                    instruction_traces.remove(i - 1);
+                }
+                SetStatus::Subset => {
+                    instruction_traces.remove(i);
+                }
+                SetStatus::Neither => {
+                    i += 1;
+                }
             }
         }
-
-        roots
     }
 
-    fn push_to_last_leaf(&self, mut roots: Vec<TraceNode>, new_node: TraceNode) -> Vec<TraceNode> {
+    fn build_trace_tree(instruction_traces: &mut Vec<InstructionTrace>) -> Vec<TraceTree> {
+        SeerHook::prune_instruction_trace_subsets(instruction_traces);
+
+        let mut root_trace_tree = TraceTree::get_root_trace_tree();
+
+        for it in instruction_traces {
+            root_trace_tree.grow(it, 0);
+        }
+
+        root_trace_tree.unroot()
+    }
+
+    fn push_to_last_leaf(&self, mut roots: Vec<TraceTree>, new_node: TraceTree) -> Vec<TraceTree> {
         if let Some(last_root) = roots.last_mut() {
             let deepest = last_root.get_last_mut();
             if deepest.step.line > 0 {
@@ -211,18 +296,20 @@ impl SeerHook {
         roots
     }
 
-    fn save_trace_to_json(&self, trace_nodes: &Vec<TraceNode>, path: &str) -> std::io::Result<()> {
-        let json: String = serde_json::to_string_pretty(trace_nodes).unwrap();
+    fn save_to_json(&self, json_string: String, path: &str) -> std::io::Result<()> {
         let mut file = File::create(path)?;
-        file.write_all(json.as_bytes())?;
+        file.write_all(json_string.as_bytes())?;
         Ok(())
+    }
+
+    fn save_trace_to_json(&self, trace_nodes: &Vec<TraceTree>, path: &str) -> std::io::Result<()> {
+        let json: String = serde_json::to_string_pretty(trace_nodes).unwrap();
+        self.save_to_json(json, path)
     }
 
     fn save_state_to_json(&self, path: &str) -> std::io::Result<()> {
         let json: String = serde_json::to_string_pretty(&self.state).unwrap();
-        let mut file = File::create(path)?;
-        file.write_all(json.as_bytes())?;
-        Ok(())
+        self.save_to_json(json, path)
     }
 
     fn get_output_path(&self, project_root: &str, filename: &str) -> PathBuf {
@@ -407,19 +494,24 @@ impl SeerHook {
             if prev_instruction.trace.last().unwrap().is_log() {
                 let mut new_instruction = prev_instruction.clone();
                 new_instruction.trace.pop();
-                new_instruction.trace.push(TraceStep::from_log(message.to_string()));
+                new_instruction
+                    .trace
+                    .push(TraceStep::from_log(message.to_string()));
                 self.sequential_instruction_traces.push(new_instruction);
             } else {
-                prev_instruction.trace.push(TraceStep::from_log(message.to_string()));
+                prev_instruction
+                    .trace
+                    .push(TraceStep::from_log(message.to_string()));
             }
         }
     }
 
     fn wrap_steps(&mut self, err: Option<InstructionError>) {
         if self.sequential_instruction_traces.len() > 0 {
-            let current_program = self.program_trace.last().unwrap();
+            let current_program = self.program_trace.last().unwrap().clone();
 
-            let mut trace_tree: Vec<TraceNode> = self.build_trace_tree();
+            let mut trace_tree: Vec<TraceTree> =
+                SeerHook::build_trace_tree(&mut self.sequential_instruction_traces);
 
             let cwd = env::current_dir()
                 .expect("Failed to get current dir!")
@@ -428,8 +520,12 @@ impl SeerHook {
                 .expect("Path not valid UTF");
 
             if let Some(error) = err {
-                let error_node = TraceNode {
-                    instruction: self.sequential_instruction_traces.last().unwrap().instruction,
+                let error_node = TraceTree {
+                    instruction: self
+                        .sequential_instruction_traces
+                        .last()
+                        .unwrap()
+                        .instruction,
                     step: TraceStep {
                         file: PathBuf::new(),
                         line: 0,
@@ -586,24 +682,30 @@ impl SeerHook {
                         reg,
                     ));
 
-                    let instruction_trace = match self
-                        .die_instruction_cache
-                        .get(&(current_program.clone(), pc_lookup))
-                    {
-                        Some(trace) => trace.clone(),
-                        None => {
-                            let trace = self.get_ordered_insutrction_trace(
-                                project_root,
-                                current_dwarf_program,
-                                pc_lookup,
-                            );
+                    // let instruction_trace = match self
+                    //     .die_instruction_cache
+                    //     .get(&(current_program.clone(), pc_lookup))
+                    // {
+                    //     Some(trace) => trace.clone(),
+                    //     None => {
+                    //         let trace = self.get_ordered_insutrction_trace(
+                    //             project_root,
+                    //             current_dwarf_program,
+                    //             pc_lookup,
+                    //         );
 
-                            self.die_instruction_cache
-                                .insert((*current_program, pc_lookup), trace.clone());
+                    //         self.die_instruction_cache
+                    //             .insert((*current_program, pc_lookup), trace.clone());
 
-                            trace
-                        }
-                    };
+                    //         trace
+                    //     }
+                    // };
+
+                    let instruction_trace = self.get_ordered_insutrction_trace(
+                        project_root,
+                        current_dwarf_program,
+                        pc_lookup,
+                    );
 
                     let instruction_trace_copy = instruction_trace.trace.clone();
 
@@ -681,4 +783,132 @@ pub fn get<'a>() -> std::sync::MutexGuard<'static, SeerHook> {
         panic!("Tried accessing SEER singleton before initializing dwarf sources!");
     }
     seer.lock().expect("SeerHook poisoned!")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{InstructionTrace, SeerHook, SetStatus, TraceStep};
+
+    #[test]
+    fn test_get_status_of() {
+        let instruction_trace_0 = InstructionTrace {
+            instruction: 0,
+            trace: vec![
+                TraceStep::new_for_test(0),
+                TraceStep::new_for_test(1),
+                TraceStep::new_for_test(2),
+            ],
+        };
+
+        let instruction_trace_1 = InstructionTrace {
+            instruction: 8,
+            trace: vec![
+                TraceStep::new_for_test(0),
+                TraceStep::new_for_test(1),
+                TraceStep::new_for_test(3),
+            ],
+        };
+
+        let instruction_trace_2 = InstructionTrace {
+            instruction: 16,
+            trace: vec![TraceStep::new_for_test(0), TraceStep::new_for_test(1)],
+        };
+
+        assert_eq!(
+            instruction_trace_0.get_set_status_of(&instruction_trace_1),
+            SetStatus::Neither
+        );
+        assert_eq!(
+            instruction_trace_0.get_set_status_of(&instruction_trace_2),
+            SetStatus::Subset
+        );
+        assert_eq!(
+            instruction_trace_2.get_set_status_of(&instruction_trace_1),
+            SetStatus::Superset
+        );
+    }
+
+    #[test]
+    fn test_prune_instruction_trace_subsets() {
+        let instruction_trace_0 = InstructionTrace {
+            instruction: 0,
+            trace: vec![
+                TraceStep::new_for_test(0),
+                TraceStep::new_for_test(1),
+                TraceStep::new_for_test(2),
+            ],
+        };
+
+        let instruction_trace_1 = InstructionTrace {
+            instruction: 8,
+            trace: vec![
+                TraceStep::new_for_test(0),
+                TraceStep::new_for_test(1),
+                TraceStep::new_for_test(3),
+            ],
+        };
+
+        let instruction_trace_2 = InstructionTrace {
+            instruction: 16,
+            trace: vec![TraceStep::new_for_test(0), TraceStep::new_for_test(1)],
+        };
+
+        let instruction_trace_3 = InstructionTrace {
+            instruction: 16,
+            trace: vec![
+                TraceStep::new_for_test(0),
+                TraceStep::new_for_test(1),
+                TraceStep::new_for_test(3),
+                TraceStep::new_for_test(4),
+            ],
+        };
+
+        let mut traces = vec![
+            instruction_trace_0,
+            instruction_trace_1,
+            instruction_trace_2,
+            instruction_trace_3,
+        ];
+
+        SeerHook::prune_instruction_trace_subsets(&mut traces);
+
+        assert_eq!(traces.len(), 2);
+    }
+
+    #[test]
+    fn test_build_trace_tree() {
+        let mut traces = vec![
+            InstructionTrace {
+                instruction: 0,
+                trace: vec![
+                    TraceStep::new_for_test(0),
+                    TraceStep::new_for_test(1),
+                    TraceStep::new_for_test(2),
+                ],
+            },
+            InstructionTrace {
+                instruction: 8,
+                trace: vec![
+                    TraceStep::new_for_test(0),
+                    TraceStep::new_for_test(1),
+                    TraceStep::new_for_test(3),
+                ],
+            },
+            InstructionTrace {
+                instruction: 16,
+                trace: vec![TraceStep::new_for_test(0), TraceStep::new_for_test(1)],
+            },
+            InstructionTrace {
+                instruction: 16,
+                trace: vec![
+                    TraceStep::new_for_test(0),
+                    TraceStep::new_for_test(1),
+                    TraceStep::new_for_test(3),
+                    TraceStep::new_for_test(4),
+                ],
+            },
+        ];
+
+        let trace_tree = SeerHook::build_trace_tree(&mut traces);
+    }
 }

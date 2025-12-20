@@ -1,8 +1,7 @@
 [workspace]
 members = [
     "seer-core",
-    "seer-interface",
-    "seer-rpc"
+    "seer-interface"
 ]
 
 [workspace.package]
