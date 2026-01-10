@@ -8,7 +8,6 @@ members = [
 edition = "2021"
 
 [workspace.dependencies]
-seer-core = { path = "seer-core" }
 seer-interface = { path = "seer-interface" }
 
 [workspace.lints.rust]
