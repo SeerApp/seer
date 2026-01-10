@@ -28,7 +28,7 @@ impl TraceTree {
     }
 
     pub fn attach(&mut self, tree: TraceTree) {
-        self.get_last_branch_mut().children.push(tree);
+        self.get_last_invoke_parent_mut().children.push(tree);
     }
 
     pub fn push(&mut self, i: u64, mut call_trace: VecDeque<NodeData>) {
@@ -43,14 +43,6 @@ impl TraceTree {
             if !is_prefix::<NodeData>(&call_trace, &last_call_trace) {
                 self.grow(i, &call_trace, 0);
             }
-        }
-    }
-
-    pub fn push_branch(&mut self, node: NodeData) {
-        if node.is_branch() {
-            self.push_node(node);
-        } else {
-            panic!("Pushing leaf as branch");
         }
     }
 
@@ -74,6 +66,20 @@ impl TraceTree {
             node,
             children: vec![],
         });
+    }
+
+    fn get_last_invoke_parent_mut(&mut self) -> &mut TraceTree {
+        let should_recurse = self
+            .children
+            .last()
+            .map(|c| c.node.is_invoke_parent()) 
+            .unwrap_or(false);
+
+        if should_recurse {
+            self.children.last_mut().unwrap().get_last_invoke_parent_mut()
+        } else {
+            self
+        }
     }
 
     fn get_last_branch_mut(&mut self) -> &mut TraceTree {

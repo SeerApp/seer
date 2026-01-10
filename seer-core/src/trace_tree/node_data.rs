@@ -72,6 +72,13 @@ impl NodeData {
             NodeData::Invoke(_) | NodeData::Entrypoint(_) | NodeData::FnCall(_)
         )
     }
+
+    pub fn is_invoke_parent(&self) -> bool {
+        matches!(
+            self,
+            NodeData::Invoke(_) | NodeData::Entrypoint(_) | NodeData::Line(_)
+        )
+    }
 }
 
 // branch
