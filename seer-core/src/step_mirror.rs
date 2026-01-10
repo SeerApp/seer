@@ -45,8 +45,8 @@ impl StepMirror {
                         if current_account != *old_account {
                             changed_accounts.push(AccountData {
                                 key,
-                                before: old_account.clone(),
-                                after: current_account.clone(),
+                                before: old_account.clone().into(),
+                                after: current_account.clone().into(),
                             });
                             self.accounts[index] = current_account;
                         }

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use solana_account::AccountSharedData;
+use solana_account::{AccountSharedData, ReadableAccount};
+use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
 use crate::{
@@ -28,7 +29,12 @@ impl NodeData {
             SourceDieType::Fn => source
                 .loc
                 .decl
-                .map(|d| Some(NodeData::Entrypoint(EntrypointData { signature: source.loc.signature, loc: d })))
+                .map(|d| {
+                    Some(NodeData::Entrypoint(EntrypointData {
+                        signature: source.loc.signature,
+                        loc: d,
+                    }))
+                })
                 .unwrap_or(None),
             SourceDieType::Var => None,
         }
@@ -36,11 +42,15 @@ impl NodeData {
 
     pub fn from(source: SourceDie) -> Option<Self> {
         match source.source_type {
-            SourceDieType::Fn => {source
-                .loc
-                .call
-                .map(|c| Some(NodeData::FnCall(FnCallData { signature: source.loc.signature, loc: c })))}
-                .unwrap_or(None),
+            SourceDieType::Fn => {
+                source.loc.call.map(|c| {
+                    Some(NodeData::FnCall(FnCallData {
+                        signature: source.loc.signature,
+                        loc: c,
+                    }))
+                })
+            }
+            .unwrap_or(None),
             SourceDieType::Var => source
                 .loc
                 .decl
@@ -50,13 +60,16 @@ impl NodeData {
     }
 
     pub fn is_leaf(&self) -> bool {
-        matches!(self, NodeData::Log(_) | NodeData::Line(_) | NodeData::Account(_))
+        matches!(
+            self,
+            NodeData::Log(_) | NodeData::Line(_) | NodeData::Account(_)
+        )
     }
 
     pub fn is_branch(&self) -> bool {
         matches!(
             self,
-            NodeData::Entrypoint(_) | NodeData::FnCall(_)
+            NodeData::Invoke(_) | NodeData::Entrypoint(_) | NodeData::FnCall(_)
         )
     }
 }
@@ -123,9 +136,34 @@ impl ErrorData {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AccountData {
+    #[serde_as(as = "DisplayFromStr")]
     pub key: Pubkey,
-    pub before: AccountSharedData,
-    pub after: AccountSharedData,
+    pub before: AccountSharedDataWrapper,
+    pub after: AccountSharedDataWrapper,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct AccountSharedDataWrapper {
+    lamports: u64,
+    data: Vec<u8>,
+    #[serde_as(as = "DisplayFromStr")]
+    owner: Pubkey,
+    executable: bool,
+    rent_epoch: Epoch,
+}
+
+impl From<AccountSharedData> for AccountSharedDataWrapper {
+    fn from(value: AccountSharedData) -> Self {
+        AccountSharedDataWrapper {
+            lamports: value.lamports(),
+            data: value.data().to_vec(),
+            owner: *value.owner(),
+            executable: value.executable(),
+            rent_epoch: value.rent_epoch(),
+        }
+    }
 }
