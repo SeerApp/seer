@@ -7,14 +7,13 @@ use solana_signature::Signature;
 
 use crate::{
     call_trace_lookup::CallTraceLookup, dwarf_manager::DwarfManager, save::save_trace_tree,
-    seer_debug, seer_trace, source_die_trace::SourceDieTrace, sources::Sources,
+    seer_trace, source_die_trace::SourceDieTrace, sources::Sources,
     transaction_context::TransactionContext,
 };
 
 pub struct SeerContext {
     lookups: HashMap<Pubkey, CallTraceLookup>,
-    completed_txns: Vec<Signature>,
-    transaction_context: Option<TransactionContext>,
+    pub transaction_context: Option<TransactionContext>,
 }
 
 impl SeerContext {
@@ -37,29 +36,18 @@ impl SeerContext {
 
         Self {
             lookups,
-            completed_txns: Vec::new(),
             transaction_context: None,
         }
     }
 
-    pub fn set_current_tx(&mut self, tx: Signature) -> bool {
+    pub fn set_current_tx(&mut self, tx: Signature) {
         seer_trace!("New tx: {:?}", tx);
-        if self.completed_txns.contains(&tx) {
-            seer_debug!("Tx already complete");
-            false
-        } else {
-            self.transaction_context = Some(TransactionContext::new(tx));
-            true
-        }
+        self.transaction_context = Some(TransactionContext::new(tx));
     }
 
-    pub fn unset_current_tx(&mut self) -> bool {
+    pub fn unset_current_tx(&mut self) {
         if let Some(txc) = &self.transaction_context.take() {
             seer_trace!("Tx unset: {:?}", txc.signature);
-            self.completed_txns.push(txc.signature);
-            true
-        } else {
-            false
         }
     }
 
@@ -80,6 +68,14 @@ impl SeerContext {
 
         if let Some((instruction, trace_tree)) = txc.end_instruction() {
             save_trace_tree(&txc.signature, instruction, trace_tree);
+        }
+    }
+
+    pub unsafe fn end_transaction_context(&mut self) {
+        if let Some(txc) = self.transaction_context.as_mut() {
+            if let Some(step_mirror) = txc.step_mirror.take().as_mut() {
+                step_mirror.clear();
+            }
         }
     }
 

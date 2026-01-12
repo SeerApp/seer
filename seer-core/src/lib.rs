@@ -41,13 +41,17 @@ impl SeerSingleton {
 
     pub fn set(&mut self, tx: Signature) {
         if let Some(ctx) = self.context.as_mut() {
-            self.active = ctx.set_current_tx(tx);
+            ctx.set_current_tx(tx);
+            self.active = true;
         }
     }
 
     pub fn unset(&mut self) {
-        if let Some(ctx) = self.context.as_mut() {
-            self.active = !ctx.unset_current_tx();
+        if self.is_active() {
+            if let Some(ctx) = self.context.as_mut() {
+                ctx.unset_current_tx();
+                self.active = false;
+            }
         }
     }
 

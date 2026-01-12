@@ -30,7 +30,7 @@ impl InstructionContext {
         self.trace_tree_context.start_program(program_address);
     }
 
-    pub fn end_program(&mut self, err: Option<InstructionError>) -> bool {
+    pub fn end_program(&mut self, err: Option<InstructionError>) {
         self.trace_tree_context.end_program(err)
     }
 

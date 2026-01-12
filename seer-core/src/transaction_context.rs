@@ -13,7 +13,7 @@ use crate::{
 pub struct TransactionContext {
     pub signature: Signature,
     instruction_context: Option<InstructionContext>,
-    step_mirror: Option<StepMirror>,
+    pub step_mirror: Option<StepMirror>,
 }
 
 impl<'a> TransactionContext {
@@ -48,16 +48,11 @@ impl<'a> TransactionContext {
     }
 
     pub fn end_program(&mut self, err: Option<InstructionError>) {
-        if self
+        self
             .instruction_context
             .as_mut()
             .expect("Ending program before instruction context exists")
-            .end_program(err)
-        {
-            if let Some(step_mirror) = self.step_mirror.as_mut() {
-                step_mirror.clear();
-            }
-        }
+            .end_program(err);
     }
 
     pub fn log(&mut self, message: &str) {

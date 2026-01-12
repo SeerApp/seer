@@ -62,7 +62,7 @@ impl NodeData {
     pub fn is_leaf(&self) -> bool {
         matches!(
             self,
-            NodeData::Log(_) | NodeData::Line(_) | NodeData::Account(_)
+            NodeData::Log(_) | NodeData::Line(_) | NodeData::Account(_) | NodeData::Error(_)
         )
     }
 

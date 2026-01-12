@@ -51,7 +51,7 @@ impl TraceTreeContext {
         });
     }
 
-    pub fn end_program(&mut self, err: Option<InstructionError>) -> bool {
+    pub fn end_program(&mut self, err: Option<InstructionError>) {
         let mut trace = self
             .trace
             .pop()
@@ -65,10 +65,8 @@ impl TraceTreeContext {
 
         if let Some(parent_trace) = self.trace.last_mut() {
             parent_trace.trace_tree.attach(trace.trace_tree);
-            false
         } else {
             self.return_trace_tree = Some(trace.trace_tree);
-            true
         }
     }
 
