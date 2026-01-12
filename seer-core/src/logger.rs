@@ -1,4 +1,4 @@
-use std::{fmt, sync::OnceLock};
+use std::{fmt, sync::OnceLock, thread};
 
 static SEER_LOGGER: OnceLock<SeerLogger> = OnceLock::new();
 
@@ -54,25 +54,25 @@ impl SeerLogger {
 
     pub fn trace(&self, module: &'static str, msg: fmt::Arguments) {
         if self.enabled(SeerLoggerLevel::Trace) {
-            println!("[SEER TRACE] {} :: {}", module, msg);
+            println!("[SEER TRACE] {:?} {} :: {}", thread::current().id(), module, msg);
         }
     }
     
     pub fn debug(&self, module: &'static str, msg: fmt::Arguments) {
         if self.enabled(SeerLoggerLevel::Debug) {
-            println!("[SEER DEBUG] {} :: {}", module, msg);
+            println!("[SEER DEBUG] {:?} {} :: {}", thread::current().id(), module, msg);
         }
     }
     
     pub fn warn(&self, module: &'static str, msg: fmt::Arguments) {
         if self.enabled(SeerLoggerLevel::Warn) {
-            println!("[SEER WARN ] {} :: {}", module, msg);
+            println!("[SEER WARN] {:?} {} :: {}", thread::current().id(), module, msg);
         }
     }
     
     pub fn error(&self, module: &'static str, msg: fmt::Arguments) {
         if self.enabled(SeerLoggerLevel::Error) {
-            eprintln!("[SEER ERROR] {} :: {}", module, msg);
+            eprintln!("[SEER ERROR] {:?} {} :: {}", thread::current().id(), module, msg);
         }
     }    
 }
