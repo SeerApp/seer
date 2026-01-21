@@ -1,26 +1,23 @@
 pub mod binary_lookup_tree;
 pub mod call_trace_lookup;
-pub mod dwarf_manager;
-pub mod instruction_context;
+pub mod contexts;
+pub mod dwarf;
 pub mod logger;
-pub mod prefix;
 pub mod save;
-pub mod seer_context;
-pub mod source_die_trace;
 pub mod sources;
 pub mod step_mirror;
 #[cfg(feature = "step_trace")]
 pub mod step_trace;
-pub mod trace_tree;
-pub mod transaction_context;
+pub mod tracer;
+pub mod tree;
 
 use std::cell::RefCell;
 use std::{env, path::PathBuf};
 
 use solana_signature::Signature;
 
+use crate::contexts::seer::SeerContext;
 use crate::logger::{init_seer_logger, seer_logger, SeerLogger, SeerLoggerLevel};
-use crate::seer_context::SeerContext;
 
 pub struct SeerSingleton {
     context: Option<SeerContext>,

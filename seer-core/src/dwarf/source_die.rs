@@ -12,7 +12,7 @@ use crate::{
     binary_lookup_tree::{LookupInterval, LookupNode},
     call_trace_lookup::CallTraceLookup,
     sources::Sources,
-    trace_tree::loc::Loc,
+    tree::loc::Loc,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -173,7 +173,7 @@ impl SourceDie {
 }
 
 /// Not combined into a single Vec<LookupInterval<SourceDie>>
-/// for easier readability during debugging.
+/// for better readability during debugging.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SourceDieTrace {
     trace: HashMap<u64, SourceDie>,

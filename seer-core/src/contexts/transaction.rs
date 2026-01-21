@@ -6,8 +6,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup, instruction_context::InstructionContext,
-    step_mirror::StepMirror, trace_tree::TraceTree,
+    call_trace_lookup::CallTraceLookup, contexts::instruction::InstructionContext, step_mirror::StepMirror, tree::{Tree, view::ViewNode}
 };
 
 pub struct TransactionContext {
@@ -29,7 +28,7 @@ impl<'a> TransactionContext {
         self.instruction_context = Some(InstructionContext::new(instruction, fee_payer));
     }
 
-    pub fn end_instruction(&mut self) -> Option<(u8, TraceTree)> {
+    pub fn end_instruction(&mut self) -> Option<(u8, Tree<ViewNode>)> {
         self.instruction_context
             .take()
             .expect("Ending instruction before it exists")

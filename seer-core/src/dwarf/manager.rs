@@ -53,8 +53,6 @@ impl DwarfManager {
             all_source_files.extend(self.get_source_files(cwd, source_project_root, program_address));
         }
 
-        println!("Get all source files: {:?}", all_source_files.len());
-
         all_source_files
     }
     pub fn get_source_files(

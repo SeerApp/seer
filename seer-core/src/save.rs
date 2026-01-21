@@ -1,17 +1,20 @@
-use std::{fs::{File, create_dir_all}, io::Write, path::PathBuf};
+use std::{
+    fs::{create_dir_all, File},
+    io::Write,
+    path::PathBuf,
+};
 
-use solana_signature::Signature;
 use chrono::Local;
+use solana_signature::Signature;
 
-use crate::{get_cwd, trace_tree::TraceTree};
+use crate::{
+    get_cwd,
+    tree::{view::ViewNode, Tree},
+};
 
-pub fn save_trace_tree(signature: &Signature, instruction: u8, trace_tree: TraceTree) {
-    let filename = format!(
-        "{}_{}.json",
-        signature.to_string(),
-        instruction,
-    );
-    
+pub fn save_trace_tree(signature: &Signature, instruction: u8, trace_tree: Tree<ViewNode>) {
+    let filename = format!("{}_{}.json", signature.to_string(), instruction);
+
     let output_path = get_output_path(&filename);
     let json = serde_json::to_string_pretty(&trace_tree).unwrap();
     let mut file = File::create(output_path).ok().unwrap();
@@ -41,5 +44,5 @@ pub fn save(data: String, filename: String, extension: &str, timestamp: bool) {
 fn add_timestamp(filename: String) -> String {
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
 
-    format!{"{}_{}", filename, timestamp}
+    format! {"{}_{}", filename, timestamp}
 }

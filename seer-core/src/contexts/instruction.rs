@@ -6,32 +6,36 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     call_trace_lookup::CallTraceLookup,
-    trace_tree::{TraceTree, context::TraceTreeContext, node_data::AccountData},
+    tracer::Tracer,
+    tree::{
+        view::{AccountData, ViewNode},
+        Tree,
+    },
 };
 
 pub struct InstructionContext {
     index: u8,
-    trace_tree_context: TraceTreeContext,
+    tracer: Tracer,
 }
 
 impl InstructionContext {
     pub fn new(index: u8, fee_payer: Pubkey) -> Self {
         Self {
             index,
-            trace_tree_context: TraceTreeContext::new(fee_payer),
+            tracer: Tracer::new(fee_payer),
         }
     }
 
     pub fn log(&mut self, message: &str) {
-        self.trace_tree_context.log(message);
+        self.tracer.log(message);
     }
 
     pub fn start_program(&mut self, program_address: Pubkey) {
-        self.trace_tree_context.start_program(program_address);
+        self.tracer.start_program(program_address);
     }
 
     pub fn end_program(&mut self, err: Option<InstructionError>) {
-        self.trace_tree_context.end_program(err)
+        self.tracer.end_program(err)
     }
 
     pub fn step<M: GuestMemory>(
@@ -41,21 +45,16 @@ impl InstructionContext {
         mem: &mut M,
         reg: &[u64; 12],
     ) {
-        self.trace_tree_context.step(lookups, i, mem, reg);
+        self.tracer.step(lookups, i, mem, reg);
     }
 
     pub fn account_diff(&mut self, data: AccountData) {
-        self.trace_tree_context.account_diff(data);
+        self.tracer.account_diff(data);
     }
 }
 
-impl From<InstructionContext> for Option<(u8, TraceTree)> {
+impl From<InstructionContext> for Option<(u8, Tree<ViewNode>)> {
     fn from(value: InstructionContext) -> Self {
-        match value.trace_tree_context.into() {
-            Some(trace_tree) => {
-                Some((value.index, trace_tree))
-            },
-            None => None
-        }
+        Into::<Option<Tree<ViewNode>>>::into(value.tracer).map(|tracer| (value.index, tracer))
     }
 }

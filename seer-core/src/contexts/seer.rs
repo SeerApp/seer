@@ -6,9 +6,9 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup, dwarf_manager::DwarfManager, save::save_trace_tree,
-    seer_trace, source_die_trace::SourceDieTrace, sources::Sources,
-    transaction_context::TransactionContext,
+    call_trace_lookup::CallTraceLookup, contexts::transaction::TransactionContext,
+    dwarf::{manager::DwarfManager, source_die::SourceDieTrace}, save::{save, save_trace_tree},
+    seer_trace, sources::Sources,
 };
 
 pub struct SeerContext {
@@ -29,6 +29,7 @@ impl SeerContext {
         for program_address in dwarf_manager.get_pubkeys() {
             let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
             let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
+            let _ = save(serde_json::to_string_pretty(&source_die_trace).ok().unwrap(), format!("{}", program_address), "json", false);
             let call_trace_lookup: CallTraceLookup = source_die_trace.into();
 
             lookups.insert(program_address.clone(), call_trace_lookup);

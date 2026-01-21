@@ -6,7 +6,7 @@ use gimli::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{sources::Sources, trace_tree::demangle::demangle};
+use crate::{sources::Sources, tree::demangle::demangle};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Loc {
@@ -53,7 +53,6 @@ impl Loc {
             if let Some(line_program) = &unit.line_program {
                 let header = line_program.header();
                 if let Some(file_entry) = header.file(idx) {
-
                     let attr_string = dwarf.attr_string(unit, file_entry.path_name())?;
                     let mut path = PathBuf::from(attr_string.to_string_lossy()?.into_owned());
 

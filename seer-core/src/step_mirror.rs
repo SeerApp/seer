@@ -1,7 +1,7 @@
 use seer_interface::GuestStepMirror;
 use solana_account::AccountSharedData;
 
-use crate::trace_tree::node_data::AccountData;
+use crate::tree::view::AccountData;
 
 pub struct StepMirror {
     accounts: Vec<AccountSharedData>,
