@@ -6,9 +6,12 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup, contexts::transaction::TransactionContext,
-    dwarf::{manager::DwarfManager, source_die::SourceDieTrace}, save::{save, save_trace_tree},
-    seer_trace, sources::Sources,
+    call_trace_lookup::CallTraceLookup,
+    contexts::transaction::TransactionContext,
+    dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
+    save::{save, save_trace_tree},
+    seer_trace,
+    sources::Sources,
 };
 
 pub struct SeerContext {
@@ -29,7 +32,14 @@ impl SeerContext {
         for program_address in dwarf_manager.get_pubkeys() {
             let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
             let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
-            let _ = save(serde_json::to_string_pretty(&source_die_trace).ok().unwrap(), format!("{}", program_address), "json", false);
+            let _ = save(
+                serde_json::to_string_pretty(&source_die_trace)
+                    .ok()
+                    .unwrap(),
+                format!("{}", program_address),
+                "json",
+                false,
+            );
             let call_trace_lookup: CallTraceLookup = source_die_trace.into();
 
             lookups.insert(program_address.clone(), call_trace_lookup);
@@ -68,7 +78,7 @@ impl SeerContext {
             .expect("Instruction ended before transaction context exists");
 
         if let Some((instruction, trace_tree)) = txc.end_instruction() {
-            save_trace_tree(&txc.signature, instruction, trace_tree);
+            save_trace_tree((&txc.signature).to_string(), instruction, trace_tree);
         }
     }
 
@@ -108,6 +118,7 @@ impl SeerContext {
     }
 
     pub fn log(&mut self, message: &str) {
+        seer_trace!("Log: {:?}", message);
         self.transaction_context
             .as_mut()
             .expect("Logging before transaction context exists")

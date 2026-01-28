@@ -26,6 +26,10 @@ impl TreeNode for ViewNode {
         panic!("Must never call root on ViewNode");
     }
 
+    fn index(_: usize) -> Self {
+        panic!("Must never call index on ViewNode");
+    }
+
     fn is_leaf(&self) -> bool {
         panic!("Must never call is_leaf on ViewNode");
     }

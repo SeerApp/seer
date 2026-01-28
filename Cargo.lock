@@ -1082,6 +1082,7 @@ dependencies = [
  "serde_with",
  "solana-account",
  "solana-instruction",
+ "solana-instruction-error",
  "solana-keypair",
  "solana-program",
  "solana-pubkey 3.0.0",
@@ -1492,6 +1493,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f0d483b8ae387178d9210e0575b666b05cdd4bd0f2f188128249f6e454d39d"
 dependencies = [
  "num-traits",
+ "serde",
+ "serde_derive",
  "solana-program-error",
 ]
 

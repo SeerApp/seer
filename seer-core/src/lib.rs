@@ -6,10 +6,9 @@ pub mod logger;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
-#[cfg(feature = "step_trace")]
-pub mod step_trace;
 pub mod tracer;
 pub mod tree;
+pub mod analysis;
 
 use std::cell::RefCell;
 use std::{env, path::PathBuf};

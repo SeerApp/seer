@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 
-use seer_interface::GuestMemory;
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
     call_trace_lookup::CallTraceLookup,
     tree::{
-        entrypoint::EntrypointNode,
-        is_non_dep_branch,
+        entrypoint::{EntrypointHolder, EntrypointNode},
+        is_dep_fn_call,
         view::{AccountData, EntrypointData, ErrorData, FnCallData, InvokeData, LogData, ViewNode},
         Tree, TreeContext, TreeNode, UniqueTree,
     },
@@ -30,6 +29,10 @@ impl TreeNode for InvokeNode {
         Self::Root
     }
 
+    fn index(index: usize) -> Self {
+        Self::Invoke(index)
+    }
+
     fn is_leaf(&self) -> bool {
         matches!(self, Self::Log(_) | Self::Error(_) | Self::Account(_))
     }
@@ -39,19 +42,19 @@ impl TreeNode for InvokeNode {
     }
 
     fn can_push_to(&self, tree: &super::Tree<Self>) -> bool {
-        match self {
-            Self::Root => panic!("Cannot push root to a tree"),
-            Self::Invoke(_) => is_non_dep_branch(tree),
-            Self::Entrypoint(_) => !tree.node.is_leaf(),
-            Self::FnCall(_) => !tree.node.is_leaf(),
-            Self::Log(_) => !tree.node.is_leaf(),
-            Self::Error(_) => !tree.node.is_leaf(),
-            Self::Account(_) => !tree.node.is_leaf(),
+        if matches!(tree.node, Self::Invoke(_)) || tree.node.is_leaf() {
+            false
+        } else {
+            match self {
+                Self::Root => panic!("Cannot push root to a tree"),
+                Self::Invoke(_) => !is_dep_fn_call(tree),
+                _ => true,
+            }
         }
     }
 }
 
-impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, EntrypointNode>>> {
+impl TreeContext<InvokeData, InvokeNode, Option<EntrypointHolder>> {
     pub fn new_invoke_context(sender: Pubkey, receiver: Pubkey) -> Self {
         let mut context = Self {
             trace: vec![],
@@ -64,28 +67,33 @@ impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, Entr
     }
 
     pub fn start_program(&mut self, sender: Pubkey, receiver: Pubkey) {
-        if let Some(entrypoint_context) = self.take_last_entrypoint_context() {
-            self.materialize(entrypoint_context.into());
+        if let Some(entrypoint_holder) = self.take_last_entrypoint_holder() {
+            self.materialize(entrypoint_holder.into());
         }
 
         self.push_subtree(InvokeData::new(sender, receiver), None);
     }
 
     pub fn end_program(&mut self, err: Option<InstructionError>) {
-        if let Some(entrypoint_context) = self.take_last_entrypoint_context() {
-            self.materialize(entrypoint_context.into());
-        }
+        if let Some(mut entrypoint_holder) = self.take_last_entrypoint_holder() {
+            if let Some(msg) = err {
+                entrypoint_holder.push_leaf(EntrypointNode::Error(ErrorData::new(msg.to_string())));
+            }
 
-        if let Some(msg) = err {
-            self.get_current_unique_tree()
-                .tree
-                .push_leaf(InvokeNode::Error(ErrorData::new(msg.to_string())));
+            self.materialize(entrypoint_holder.into());
+        } else if let Some(msg) = err {
+            self.push_leaf(InvokeNode::Error(ErrorData::new(msg.to_string())));
         }
 
         self.trace.pop();
+
+        if let Some(last_trace) = self.trace.last_mut() {
+            last_trace.additional_data = (&self.subtrees[last_trace.subtree_index].tree).into();
+            println!("ADDITIONAL DATA: {:?}", last_trace.additional_data);
+        }
     }
 
-    pub fn step<M: GuestMemory>(
+    pub fn step(
         &mut self,
         lookups: &HashMap<Pubkey, CallTraceLookup>,
         i: u64,
@@ -99,11 +107,10 @@ impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, Entr
                 .last_mut()
                 .expect("Stepping on empty invoke context");
 
-            if let Some(entrypoint_context) = current_trace.additional_data.as_mut() {
-                entrypoint_context.push_call_trace(i, call_trace);
+            if let Some(entrypoint_holder) = current_trace.additional_data.as_mut() {
+                entrypoint_holder.push_call_trace(i, call_trace);
             } else {
-                current_trace.additional_data =
-                    TreeContext::maybe_new_entrypoint_context(i, call_trace)
+                current_trace.additional_data = EntrypointHolder::maybe_new(i, call_trace);
             }
 
             *executed = true;
@@ -111,34 +118,26 @@ impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, Entr
     }
 
     pub fn log(&mut self, message: &str) {
-        if let Some(entrypoint_context) = self.get_last_entrypoint_context() {
-            entrypoint_context
-                .get_current_unique_tree()
-                .tree
-                .push_leaf(EntrypointNode::Log(LogData::new(message)));
+        if let Some(entrypoint_holder) = self.get_last_entrypoint_holder() {
+            entrypoint_holder.push_leaf(EntrypointNode::Log(LogData::new(message)));
         } else {
-            self.get_current_unique_tree()
-                .tree
-                .push_leaf(InvokeNode::Log(LogData::new(message)));
+            self.push_leaf(InvokeNode::Log(LogData::new(message)));
         }
     }
 
     pub fn account_diff(&mut self, data: AccountData) {
-        if let Some(entrypoint_context) = self.get_last_entrypoint_context() {
-            entrypoint_context
-                .get_current_unique_tree()
-                .tree
-                .push_leaf(EntrypointNode::Account(data));
+        if let Some(entrypoint_holder) = self.get_last_entrypoint_holder() {
+            entrypoint_holder.push_leaf(EntrypointNode::Account(data));
         } else {
-            self.get_current_unique_tree()
-                .tree
-                .push_leaf(InvokeNode::Account(data));
+            self.push_leaf(InvokeNode::Account(data));
         }
     }
 
-    fn get_last_entrypoint_context(
-        &mut self,
-    ) -> Option<&mut TreeContext<EntrypointData, EntrypointNode>> {
+    fn push_leaf(&mut self, node: InvokeNode) {
+        self.get_current_unique_tree().tree.push_leaf(node, None);
+    }
+
+    fn get_last_entrypoint_holder(&mut self) -> Option<&mut EntrypointHolder> {
         self.trace
             .last_mut()
             .expect("Empty invoke context for entrypoint context")
@@ -146,9 +145,7 @@ impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, Entr
             .as_mut()
     }
 
-    fn take_last_entrypoint_context(
-        &mut self,
-    ) -> Option<TreeContext<EntrypointData, EntrypointNode>> {
+    fn take_last_entrypoint_holder(&mut self) -> Option<EntrypointHolder> {
         self.trace
             .last_mut()
             .expect("Empty invoke context for entrypoint context")
@@ -167,10 +164,10 @@ impl TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, Entr
     }
 
     pub fn materialize(&mut self, materialized_tree: Tree<InvokeNode>) {
-        println!("mat tree {:?}", materialized_tree);
+        // println!("mat tree {:?}", materialized_tree);
         self.get_current_unique_tree()
             .tree
-            .get_pushable_subtree(&materialized_tree.node)
+            .get_pushable_subtree(&materialized_tree.node, None)
             .children
             .push(materialized_tree);
     }
@@ -234,16 +231,10 @@ impl From<TreeContext<EntrypointData, EntrypointNode>> for Tree<InvokeNode> {
     }
 }
 
-impl From<TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, EntrypointNode>>>>
+impl From<TreeContext<InvokeData, InvokeNode, Option<EntrypointHolder>>>
     for Option<Tree<ViewNode>>
 {
-    fn from(
-        value: TreeContext<
-            InvokeData,
-            InvokeNode,
-            Option<TreeContext<EntrypointData, EntrypointNode>>,
-        >,
-    ) -> Self {
+    fn from(value: TreeContext<InvokeData, InvokeNode, Option<EntrypointHolder>>) -> Self {
         if let Some(root_tree) = value.subtrees.get(0) {
             if root_tree.tree.node != InvokeNode::Root {
                 panic!("Root of InvokeNode tree is not Root");

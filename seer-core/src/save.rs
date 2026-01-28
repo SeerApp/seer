@@ -5,15 +5,14 @@ use std::{
 };
 
 use chrono::Local;
-use solana_signature::Signature;
 
 use crate::{
     get_cwd,
     tree::{view::ViewNode, Tree},
 };
 
-pub fn save_trace_tree(signature: &Signature, instruction: u8, trace_tree: Tree<ViewNode>) {
-    let filename = format!("{}_{}.json", signature.to_string(), instruction);
+pub fn save_trace_tree(signature: String, instruction: u8, trace_tree: Tree<ViewNode>) {
+    let filename = format!("{}_{}.json", signature, instruction);
 
     let output_path = get_output_path(&filename);
     let json = serde_json::to_string_pretty(&trace_tree).unwrap();

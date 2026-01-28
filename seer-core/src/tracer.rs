@@ -1,24 +1,21 @@
 use std::collections::HashMap;
 
-use seer_interface::GuestMemory;
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
     call_trace_lookup::CallTraceLookup,
     tree::{
-        entrypoint::EntrypointNode,
+        entrypoint::EntrypointHolder,
         invoke::InvokeNode,
-        view::{AccountData, EntrypointData, InvokeData, ViewNode},
+        view::{AccountData, InvokeData, ViewNode},
         Tree, TreeContext,
     },
 };
 
 pub struct Tracer {
     sender: Pubkey,
-    invoke_context: Option<
-        TreeContext<InvokeData, InvokeNode, Option<TreeContext<EntrypointData, EntrypointNode>>>,
-    >,
+    invoke_context: Option<TreeContext<InvokeData, InvokeNode, Option<EntrypointHolder>>>,
     executed: bool,
 }
 
@@ -49,17 +46,15 @@ impl Tracer {
             .end_program(err);
     }
 
-    pub fn step<M: GuestMemory>(
+    pub fn step(
         &mut self,
         lookups: &HashMap<Pubkey, CallTraceLookup>,
         i: u64,
-        _: &mut M,
-        _: &[u64; 12],
     ) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
-            .step::<M>(lookups, i, &mut self.executed);
+            .step(lookups, i, &mut self.executed);
     }
 
     pub fn log(&mut self, message: &str) {
@@ -80,10 +75,11 @@ impl Tracer {
 impl From<Tracer> for Option<Tree<ViewNode>> {
     fn from(value: Tracer) -> Self {
         if value.executed {
-            value
+            let invoke_context = value
                 .invoke_context
-                .expect("Converting tracer with empty invoke context into view tree")
-                .into()
+                .expect("Converting tracer with empty invoke context into view tree");
+
+            invoke_context.into()
         } else {
             None
         }
