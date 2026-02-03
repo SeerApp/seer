@@ -1,7 +1,7 @@
 use seer_interface::GuestStepMirror;
 use solana_account::AccountSharedData;
 
-use crate::tree::view::AccountData;
+use crate::tree::nodes::TreeAccount;
 
 pub struct StepMirror {
     accounts: Vec<AccountSharedData>,
@@ -27,7 +27,7 @@ impl StepMirror {
         }
     }
 
-    pub fn check_diffs(&mut self) -> Vec<AccountData> {
+    pub fn check_diffs(&mut self) -> Vec<TreeAccount> {
         let mirror_ptr = self.mirror_ptr.expect("StepMirror has been cleared");
         let mirror = unsafe { &*mirror_ptr };
 
@@ -43,7 +43,7 @@ impl StepMirror {
                 if let Some((key, current_account)) = mirror.read_account_at_index(index) {
                     if let Some(old_account) = self.accounts.get(index) {
                         if current_account != *old_account {
-                            changed_accounts.push(AccountData {
+                            changed_accounts.push(TreeAccount {
                                 key,
                                 before: old_account.clone().into(),
                                 after: current_account.clone().into(),

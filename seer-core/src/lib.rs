@@ -7,8 +7,9 @@ pub mod save;
 pub mod sources;
 pub mod step_mirror;
 pub mod tracer;
-pub mod tree;
+// pub mod legacy_tree;
 pub mod analysis;
+pub mod tree;
 
 use std::cell::RefCell;
 use std::{env, path::PathBuf};

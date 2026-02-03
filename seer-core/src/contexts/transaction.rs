@@ -8,8 +8,8 @@ use solana_signature::Signature;
 use crate::{
     call_trace_lookup::CallTraceLookup,
     contexts::instruction::InstructionContext,
+    tree::nodes::{RootViewChildren, TreeRoot},
     step_mirror::StepMirror,
-    tree::{view::ViewNode, Tree},
 };
 
 pub struct TransactionContext {
@@ -35,7 +35,7 @@ impl<'a> TransactionContext {
         ));
     }
 
-    pub fn end_instruction(&mut self) -> Option<(u8, Tree<ViewNode>)> {
+    pub fn end_instruction(&mut self) -> Option<(u8, TreeRoot<RootViewChildren>)> {
         self.instruction_context
             .take()
             .expect("Ending instruction before it exists")

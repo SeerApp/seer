@@ -1,7 +1,14 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use seer_core::{
-    analysis::{Analysis, ExecutionEvent}, call_trace_lookup::CallTraceLookup, dwarf::{manager::DwarfManager, source_die::SourceDieTrace}, get_cwd, save::save_trace_tree, sources::Sources, tracer::Tracer, tree::{Tree, view::ViewNode}
+    analysis::{Analysis, ExecutionEvent},
+    call_trace_lookup::CallTraceLookup,
+    dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
+    get_cwd,
+    tree::nodes::{RootViewChildren, TreeRoot},
+    save::save_trace_tree,
+    sources::Sources,
+    tracer::Tracer,
 };
 use solana_pubkey::Pubkey;
 
@@ -48,7 +55,7 @@ fn test_instruction_context() {
         }
     }
 
-    let maybe_trace_tree: Option<Tree<ViewNode>> = tracer.into();
+    let maybe_trace_tree: Option<TreeRoot<RootViewChildren>> = tracer.into();
 
     if let Some(trace_tree) = maybe_trace_tree {
         save_trace_tree(signature, index, trace_tree);

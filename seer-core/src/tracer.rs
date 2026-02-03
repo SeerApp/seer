@@ -6,16 +6,15 @@ use solana_pubkey::Pubkey;
 use crate::{
     call_trace_lookup::CallTraceLookup,
     tree::{
-        entrypoint::EntrypointHolder,
-        invoke::InvokeNode,
-        view::{AccountData, InvokeData, ViewNode},
-        Tree, TreeContext,
+        nodes::{RootViewChildren, TreeRoot, TreeAccount},
+        InvokeContext,
     },
 };
 
+/// Sender-preseerving layer
 pub struct Tracer {
     sender: Pubkey,
-    invoke_context: Option<TreeContext<InvokeData, InvokeNode, Option<EntrypointHolder>>>,
+    invoke_context: Option<InvokeContext>,
     executed: bool,
 }
 
@@ -32,10 +31,9 @@ impl Tracer {
         if let Some(invoke_context) = self.invoke_context.as_mut() {
             invoke_context.start_program(invoke_context.get_last_receiver(), program_address);
         } else {
-            self.invoke_context = Some(TreeContext::new_invoke_context(
-                self.sender,
-                program_address,
-            ));
+            let mut invoke_context = InvokeContext::new();
+            invoke_context.start_program(self.sender, program_address);
+            self.invoke_context = Some(invoke_context);
         };
     }
 
@@ -46,11 +44,7 @@ impl Tracer {
             .end_program(err);
     }
 
-    pub fn step(
-        &mut self,
-        lookups: &HashMap<Pubkey, CallTraceLookup>,
-        i: u64,
-    ) {
+    pub fn step(&mut self, lookups: &HashMap<Pubkey, CallTraceLookup>, i: u64) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
@@ -64,7 +58,7 @@ impl Tracer {
             .log(message);
     }
 
-    pub fn account_diff(&mut self, data: AccountData) {
+    pub fn account_diff(&mut self, data: TreeAccount) {
         self.invoke_context
             .as_mut()
             .expect("Account diff before invoke context")
@@ -72,14 +66,14 @@ impl Tracer {
     }
 }
 
-impl From<Tracer> for Option<Tree<ViewNode>> {
+impl From<Tracer> for Option<TreeRoot<RootViewChildren>> {
     fn from(value: Tracer) -> Self {
         if value.executed {
             let invoke_context = value
                 .invoke_context
                 .expect("Converting tracer with empty invoke context into view tree");
 
-            invoke_context.into()
+            Some(invoke_context.into())
         } else {
             None
         }

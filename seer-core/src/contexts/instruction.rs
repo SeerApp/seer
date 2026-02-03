@@ -8,11 +8,8 @@ use solana_signature::Signature;
 use crate::{
     analysis::Analysis,
     call_trace_lookup::CallTraceLookup,
+    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
     tracer::Tracer,
-    tree::{
-        view::{AccountData, ViewNode},
-        Tree,
-    },
 };
 
 pub struct InstructionContext {
@@ -70,7 +67,7 @@ impl InstructionContext {
         }
     }
 
-    pub fn account_diff(&mut self, data: AccountData) {
+    pub fn account_diff(&mut self, data: TreeAccount) {
         println!("Account diff {:?}", data);
         self.tracer.account_diff(data.clone());
 
@@ -80,9 +77,9 @@ impl InstructionContext {
     }
 }
 
-impl From<InstructionContext> for Option<(u8, Tree<ViewNode>)> {
+impl From<InstructionContext> for Option<(u8, TreeRoot<RootViewChildren>)> {
     fn from(value: InstructionContext) -> Self {
-        Into::<Option<Tree<ViewNode>>>::into(value.tracer).map(|tracer| {
+        Into::<Option<TreeRoot<RootViewChildren>>>::into(value.tracer).map(|tracer| {
             if let Some(analysis) = value.analysis {
                 analysis.save();
             }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
-use crate::{save::save, tree::view::AccountData};
+use crate::{save::save, tree::nodes::TreeAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ExecutionEvent {
@@ -12,7 +12,7 @@ pub enum ExecutionEvent {
     EndProgram(Option<InstructionError>),
     Step(u64),
     Log(String),
-    AccountDiff(AccountData),
+    AccountDiff(TreeAccount),
 }
 
 pub struct Analysis {
@@ -96,7 +96,7 @@ impl Analysis {
         self.events.push(ExecutionEvent::Log(message.to_string()));
     }
 
-    pub fn account_diff(&mut self, data: AccountData) {
+    pub fn account_diff(&mut self, data: TreeAccount) {
         self.is_writable();
 
         self.events.push(ExecutionEvent::AccountDiff(data));
