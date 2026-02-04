@@ -41,7 +41,7 @@ impl Analysis {
         );
     }
 
-    pub fn load(folder: PathBuf, sig: String, instruction: u8) -> Self {
+    pub fn load(folder: &PathBuf, sig: String, instruction: u8) -> Self {
         let path = folder.join(format!("analysis_{}_{}.json", sig, instruction));
 
         println!("reading {:?}", path);

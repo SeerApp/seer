@@ -16,15 +16,7 @@ use solana_pubkey::Pubkey;
 fn test_instruction_context() {
     let (source_project_root, cwd, deploy_folder_root, analysis_root) = get_analysis_directories();
 
-    let index: u8 = 0;
     let fee_payer = Pubkey::new_unique();
-    let signature: String =
-        "C8P1zJQbsoThR9QrswLCg34shp4yWaEfyzMUtA4S5VnwSRaznzCK95QzZWLZ1R7tYaPLgindDaF7Au2CK8C6gfS"
-            .to_string();
-
-    let mut tracer = Tracer::new(fee_payer);
-
-    let analysis_trace = Analysis::load(&analysis_root, signature.clone(), index);
 
     let dwarf_manager = DwarfManager::new(deploy_folder_root);
     let sources = Sources::new(
@@ -43,6 +35,43 @@ fn test_instruction_context() {
         lookups.insert(program_address.clone(), call_trace_lookup);
     }
 
+    run_tx(
+        &analysis_root,
+        fee_payer,
+        0,
+        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+            .to_string(),
+        &lookups,
+    );
+    run_tx(
+        &analysis_root,
+        fee_payer,
+        1,
+        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+            .to_string(),
+        &lookups,
+    );
+    run_tx(
+        &analysis_root,
+        fee_payer,
+        2,
+        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+            .to_string(),
+        &lookups,
+    );
+}
+
+fn run_tx(
+    analysis_root: &PathBuf,
+    fee_payer: Pubkey,
+    index: u8,
+    signature: String,
+    lookups: &HashMap<Pubkey, CallTraceLookup>,
+) {
+    let mut tracer = Tracer::new(fee_payer);
+
+    let analysis_trace = Analysis::load(analysis_root, signature.clone(), index);
+
     for e in analysis_trace.events {
         match e {
             ExecutionEvent::StartProgram(program_address) => tracer.start_program(program_address),
@@ -58,13 +87,13 @@ fn test_instruction_context() {
     if let Some(trace_tree) = maybe_trace_tree {
         save_trace_tree(signature, index, trace_tree);
     } else {
-        panic!("WTF");
+        panic!("Some WTF happened on {:?}_{:?}", signature, index);
     }
 }
 
 fn get_analysis_directories() -> (PathBuf, PathBuf, PathBuf, PathBuf) {
     let mut cwd = get_cwd();
-    cwd.push("tests/fixtures/anchor/puppets");
+    cwd.push("tests/fixtures/native/cypherpunk");
 
     let mut deploy_folder_root = cwd.clone();
     deploy_folder_root.push("target/deploy");
@@ -74,7 +103,7 @@ fn get_analysis_directories() -> (PathBuf, PathBuf, PathBuf, PathBuf) {
 
     let source_project_root = PathBuf::from(
         // corresponds to DWARF project root in fixture
-        "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3",
+        "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo",
     );
 
     (source_project_root, cwd, deploy_folder_root, analysis_root)

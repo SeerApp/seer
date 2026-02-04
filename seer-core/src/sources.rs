@@ -5,7 +5,8 @@ use std::{
     path::PathBuf,
 };
 
-struct ProgramInfo {
+#[derive(Debug)]
+pub struct ProgramInfo {
     pub attribute_lines: HashSet<u64>,
 }
 
@@ -32,8 +33,9 @@ impl ProgramInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct Sources {
-    infos: HashMap<PathBuf, ProgramInfo>,
+    pub infos: HashMap<PathBuf, ProgramInfo>,
 }
 
 impl Sources {
