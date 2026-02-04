@@ -44,8 +44,6 @@ impl Analysis {
     pub fn load(folder: &PathBuf, sig: String, instruction: u8) -> Self {
         let path = folder.join(format!("analysis_{}_{}.json", sig, instruction));
 
-        println!("reading {:?}", path);
-
         let events = if path.is_file() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 serde_json::from_str::<Vec<ExecutionEvent>>(&content).unwrap_or_default()

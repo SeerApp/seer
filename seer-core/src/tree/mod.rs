@@ -1,19 +1,27 @@
-pub mod nodes;
-pub mod loc;
 pub mod demangle;
+pub mod loc;
+pub mod nodes;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup,
-    tree::nodes::{RootChildren, RootViewChildren, TreeAccount, TreeRoot},
+    entrypoint_lookup::EntrypointLookup,
+    tree::nodes::{
+        EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint, TreeRoot,
+    },
 };
 
+struct LiveTrace {
+    tree_index: usize,
+    last_known_entrypoint: Option<TreeEntrypoint<EntrypointChildren>>,
+    barrel: Option<TreeEntrypoint<EntrypointChildren>>,
+}
+
 pub struct InvokeContext {
-    live_trace: Vec<usize>,
+    live_trace: Vec<LiveTrace>,
     trees: Vec<TreeRoot<RootChildren>>,
 }
 
@@ -28,24 +36,60 @@ impl InvokeContext {
     pub fn start_program(&mut self, sender: Pubkey, receiver: Pubkey) {
         let tree_len = self.trees.len();
 
+        if let Some(live_trace) = self.live_trace.last_mut() {
+            let root = &mut self.trees[live_trace.tree_index];
+
+            match live_trace
+                .barrel
+                .take()
+                .or_else(|| live_trace.last_known_entrypoint.take())
+            {
+                Some(mut barrel) => {
+                    barrel.push_invoke(tree_len);
+                    root.push_entrypoint(barrel);
+                }
+                None => {
+                    root.push_invoke_root(tree_len);
+                }
+            }
+        }
+
         self.trees.push(TreeRoot {
             sender,
             receiver,
             children: vec![],
         });
 
-        if let Some(root) = self.get_current_tree_root() {
-            root.push_invoke(tree_len);
-        }
-
-        self.live_trace.push(tree_len);
+        self.live_trace.push(LiveTrace {
+            tree_index: tree_len,
+            last_known_entrypoint: None,
+            barrel: None,
+        });
     }
 
     pub fn end_program(&mut self, maybe_err: Option<InstructionError>) {
-        if let Some(err) = maybe_err {
-            self.get_current_tree_root()
-                .expect("Ending program on empty live trace")
-                .push_err(err.to_string());
+        let live_trace = self
+            .live_trace
+            .last_mut()
+            .expect("Ending program on empty live trace");
+        let root = &mut self.trees[live_trace.tree_index];
+
+        match live_trace
+            .barrel
+            .take()
+            .or_else(|| live_trace.last_known_entrypoint.clone())
+        {
+            Some(mut barrel) => {
+                if let Some(err) = maybe_err {
+                    barrel.push_err(err.to_string());
+                }
+                root.push_entrypoint(barrel);
+            }
+            None => {
+                if let Some(err) = maybe_err {
+                    root.push_err(err.to_string());
+                }
+            }
         }
 
         self.live_trace.pop();
@@ -53,49 +97,75 @@ impl InvokeContext {
 
     pub fn step(
         &mut self,
-        lookups: &HashMap<Pubkey, CallTraceLookup>,
+        lookups: &HashMap<Pubkey, EntrypointLookup>,
         i: u64,
         executed: &mut bool,
     ) {
-        let root = self
-            .get_current_tree_root()
+        let live_trace = self
+            .live_trace
+            .last_mut()
             .expect("Stepping on empty live trace");
+        let root = &mut self.trees[live_trace.tree_index];
 
-        if let Some(lookup) = lookups.get(&root.receiver) {
-            let call_trace = lookup.get_call_trace(i);
+        if let Some(barrel) = live_trace
+            .barrel
+            .take()
+            .or_else(|| live_trace.last_known_entrypoint.clone())
+        {
+            root.push_entrypoint(barrel);
+        }
 
-            root.push_call_trace(i, call_trace);
-
-            *executed = true;
+        if let Some(lookup) = lookups.get(&self.trees[live_trace.tree_index].receiver) {
+            if let Some(entrypoint) = lookup.get_entrypoint(i) {
+                live_trace.last_known_entrypoint = Some(entrypoint);
+                *executed = true;
+            }
         }
     }
 
     pub fn log(&mut self, message: &str) {
-        self.get_current_tree_root()
-            .expect("Logging on empty live trace")
-            .push_log(message.to_string());
+        let live_trace = self
+            .live_trace
+            .last_mut()
+            .expect("Logging on empty live trace");
+        let root = &mut self.trees[live_trace.tree_index];
+
+        if let Some(barrel) = live_trace.barrel.as_mut() {
+            barrel.push_log(message.to_string());
+        } else if let Some(last_known_entrypoint) = &live_trace.last_known_entrypoint {
+            let mut barrel = last_known_entrypoint.clone();
+            barrel.push_log(message.to_string());
+            live_trace.barrel = Some(barrel);
+        } else {
+            root.push_log(message.to_string());
+        }
     }
 
     pub fn account_diff(&mut self, data: TreeAccount) {
-        self.get_current_tree_root()
-            .expect("Account diff on empty live trace")
-            .push_account_diff(data);
-    }
+        let live_trace = self
+            .live_trace
+            .last_mut()
+            .expect("Logging on empty live trace");
+        let root = &mut self.trees[live_trace.tree_index];
 
-    fn get_current_tree_root(&mut self) -> Option<&mut TreeRoot<RootChildren>> {
-        if let Some(last_trace_index) = self.live_trace.last() {
-            Some(&mut self.trees[*last_trace_index])
+        if let Some(barrel) = live_trace.barrel.as_mut() {
+            barrel.push_account_diff(data);
+        } else if let Some(last_known_entrypoint) = &live_trace.last_known_entrypoint {
+            let mut barrel = last_known_entrypoint.clone();
+            barrel.push_account_diff(data);
+            live_trace.barrel = Some(barrel);
         } else {
-            None
+            root.push_account_diff(data);
         }
     }
 
     pub fn get_last_receiver(&self) -> Pubkey {
-        self.trees[*self
+        self.trees[self
             .live_trace
             .last()
-            .expect("Invoke context lacks last receiver")]
-        .receiver
+            .expect("Invoke context lacks last receiver")
+            .tree_index]
+            .receiver
     }
 }
 

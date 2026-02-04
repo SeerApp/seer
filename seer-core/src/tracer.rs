@@ -4,7 +4,7 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     tree::{
         nodes::{RootViewChildren, TreeRoot, TreeAccount},
         InvokeContext,
@@ -44,7 +44,7 @@ impl Tracer {
             .end_program(err);
     }
 
-    pub fn step(&mut self, lookups: &HashMap<Pubkey, CallTraceLookup>, i: u64) {
+    pub fn step(&mut self, lookups: &HashMap<Pubkey, EntrypointLookup>, i: u64) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")

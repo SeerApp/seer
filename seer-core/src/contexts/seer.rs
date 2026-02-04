@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     contexts::transaction::TransactionContext,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     save::{save, save_trace_tree},
@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub struct SeerContext {
-    lookups: HashMap<Pubkey, CallTraceLookup>,
+    lookups: HashMap<Pubkey, EntrypointLookup>,
     pub transaction_context: Option<TransactionContext>,
 }
 
@@ -27,7 +27,7 @@ impl SeerContext {
             dwarf_manager.get_all_source_files(&source_project_root, &source_project_root),
         );
 
-        let mut lookups: HashMap<Pubkey, CallTraceLookup> = HashMap::new();
+        let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
         for program_address in dwarf_manager.get_pubkeys() {
             let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
@@ -40,9 +40,9 @@ impl SeerContext {
                 "json",
                 false,
             );
-            let call_trace_lookup: CallTraceLookup = source_die_trace.into();
+            let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
 
-            lookups.insert(program_address.clone(), call_trace_lookup);
+            lookups.insert(program_address.clone(), entrypoint_lookup);
         }
 
         Self {

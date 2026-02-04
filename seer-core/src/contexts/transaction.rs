@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     contexts::instruction::InstructionContext,
     tree::nodes::{RootViewChildren, TreeRoot},
     step_mirror::StepMirror,
@@ -69,7 +69,7 @@ impl<'a> TransactionContext {
 
     pub fn step<M: GuestMemory>(
         &mut self,
-        lookups: &HashMap<Pubkey, CallTraceLookup>,
+        lookups: &HashMap<Pubkey, EntrypointLookup>,
         i: u64,
         mem: &mut M,
         reg: &[u64; 12],
@@ -79,12 +79,12 @@ impl<'a> TransactionContext {
             .as_mut()
             .expect("Stepping before instruction context exists");
 
-        icx.step(lookups, i, mem, reg);
-
         if let Some(step_mirror) = &mut self.step_mirror {
             for acc in step_mirror.check_diffs() {
                 icx.account_diff(acc);
             }
         }
+
+        icx.step(lookups, i, mem, reg);
     }
 }

@@ -7,7 +7,7 @@ use solana_signature::Signature;
 
 use crate::{
     analysis::Analysis,
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
     tracer::Tracer,
 };
@@ -55,7 +55,7 @@ impl InstructionContext {
 
     pub fn step<M: GuestMemory>(
         &mut self,
-        lookups: &HashMap<Pubkey, CallTraceLookup>,
+        lookups: &HashMap<Pubkey, EntrypointLookup>,
         i: u64,
         _: &mut M,
         _: &[u64; 12],
@@ -68,7 +68,6 @@ impl InstructionContext {
     }
 
     pub fn account_diff(&mut self, data: TreeAccount) {
-        println!("Account diff {:?}", data);
         self.tracer.account_diff(data.clone());
 
         if let Some(analysis) = self.analysis.as_mut() {

@@ -20,7 +20,7 @@ pub struct TreeRoot<C> {
     pub children: Vec<C>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TreeEntrypoint<C> {
     pub instruction: u64,
     pub signature: String,
@@ -34,7 +34,7 @@ impl PartialEq for TreeEntrypoint<EntrypointChildren> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TreeFnCall<C> {
     pub instruction: u64,
     pub signature: String,
@@ -43,23 +43,25 @@ pub struct TreeFnCall<C> {
 }
 
 impl PartialEq for TreeFnCall<FnCallChildren> {
-    fn eq(&self, other: &Self) -> bool {
-        self.signature == other.signature && self.loc == other.loc
+    fn eq(&self, other: &Self) -> bool {        
+        let result = self.signature == other.signature && self.loc == other.loc;
+
+        result
     }
 }
 
-impl Clone for TreeFnCall<FnCallChildren> {
-    fn clone(&self) -> Self {
-        Self {
-            instruction: self.instruction,
-            signature: self.signature.clone(),
-            loc: self.loc.clone(),
-            children: vec![],
-        }
-    }
-}
+// impl Clone for TreeFnCall<FnCallChildren> {
+//     fn clone(&self) -> Self {
+//         Self {
+//             instruction: self.instruction,
+//             signature: self.signature.clone(),
+//             loc: self.loc.clone(),
+//             children: vec![],
+//         }
+//     }
+// }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TreeLog {
     pub message: String,
 }
@@ -70,7 +72,7 @@ impl TreeLog {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TreeError {
     pub message: String,
 }
@@ -130,6 +132,7 @@ pub enum RootViewChildren {
     Account(TreeAccount),
 }
 
+#[derive(Debug, Clone)]
 pub enum EntrypointChildren {
     Entrypoint(TreeEntrypoint<EntrypointChildren>),
     FnCall(TreeFnCall<FnCallChildren>),
@@ -149,6 +152,7 @@ pub enum EntrypointViewChildren {
     Account(TreeAccount),
 }
 
+#[derive(Debug, Clone)]
 pub enum FnCallChildren {
     Entrypoint(TreeEntrypoint<EntrypointChildren>),
     FnCall(TreeFnCall<FnCallChildren>),
@@ -166,6 +170,19 @@ pub enum FnCallViewChildren {
     Error(TreeError),
     Account(TreeAccount),
     Invoke(TreeRoot<RootViewChildren>),
+}
+
+impl From<EntrypointChildren> for FnCallChildren {
+    fn from(value: EntrypointChildren) -> Self {
+        match value {
+            EntrypointChildren::Account(a) => FnCallChildren::Account(a),
+            EntrypointChildren::Log(l) => FnCallChildren::Log(l),
+            EntrypointChildren::Error(err) => FnCallChildren::Error(err),
+            EntrypointChildren::Invoke(i) => FnCallChildren::Invoke(i),
+            EntrypointChildren::Entrypoint(e) => FnCallChildren::Entrypoint(e),
+            EntrypointChildren::FnCall(f) => FnCallChildren::FnCall(f),
+        }
+    }
 }
 
 impl TreeRoot<RootChildren> {
@@ -218,43 +235,15 @@ impl TreeRoot<RootChildren> {
         }
     }
 
-    pub fn push_call_trace(&mut self, instruction: u64, mut call_trace: VecDeque<SourceDie>) {
-        let maybe_entrypoint = 'find_entrypoint: {
-            while let Some(source_die) = call_trace.pop_front() {
-                match source_die.source_type {
-                    SourceDieType::Fn => {
-                        if let Some(d) = source_die.loc.decl {
-                            break 'find_entrypoint Some(TreeEntrypoint {
-                                instruction,
-                                signature: source_die.loc.signature,
-                                loc: d,
-                                children: vec![],
-                            });
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            None
-        };
-
-        if let Some(entrypoint) = maybe_entrypoint {
-            self.push_entrypoint(instruction, entrypoint, call_trace);
-        }
-    }
-
-    fn push_entrypoint(
+    pub fn push_entrypoint(
         &mut self,
-        instruction: u64,
-        mut entrypoint: TreeEntrypoint<EntrypointChildren>,
-        call_trace: VecDeque<SourceDie>,
+        entrypoint: TreeEntrypoint<EntrypointChildren>,
     ) {
         match self.children.last_mut() {
             Some(RootChildren::Entrypoint(e)) => {
-                e.push_entrypoint(instruction, entrypoint, call_trace);
+                e.push_entrypoint(entrypoint);
             }
             _ => {
-                entrypoint.push_call_trace(instruction, call_trace);
                 self.children.push(RootChildren::Entrypoint(entrypoint));
             }
         }
@@ -263,6 +252,15 @@ impl TreeRoot<RootChildren> {
     pub fn push_invoke(&mut self, new_tree_index: usize) {
         match self.children.last_mut() {
             Some(RootChildren::Entrypoint(e)) => e.push_invoke(new_tree_index),
+            _ => {
+                self.children.push(RootChildren::Invoke(new_tree_index));
+            }
+        }
+    }
+
+    pub fn push_invoke_root(&mut self, new_tree_index: usize) {
+        match self.children.last_mut() {
+            Some(RootChildren::Entrypoint(e)) => e.push_invoke_root(new_tree_index),
             _ => {
                 self.children.push(RootChildren::Invoke(new_tree_index));
             }
@@ -334,25 +332,38 @@ impl TreeEntrypoint<EntrypointChildren> {
                 .push(EntrypointChildren::Error(TreeError::new(error_message))),
         }
     }
-
     pub fn push_entrypoint(
         &mut self,
-        instruction: u64,
-        mut entrypoint: TreeEntrypoint<EntrypointChildren>,
-        call_trace: VecDeque<SourceDie>,
+        entrypoint: TreeEntrypoint<EntrypointChildren>,
     ) {
         if *self == entrypoint {
-            self.push_call_trace(instruction, call_trace);
+            for new_child in entrypoint.children {
+                match (self.children.last_mut(), new_child) {
+                    (
+                        Some(EntrypointChildren::Entrypoint(e)),
+                        EntrypointChildren::Entrypoint(ce),
+                    ) => {
+                        e.push_entrypoint(ce);
+                    }
+                    (Some(EntrypointChildren::FnCall(f)), EntrypointChildren::FnCall(cf))
+                        if *f == cf =>
+                    {
+                        f.push_fn_call(cf);
+                    }
+                    (_, other) => {
+                        self.children.push(other);
+                    }
+                }
+            }
         } else {
             match self.children.last_mut() {
                 Some(EntrypointChildren::Entrypoint(e)) => {
-                    e.push_entrypoint(instruction, entrypoint, call_trace)
+                    e.push_entrypoint(entrypoint);
                 }
-                Some(EntrypointChildren::FnCall(f)) if f.has_fn_children() => {
-                    f.push_entrypoint(instruction, entrypoint, call_trace)
+                Some(EntrypointChildren::FnCall(f)) => {
+                    f.push_entrypoint(entrypoint);
                 }
                 _ => {
-                    entrypoint.push_call_trace(instruction, call_trace);
                     self.children
                         .push(EntrypointChildren::Entrypoint(entrypoint));
                 }
@@ -363,7 +374,7 @@ impl TreeEntrypoint<EntrypointChildren> {
     pub fn push_call_trace(&mut self, instruction: u64, mut call_trace: VecDeque<SourceDie>) {
         let mut fn_calls = Vec::new();
 
-        if let Some(source_die) = call_trace.pop_front() {
+        while let Some(source_die) = call_trace.pop_front() {
             match source_die.source_type {
                 SourceDieType::Fn => {
                     if let Some(c) = source_die.loc.call {
@@ -406,8 +417,20 @@ impl TreeEntrypoint<EntrypointChildren> {
     pub fn push_invoke(&mut self, new_tree_index: usize) {
         match self.children.last_mut() {
             Some(EntrypointChildren::Entrypoint(e)) => e.push_invoke(new_tree_index),
-            Some(EntrypointChildren::FnCall(f)) if f.has_fn_children() => {
+            Some(EntrypointChildren::FnCall(f)) => {
                 f.push_invoke(new_tree_index)
+            }
+            _ => self
+                .children
+                .push(EntrypointChildren::Invoke(new_tree_index)),
+        }
+    }
+
+    pub fn push_invoke_root(&mut self, new_tree_index: usize) {
+        match self.children.last_mut() {
+            Some(EntrypointChildren::Entrypoint(e)) => e.push_invoke_root(new_tree_index),
+            Some(EntrypointChildren::FnCall(f)) if f.has_fn_children() => {
+                f.push_invoke_root(new_tree_index)
             }
             _ => self
                 .children
@@ -490,20 +513,31 @@ impl TreeFnCall<FnCallChildren> {
 
     pub fn push_entrypoint(
         &mut self,
-        instruction: u64,
-        mut entrypoint: TreeEntrypoint<EntrypointChildren>,
-        call_trace: VecDeque<SourceDie>,
+        entrypoint: TreeEntrypoint<EntrypointChildren>,
     ) {
         match self.children.last_mut() {
-            Some(FnCallChildren::Entrypoint(e)) => {
-                e.push_entrypoint(instruction, entrypoint, call_trace)
-            }
+            Some(FnCallChildren::Entrypoint(e)) => e.push_entrypoint(entrypoint),
             Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => {
-                f.push_entrypoint(instruction, entrypoint, call_trace)
+                f.push_entrypoint(entrypoint)
             }
             _ => {
-                entrypoint.push_call_trace(instruction, call_trace);
                 self.children.push(FnCallChildren::Entrypoint(entrypoint));
+            }
+        }
+    }
+
+    pub fn push_fn_call(&mut self, fn_call: TreeFnCall<FnCallChildren>) {
+        for new_child in fn_call.children {
+            match (self.children.last_mut(), new_child) {
+                (Some(FnCallChildren::Entrypoint(e)), FnCallChildren::Entrypoint(ce)) => {
+                    e.push_entrypoint(ce);
+                }
+                (Some(FnCallChildren::FnCall(f)), FnCallChildren::FnCall(cf)) if *f == cf => {
+                    f.push_fn_call(cf);
+                }
+                (_, other) => {
+                    self.children.push(other);
+                }
             }
         }
     }
@@ -538,7 +572,17 @@ impl TreeFnCall<FnCallChildren> {
     pub fn push_invoke(&mut self, new_tree_index: usize) {
         match self.children.last_mut() {
             Some(FnCallChildren::Entrypoint(e)) => e.push_invoke(new_tree_index),
-            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => f.push_invoke(new_tree_index),
+            Some(FnCallChildren::FnCall(f)) => f.push_invoke(new_tree_index),
+            _ => {
+                self.children.push(FnCallChildren::Invoke(new_tree_index));
+            }
+        }
+    }
+
+    pub fn push_invoke_root(&mut self, new_tree_index: usize) {
+        match self.children.last_mut() {
+            Some(FnCallChildren::Entrypoint(e)) => e.push_invoke_root(new_tree_index),
+            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => f.push_invoke_root(new_tree_index),
             _ => {
                 self.children.push(FnCallChildren::Invoke(new_tree_index));
             }

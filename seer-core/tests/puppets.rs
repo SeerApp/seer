@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use seer_core::{
     analysis::{Analysis, ExecutionEvent},
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     get_cwd,
     save::save_trace_tree,
@@ -32,13 +32,13 @@ fn test_instruction_context() {
         dwarf_manager.get_all_source_files(&cwd, &source_project_root),
     );
 
-    let mut lookups: HashMap<Pubkey, CallTraceLookup> = HashMap::new();
+    let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
     for program_address in dwarf_manager.get_pubkeys() {
         let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
         let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
 
-        let call_trace_lookup: CallTraceLookup = source_die_trace.into();
+        let call_trace_lookup: EntrypointLookup = source_die_trace.into();
 
         lookups.insert(program_address.clone(), call_trace_lookup);
     }

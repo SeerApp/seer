@@ -1,5 +1,5 @@
 pub mod binary_lookup_tree;
-pub mod call_trace_lookup;
+pub mod entrypoint_lookup;
 pub mod contexts;
 pub mod dwarf;
 pub mod logger;
@@ -7,7 +7,6 @@ pub mod save;
 pub mod sources;
 pub mod step_mirror;
 pub mod tracer;
-// pub mod legacy_tree;
 pub mod analysis;
 pub mod tree;
 

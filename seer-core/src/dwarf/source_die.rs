@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     binary_lookup_tree::{LookupInterval, LookupNode},
-    call_trace_lookup::CallTraceLookup,
+    entrypoint_lookup::EntrypointLookup,
     sources::Sources,
     tree::loc::Loc,
 };
@@ -258,9 +258,9 @@ impl SourceDieTrace {
     }
 }
 
-impl From<SourceDieTrace> for CallTraceLookup {
+impl From<SourceDieTrace> for EntrypointLookup {
     fn from(value: SourceDieTrace) -> Self {
-        CallTraceLookup {
+        EntrypointLookup {
             lookup: *LookupNode::<u64>::build(value.source_die_ranges)
                 .expect("Failed to build lookup for call trace"),
             parents: value.parents,
