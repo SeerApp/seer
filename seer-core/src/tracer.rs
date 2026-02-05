@@ -64,6 +64,10 @@ impl Tracer {
             .expect("Account diff before invoke context")
             .account_diff(data);
     }
+
+    pub fn executed(&self) -> bool {
+        self.executed
+    }
 }
 
 impl From<Tracer> for Option<TreeRoot<RootViewChildren>> {

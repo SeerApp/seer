@@ -39,7 +39,7 @@ fn test_instruction_context() {
         &analysis_root,
         fee_payer,
         0,
-        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
             .to_string(),
         &lookups,
     );
@@ -47,7 +47,7 @@ fn test_instruction_context() {
         &analysis_root,
         fee_payer,
         1,
-        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
             .to_string(),
         &lookups,
     );
@@ -55,7 +55,7 @@ fn test_instruction_context() {
         &analysis_root,
         fee_payer,
         2,
-        "SineH3FCq8YHoCnyvGJh3H5g2nahTFMZzynqKLnme9Djj7N84Fj4rEJaByC1qjupEcpCvSqyJYhdYVrbzwej2gq"
+        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
             .to_string(),
         &lookups,
     );

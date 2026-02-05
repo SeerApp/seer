@@ -43,23 +43,12 @@ pub struct TreeFnCall<C> {
 }
 
 impl PartialEq for TreeFnCall<FnCallChildren> {
-    fn eq(&self, other: &Self) -> bool {        
+    fn eq(&self, other: &Self) -> bool {
         let result = self.signature == other.signature && self.loc == other.loc;
 
         result
     }
 }
-
-// impl Clone for TreeFnCall<FnCallChildren> {
-//     fn clone(&self) -> Self {
-//         Self {
-//             instruction: self.instruction,
-//             signature: self.signature.clone(),
-//             loc: self.loc.clone(),
-//             children: vec![],
-//         }
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TreeLog {
@@ -235,10 +224,7 @@ impl TreeRoot<RootChildren> {
         }
     }
 
-    pub fn push_entrypoint(
-        &mut self,
-        entrypoint: TreeEntrypoint<EntrypointChildren>,
-    ) {
+    pub fn push_entrypoint(&mut self, entrypoint: TreeEntrypoint<EntrypointChildren>) {
         match self.children.last_mut() {
             Some(RootChildren::Entrypoint(e)) => {
                 e.push_entrypoint(entrypoint);
@@ -326,16 +312,14 @@ impl TreeEntrypoint<EntrypointChildren> {
 
     pub fn push_err(&mut self, error_message: String) {
         match self.children.last_mut() {
-            Some(EntrypointChildren::FnCall(f)) => f.push_err(error_message),
+            Some(EntrypointChildren::Entrypoint(e)) => e.push_err(error_message),
+            Some(EntrypointChildren::FnCall(f)) if f.has_fn_children() => f.push_err(error_message),
             _ => self
                 .children
                 .push(EntrypointChildren::Error(TreeError::new(error_message))),
         }
     }
-    pub fn push_entrypoint(
-        &mut self,
-        entrypoint: TreeEntrypoint<EntrypointChildren>,
-    ) {
+    pub fn push_entrypoint(&mut self, entrypoint: TreeEntrypoint<EntrypointChildren>) {
         if *self == entrypoint {
             for new_child in entrypoint.children {
                 match (self.children.last_mut(), new_child) {
@@ -417,9 +401,7 @@ impl TreeEntrypoint<EntrypointChildren> {
     pub fn push_invoke(&mut self, new_tree_index: usize) {
         match self.children.last_mut() {
             Some(EntrypointChildren::Entrypoint(e)) => e.push_invoke(new_tree_index),
-            Some(EntrypointChildren::FnCall(f)) => {
-                f.push_invoke(new_tree_index)
-            }
+            Some(EntrypointChildren::FnCall(f)) => f.push_invoke(new_tree_index),
             _ => self
                 .children
                 .push(EntrypointChildren::Invoke(new_tree_index)),
@@ -453,6 +435,27 @@ impl TreeEntrypoint<EntrypointChildren> {
             Some(EntrypointChildren::Entrypoint(e)) => e.push_account_diff(data),
             Some(EntrypointChildren::FnCall(f)) => f.push_account_diff(data),
             _ => self.children.push(EntrypointChildren::Account(data)),
+        }
+    }
+
+    pub fn is_superset_of(&self, entrypoint: &TreeEntrypoint<EntrypointChildren>) -> bool {
+        if self != entrypoint {
+            return false;
+        }
+
+        match (self.children.is_empty(), entrypoint.children.is_empty()) {
+            (true, false) => false,
+            (_, true) => !self.children.is_empty(),
+            (false, false) => match (self.children.last(), entrypoint.children.last()) {
+                (
+                    Some(EntrypointChildren::Entrypoint(e)),
+                    Some(EntrypointChildren::Entrypoint(ce)),
+                ) => e.is_superset_of(ce),
+                (Some(EntrypointChildren::FnCall(f)), Some(EntrypointChildren::FnCall(cf))) => {
+                    f.is_superset_of(cf)
+                }
+                _ => false,
+            },
         }
     }
 }
@@ -511,15 +514,10 @@ impl TreeFnCall<FnCallChildren> {
         }
     }
 
-    pub fn push_entrypoint(
-        &mut self,
-        entrypoint: TreeEntrypoint<EntrypointChildren>,
-    ) {
+    pub fn push_entrypoint(&mut self, entrypoint: TreeEntrypoint<EntrypointChildren>) {
         match self.children.last_mut() {
             Some(FnCallChildren::Entrypoint(e)) => e.push_entrypoint(entrypoint),
-            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => {
-                f.push_entrypoint(entrypoint)
-            }
+            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => f.push_entrypoint(entrypoint),
             _ => {
                 self.children.push(FnCallChildren::Entrypoint(entrypoint));
             }
@@ -582,7 +580,9 @@ impl TreeFnCall<FnCallChildren> {
     pub fn push_invoke_root(&mut self, new_tree_index: usize) {
         match self.children.last_mut() {
             Some(FnCallChildren::Entrypoint(e)) => e.push_invoke_root(new_tree_index),
-            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => f.push_invoke_root(new_tree_index),
+            Some(FnCallChildren::FnCall(f)) if f.has_fn_children() => {
+                f.push_invoke_root(new_tree_index)
+            }
             _ => {
                 self.children.push(FnCallChildren::Invoke(new_tree_index));
             }
@@ -604,6 +604,26 @@ impl TreeFnCall<FnCallChildren> {
             Some(FnCallChildren::Entrypoint(e)) => e.push_account_diff(data),
             Some(FnCallChildren::FnCall(f)) => f.push_account_diff(data),
             _ => self.children.push(FnCallChildren::Account(data)),
+        }
+    }
+
+    pub fn is_superset_of(&self, entrypoint: &TreeFnCall<FnCallChildren>) -> bool {
+        if self != entrypoint {
+            return false;
+        }
+
+        match (self.children.is_empty(), entrypoint.children.is_empty()) {
+            (true, false) => false,
+            (_, true) => !self.children.is_empty(),
+            (false, false) => match (self.children.last(), entrypoint.children.last()) {
+                (Some(FnCallChildren::Entrypoint(e)), Some(FnCallChildren::Entrypoint(ce))) => {
+                    e.is_superset_of(ce)
+                }
+                (Some(FnCallChildren::FnCall(f)), Some(FnCallChildren::FnCall(cf))) => {
+                    f.is_superset_of(cf)
+                }
+                _ => false,
+            },
         }
     }
 }

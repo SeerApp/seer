@@ -30,12 +30,12 @@ impl<T> LookupNode<T> {
         let mut right = Vec::new();
 
         for i in intervals {
-            if i.end < center {
-                left.push(i);
-            } else if i.begin > center {
+            if i.begin <= center && center < i.end {
+                overlaps.push(i);
+            } else if center < i.begin {
                 right.push(i);
             } else {
-                overlaps.push(i);
+                left.push(i);
             }
         }
 

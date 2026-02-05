@@ -74,6 +74,10 @@ impl InstructionContext {
             analysis.account_diff(data);
         }
     }
+
+    pub fn executed(&self) -> bool {
+        self.tracer.executed()
+    }
 }
 
 impl From<InstructionContext> for Option<(u8, TreeRoot<RootViewChildren>)> {
