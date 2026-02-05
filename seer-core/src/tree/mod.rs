@@ -14,7 +14,7 @@ use crate::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
         nodes::{
             EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint,
-            TreeRoot,
+            TreeLog, TreeRoot,
         },
     },
 };
@@ -22,7 +22,7 @@ use crate::{
 struct LiveTrace {
     tree_index: usize,
     last_known_entrypoint: Option<TreeEntrypoint<EntrypointChildren>>,
-    barrel: Option<TreeEntrypoint<EntrypointChildren>>,
+    pushables: Vec<EntrypointChildren>,
 
     // edge cases
     delayed_log_edge_case: DelayedLogEdgeCase,
@@ -47,19 +47,22 @@ impl InvokeContext {
         if let Some(live_trace) = self.live_trace.last_mut() {
             let root = &mut self.trees[live_trace.tree_index];
 
-            match live_trace
-                .barrel
-                .take()
-                .or_else(|| live_trace.last_known_entrypoint.take())
-            {
-                Some(mut barrel) => {
-                    barrel.push_invoke(tree_len);
-                    root.push_entrypoint(barrel);
+            if let Some(mut lke) = live_trace.last_known_entrypoint.take() {
+                for p in live_trace.pushables.iter() {
+                    match p {
+                        EntrypointChildren::Log(l) => lke.push_log(l.message.clone()),
+                        EntrypointChildren::Account(a) => lke.push_account_diff(a.clone()),
+                        _ => panic!("Unexpected value in pushables!"),
+                    }
                 }
-                None => {
-                    root.push_invoke_root(tree_len);
-                }
+
+                lke.push_invoke(tree_len);
+                root.push_entrypoint(lke);
+            } else {
+                root.push_invoke_root(tree_len);
             }
+
+            live_trace.pushables = vec![];
         }
 
         self.trees.push(TreeRoot {
@@ -71,7 +74,7 @@ impl InvokeContext {
         self.live_trace.push(LiveTrace {
             tree_index: tree_len,
             last_known_entrypoint: None,
-            barrel: None,
+            pushables: vec![],
             delayed_log_edge_case: DelayedLogEdgeCase::new(),
         });
     }
@@ -87,15 +90,8 @@ impl InvokeContext {
             root.push_err(err.to_string());
         }
 
-        match live_trace
-            .barrel
-            .take()
-            .or_else(|| live_trace.last_known_entrypoint.clone())
-        {
-            Some(barrel) => {
-                root.push_entrypoint(barrel);
-            }
-            _ => {}
+        for p in &live_trace.pushables {
+            root.children.push(p.into());
         }
 
         self.live_trace.pop();
@@ -113,13 +109,17 @@ impl InvokeContext {
             .expect("Stepping on empty live trace");
         let root = &mut self.trees[live_trace.tree_index];
 
-        if let Some(barrel) = live_trace
-            .barrel
-            .take()
-            .or_else(|| live_trace.last_known_entrypoint.clone())
-        {
-            live_trace.delayed_log_edge_case.met_hook(&barrel);
-            root.push_entrypoint(barrel);
+        if let Some(mut lke) = live_trace.last_known_entrypoint.clone() {
+            for p in live_trace.pushables.iter() {
+                match p {
+                    EntrypointChildren::Log(l) => lke.push_log(l.message.clone()),
+                    EntrypointChildren::Account(a) => lke.push_account_diff(a.clone()),
+                    _ => panic!("Unexpected value in pushables!"),
+                }
+            }
+            live_trace.pushables = vec![];
+            live_trace.delayed_log_edge_case.met_hook(&lke);
+            root.push_entrypoint(lke);
         }
 
         if let Some(lookup) = lookups.get(&self.trees[live_trace.tree_index].receiver) {
@@ -140,36 +140,34 @@ impl InvokeContext {
 
         live_trace
             .delayed_log_edge_case
-            .log_hook(&mut live_trace.barrel);
+            .log_hook(&mut live_trace.last_known_entrypoint);
 
-        if let Some(barrel) = live_trace.barrel.as_mut() {
-            barrel.push_log(message.to_string());
-        } else if let Some(last_known_entrypoint) = &live_trace.last_known_entrypoint {
-            let mut barrel = last_known_entrypoint.clone();
-            barrel.push_log(message.to_string());
-            live_trace.barrel = Some(barrel);
+        if live_trace.last_known_entrypoint.is_some() {
+            live_trace
+                .pushables
+                .push(EntrypointChildren::Log(TreeLog::new(message.to_string())));
         } else {
             root.push_log(message.to_string());
         }
     }
 
     pub fn account_diff(&mut self, data: TreeAccount) {
-        if let Some(live_trace) = self.live_trace.last_mut() {
-            let root = &mut self.trees[live_trace.tree_index];
+        let tree_index = self
+            .live_trace
+            .last()
+            .map(|trace| trace.tree_index)
+            .unwrap_or(0);
 
-            if let Some(barrel) = live_trace.barrel.as_mut() {
-                barrel.push_account_diff(data);
-            } else if let Some(last_known_entrypoint) = &live_trace.last_known_entrypoint {
-                let mut barrel = last_known_entrypoint.clone();
-                barrel.push_account_diff(data);
-                live_trace.barrel = Some(barrel);
-            } else {
-                root.push_account_diff(data);
+        let root = &mut self.trees[tree_index];
+
+        if let Some(live_trace) = self.live_trace.last_mut() {
+            if live_trace.last_known_entrypoint.is_some() {
+                live_trace.pushables.push(EntrypointChildren::Account(data));
+                return;
             }
-        } else {
-            let root = &mut self.trees[0];
-            root.push_account_diff(data);
         }
+
+        root.push_account_diff(data);
     }
 
     pub fn get_last_receiver(&self) -> Pubkey {

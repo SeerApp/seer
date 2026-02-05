@@ -174,6 +174,16 @@ impl From<EntrypointChildren> for FnCallChildren {
     }
 }
 
+impl From<&EntrypointChildren> for RootChildren {
+    fn from(value: &EntrypointChildren) -> Self {
+        match value {
+            EntrypointChildren::Log(l) => RootChildren::Log(l.clone()),
+            EntrypointChildren::Account(a) => RootChildren::Account(a.clone()),
+            _ => panic!("Invalid conversion from EntrypointChildren to RootChildren"),
+        }
+    }
+}
+
 impl TreeRoot<RootChildren> {
     pub fn clone_into_view(
         source_index: usize,
