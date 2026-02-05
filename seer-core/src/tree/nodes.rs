@@ -11,7 +11,7 @@ use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
 #[serde_as]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct TreeRoot<C> {
     #[serde_as(as = "DisplayFromStr")]
     pub sender: Pubkey,
@@ -20,7 +20,7 @@ pub struct TreeRoot<C> {
     pub children: Vec<C>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TreeEntrypoint<C> {
     pub instruction: u64,
     pub signature: String,
@@ -34,7 +34,7 @@ impl PartialEq for TreeEntrypoint<EntrypointChildren> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TreeFnCall<C> {
     pub instruction: u64,
     pub signature: String,
@@ -50,7 +50,7 @@ impl PartialEq for TreeFnCall<FnCallChildren> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TreeLog {
     pub message: String,
 }
@@ -61,7 +61,7 @@ impl TreeLog {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TreeError {
     pub message: String,
 }
@@ -112,7 +112,7 @@ pub enum RootChildren {
     Invoke(usize),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub enum RootViewChildren {
     Invoke(TreeRoot<RootViewChildren>),
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
@@ -131,7 +131,7 @@ pub enum EntrypointChildren {
     Invoke(usize),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub enum EntrypointViewChildren {
     Invoke(TreeRoot<RootViewChildren>),
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
@@ -151,7 +151,7 @@ pub enum FnCallChildren {
     Invoke(usize),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub enum FnCallViewChildren {
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
     FnCall(TreeFnCall<FnCallViewChildren>),

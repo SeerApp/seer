@@ -1,0 +1,152 @@
+{
+  "sender": "11157t3sqMV725NVRLrVQbAu98Jjfk1uCKehJnXXQs",
+  "receiver": "4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc",
+  "children": [
+    {
+      "Log": {
+        "message": "Program 4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc invoke [1]"
+      }
+    },
+    {
+      "Log": {
+        "message": "Program log: Instruction: PullStrings"
+      }
+    },
+    {
+      "Entrypoint": {
+        "instruction": 2936,
+        "signature": "puppet_master::puppet_master::pull_strings",
+        "loc": {
+          "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+          "line": 12
+        },
+        "children": [
+          {
+            "FnCall": {
+              "instruction": 2936,
+              "signature": "anchor_lang::accounts::account_info::<impl anchor_lang::Key for solana_account_info::AccountInfo>::key",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+                "line": 13
+              },
+              "children": []
+            }
+          },
+          {
+            "FnCall": {
+              "instruction": 3008,
+              "signature": "anchor_lang::context::CpiContext<T>::new",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+                "line": 17
+              },
+              "children": []
+            }
+          },
+          {
+            "Invoke": {
+              "sender": "4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc",
+              "receiver": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
+              "children": [
+                {
+                  "Log": {
+                    "message": "Program 51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues invoke [2]"
+                  }
+                },
+                {
+                  "Log": {
+                    "message": "Program log: Instruction: SetData"
+                  }
+                },
+                {
+                  "Entrypoint": {
+                    "instruction": 9968,
+                    "signature": "puppet::puppet::set_data",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet/src/lib.rs",
+                      "line": 12
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "Log": {
+                    "message": "Program 51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues consumed 1459 of 196266 compute units"
+                  }
+                },
+                {
+                  "Log": {
+                    "message": "Program 51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues success"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "Account": {
+              "key": "55eurB9BCjr1ti3RSpAkZALzquoBrEbrScJjbfuZ6S8f",
+              "before": {
+                "lamports": 1002240,
+                "data": [
+                  206,
+                  156,
+                  59,
+                  188,
+                  18,
+                  79,
+                  240,
+                  232,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "owner": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
+                "executable": false,
+                "rent_epoch": 0
+              },
+              "after": {
+                "lamports": 1002240,
+                "data": [
+                  206,
+                  156,
+                  59,
+                  188,
+                  18,
+                  79,
+                  240,
+                  232,
+                  111,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "owner": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
+                "executable": false,
+                "rent_epoch": 0
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Log": {
+        "message": "Program 4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc consumed 5615 of 200000 compute units"
+      }
+    },
+    {
+      "Log": {
+        "message": "Program 4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc success"
+      }
+    }
+  ]
+}

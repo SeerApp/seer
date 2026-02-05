@@ -1,0 +1,593 @@
+{
+  "sender": "11157t3sqMV725NVRLrVQbAu98Jjfk1uCKehJnXXQs",
+  "receiver": "28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD",
+  "children": [
+    {
+      "Log": {
+        "message": "Program 28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD invoke [1]"
+      }
+    },
+    {
+      "Entrypoint": {
+        "instruction": 8680,
+        "signature": "manager::process_instruction",
+        "loc": {
+          "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+          "line": 26
+        },
+        "children": [
+          {
+            "FnCall": {
+              "instruction": 8696,
+              "signature": "borsh::de::BorshDeserialize::try_from_slice",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                "line": 31
+              },
+              "children": []
+            }
+          },
+          {
+            "FnCall": {
+              "instruction": 10912,
+              "signature": "manager::contribute",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                "line": 35
+              },
+              "children": [
+                {
+                  "FnCall": {
+                    "instruction": 10912,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 110
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 10936,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 111
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11144,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 112
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11184,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 113
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11200,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 114
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11240,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 115
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11296,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 116
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11416,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 117
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11448,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 118
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11480,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 119
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11544,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 120
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 11904,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "line": 121
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "Entrypoint": {
+                    "instruction": 7784,
+                    "signature": "manager::treasury_instruction::deposit_funds_ix",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                      "line": 31
+                    },
+                    "children": [
+                      {
+                        "FnCall": {
+                          "instruction": 7800,
+                          "signature": "alloc::alloc::exchange_malloc",
+                          "loc": {
+                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                            "line": 40
+                          },
+                          "children": []
+                        }
+                      },
+                      {
+                        "FnCall": {
+                          "instruction": 8192,
+                          "signature": "borsh::ser::helpers::to_vec",
+                          "loc": {
+                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                            "line": 46
+                          },
+                          "children": []
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Invoke": {
+                    "sender": "28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD",
+                    "receiver": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
+                    "children": [
+                      {
+                        "Log": {
+                          "message": "Program 317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu invoke [2]"
+                        }
+                      },
+                      {
+                        "Entrypoint": {
+                          "instruction": 3104,
+                          "signature": "treasury::process_instruction",
+                          "loc": {
+                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                            "line": 25
+                          },
+                          "children": [
+                            {
+                              "FnCall": {
+                                "instruction": 3120,
+                                "signature": "borsh::de::BorshDeserialize::try_from_slice",
+                                "loc": {
+                                  "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                  "line": 30
+                                },
+                                "children": []
+                              }
+                            },
+                            {
+                              "FnCall": {
+                                "instruction": 3480,
+                                "signature": "treasury::process_deposit_funds",
+                                "loc": {
+                                  "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                  "line": 34
+                                },
+                                "children": [
+                                  {
+                                    "FnCall": {
+                                      "instruction": 3480,
+                                      "signature": "solana_account_info::next_account_info",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 95
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 3504,
+                                      "signature": "solana_account_info::next_account_info",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 96
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 3528,
+                                      "signature": "solana_account_info::next_account_info",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 97
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 3784,
+                                      "signature": "solana_account_info::next_account_info",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 98
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 4424,
+                                      "signature": "core::cmp::PartialEq::ne",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 110
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6240,
+                                      "signature": "core::fmt::Arguments::new_v1",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 116
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6400,
+                                      "signature": "core::hint::must_use",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 116
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6416,
+                                      "signature": "solana_msg::sol_log",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 116
+                                      },
+                                      "children": [
+                                        {
+                                          "Log": {
+                                            "message": "Program log: Transferring 1000000 lamports from contributor to vault..."
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "Invoke": {
+                                      "sender": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
+                                      "receiver": "11111111111111111111111111111111",
+                                      "children": [
+                                        {
+                                          "Log": {
+                                            "message": "Program 11111111111111111111111111111111 invoke [3]"
+                                          }
+                                        },
+                                        {
+                                          "Account": {
+                                            "key": "2BvB1NcpfCNudu59VtgdbqEiVQSD44z8pbAYxd8xudcq",
+                                            "before": {
+                                              "lamports": 9996136120,
+                                              "data": [],
+                                              "owner": "11111111111111111111111111111111",
+                                              "executable": false,
+                                              "rent_epoch": 0
+                                            },
+                                            "after": {
+                                              "lamports": 9995136120,
+                                              "data": [],
+                                              "owner": "11111111111111111111111111111111",
+                                              "executable": false,
+                                              "rent_epoch": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "Account": {
+                                            "key": "BMegtY6C48KvdenDAmeAkRsYeyJZqg5EnvBrFNFEmQ6E",
+                                            "before": {
+                                              "lamports": 1224960,
+                                              "data": [
+                                                169,
+                                                210,
+                                                147,
+                                                113,
+                                                205,
+                                                185,
+                                                132,
+                                                8,
+                                                56,
+                                                23,
+                                                33,
+                                                90,
+                                                139,
+                                                9,
+                                                29,
+                                                29,
+                                                174,
+                                                132,
+                                                79,
+                                                138,
+                                                70,
+                                                217,
+                                                202,
+                                                47,
+                                                96,
+                                                21,
+                                                165,
+                                                99,
+                                                82,
+                                                25,
+                                                222,
+                                                186,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                254,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0
+                                              ],
+                                              "owner": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
+                                              "executable": false,
+                                              "rent_epoch": 0
+                                            },
+                                            "after": {
+                                              "lamports": 2224960,
+                                              "data": [
+                                                169,
+                                                210,
+                                                147,
+                                                113,
+                                                205,
+                                                185,
+                                                132,
+                                                8,
+                                                56,
+                                                23,
+                                                33,
+                                                90,
+                                                139,
+                                                9,
+                                                29,
+                                                29,
+                                                174,
+                                                132,
+                                                79,
+                                                138,
+                                                70,
+                                                217,
+                                                202,
+                                                47,
+                                                96,
+                                                21,
+                                                165,
+                                                99,
+                                                82,
+                                                25,
+                                                222,
+                                                186,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                254,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0
+                                              ],
+                                              "owner": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
+                                              "executable": false,
+                                              "rent_epoch": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "Log": {
+                                            "message": "Program 11111111111111111111111111111111 success"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6736,
+                                      "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 123
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6792,
+                                      "signature": "<alloc::rc::Rc<T,A> as core::ops::deref::Deref>::deref",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 133
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6808,
+                                      "signature": "core::cell::RefCell<T>::borrow_mut",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 133
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6872,
+                                      "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 134
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "FnCall": {
+                                      "instruction": 6896,
+                                      "signature": "<core::result::Result<T,F> as core::ops::try_trait::FromResidual<core::result::Result<core::convert::Infallible,E>>>::from_residual",
+                                      "loc": {
+                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "line": 134
+                                      },
+                                      "children": []
+                                    }
+                                  },
+                                  {
+                                    "Error": {
+                                      "message": "Failed to serialize or deserialize account data"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "Log": {
+                          "message": "Program 317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu consumed 6835 of 575024 compute units"
+                        }
+                      },
+                      {
+                        "Log": {
+                          "message": "Program 317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu failed: Failed to serialize or deserialize account data"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Log": {
+                    "message": "Program 28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD consumed 10696 of 578885 compute units"
+                  }
+                },
+                {
+                  "Log": {
+                    "message": "Program 28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD failed: Failed to serialize or deserialize account data"
+                  }
+                },
+                {
+                  "Error": {
+                    "message": "Failed to serialize or deserialize account data"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

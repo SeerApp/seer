@@ -1,20 +1,25 @@
-use std::{collections::HashMap, path::PathBuf};
+mod common;
 
+use std::collections::HashMap;
+
+use common::run_tx;
 use seer_core::{
-    analysis::{Analysis, ExecutionEvent},
-    entrypoint_lookup::EntrypointLookup,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
-    get_cwd,
-    save::save_trace_tree,
+    entrypoint_lookup::EntrypointLookup,
+    save::load_trace_tree,
     sources::Sources,
-    tracer::Tracer,
-    tree::nodes::{RootViewChildren, TreeRoot},
 };
 use solana_pubkey::Pubkey;
 
+use crate::common::get_analysis_directories;
+
 #[test]
 fn test_instruction_context() {
-    let (source_project_root, cwd, deploy_folder_root, analysis_root) = get_analysis_directories();
+    let (source_project_root, cwd, deploy_folder_root, analysis_root, canonical_result_root) =
+        get_analysis_directories(
+            "native/cypherpunk",
+            "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo",
+        );
 
     let fee_payer = Pubkey::new_unique();
 
@@ -35,76 +40,19 @@ fn test_instruction_context() {
         lookups.insert(program_address.clone(), call_trace_lookup);
     }
 
-    run_tx(
-        &analysis_root,
-        fee_payer,
-        0,
+    let sig =
         "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
-            .to_string(),
-        &lookups,
+            .to_string();
+    assert!(
+        load_trace_tree(&canonical_result_root, 0, &sig)
+            == run_tx(&analysis_root, fee_payer, 0, &sig, &lookups)
     );
-    run_tx(
-        &analysis_root,
-        fee_payer,
-        1,
-        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
-            .to_string(),
-        &lookups,
+    assert!(
+        load_trace_tree(&canonical_result_root, 1, &sig)
+            == run_tx(&analysis_root, fee_payer, 1, &sig, &lookups)
     );
-    run_tx(
-        &analysis_root,
-        fee_payer,
-        2,
-        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
-            .to_string(),
-        &lookups,
+    assert!(
+        load_trace_tree(&canonical_result_root, 2, &sig)
+            == run_tx(&analysis_root, fee_payer, 2, &sig, &lookups)
     );
-}
-
-fn run_tx(
-    analysis_root: &PathBuf,
-    fee_payer: Pubkey,
-    index: u8,
-    signature: String,
-    lookups: &HashMap<Pubkey, EntrypointLookup>,
-) {
-    let mut tracer = Tracer::new(fee_payer);
-
-    let analysis_trace = Analysis::load(analysis_root, signature.clone(), index);
-
-    for e in analysis_trace.events {
-        match e {
-            ExecutionEvent::StartProgram(program_address) => tracer.start_program(program_address),
-            ExecutionEvent::EndProgram(err) => tracer.end_program(err),
-            ExecutionEvent::AccountDiff(data) => tracer.account_diff(data),
-            ExecutionEvent::Log(log) => tracer.log(&log),
-            ExecutionEvent::Step(step) => tracer.step(&lookups, step),
-        }
-    }
-
-    let maybe_trace_tree: Option<TreeRoot<RootViewChildren>> = tracer.into();
-
-    if let Some(trace_tree) = maybe_trace_tree {
-        save_trace_tree(signature, index, trace_tree);
-    } else {
-        panic!("Some WTF happened on {:?}_{:?}", signature, index);
-    }
-}
-
-fn get_analysis_directories() -> (PathBuf, PathBuf, PathBuf, PathBuf) {
-    let mut cwd = get_cwd();
-    cwd.push("tests/fixtures/native/cypherpunk");
-
-    let mut deploy_folder_root = cwd.clone();
-    deploy_folder_root.push("target/deploy");
-
-    let mut analysis_root = cwd.clone();
-    analysis_root.push("analysis");
-
-    let source_project_root = PathBuf::from(
-        // corresponds to DWARF project root in fixture
-        "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo",
-    );
-
-    (source_project_root, cwd, deploy_folder_root, analysis_root)
 }

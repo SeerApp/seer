@@ -1,0 +1,404 @@
+{
+  "sender": "11157t3sqMV725NVRLrVQbAu98Jjfk1uCKehJnXXQs",
+  "receiver": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+  "children": [
+    {
+      "Log": {
+        "message": "Program 77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H invoke [1]"
+      }
+    },
+    {
+      "Entrypoint": {
+        "instruction": 3480,
+        "signature": "nftminter::process_instruction",
+        "loc": {
+          "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+          "line": 25
+        },
+        "children": [
+          {
+            "FnCall": {
+              "instruction": 3504,
+              "signature": "borsh::de::BorshDeserialize::try_from_slice",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "line": 30
+              },
+              "children": []
+            }
+          },
+          {
+            "FnCall": {
+              "instruction": 3704,
+              "signature": "nftminter::initialize_config",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "line": 32
+              },
+              "children": [
+                {
+                  "FnCall": {
+                    "instruction": 3704,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 40
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 3728,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 41
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 4064,
+                    "signature": "solana_account_info::next_account_info",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 42
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 4272,
+                    "signature": "core::cmp::PartialEq::ne",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 50
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 4592,
+                    "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 55
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 4704,
+                    "signature": "solana_rent::Rent::minimum_balance",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 57
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "Invoke": {
+                    "sender": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+                    "receiver": "11111111111111111111111111111111",
+                    "children": [
+                      {
+                        "Log": {
+                          "message": "Program 11111111111111111111111111111111 invoke [2]"
+                        }
+                      },
+                      {
+                        "Account": {
+                          "key": "2BvB1NcpfCNudu59VtgdbqEiVQSD44z8pbAYxd8xudcq",
+                          "before": {
+                            "lamports": 9999985000,
+                            "data": [],
+                            "owner": "11111111111111111111111111111111",
+                            "executable": false,
+                            "rent_epoch": 0
+                          },
+                          "after": {
+                            "lamports": 9998864440,
+                            "data": [],
+                            "owner": "11111111111111111111111111111111",
+                            "executable": false,
+                            "rent_epoch": 0
+                          }
+                        }
+                      },
+                      {
+                        "Account": {
+                          "key": "2euvoiLKXgJ7qKxGF9obF1YtmgzNYzmmE2oUvNrFoeeb",
+                          "before": {
+                            "lamports": 0,
+                            "data": [],
+                            "owner": "11111111111111111111111111111111",
+                            "executable": false,
+                            "rent_epoch": 0
+                          },
+                          "after": {
+                            "lamports": 1120560,
+                            "data": [
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0
+                            ],
+                            "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+                            "executable": false,
+                            "rent_epoch": 0
+                          }
+                        }
+                      },
+                      {
+                        "Log": {
+                          "message": "Program 11111111111111111111111111111111 success"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 5392,
+                    "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 67
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 5528,
+                    "signature": "<alloc::rc::Rc<T,A> as core::ops::deref::Deref>::deref",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 77
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 5544,
+                    "signature": "core::cell::RefCell<T>::borrow_mut",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 77
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 5584,
+                    "signature": "<nftminter::state::NftConfig as borsh::ser::BorshSerialize>::serialize",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 77
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 6184,
+                    "signature": "core::ptr::drop_in_place<core::cell::RefMut<&mut [u8]>>",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 77
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 6208,
+                    "signature": "core::fmt::Arguments::new_v1",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 79
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 6360,
+                    "signature": "core::hint::must_use",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 79
+                    },
+                    "children": []
+                  }
+                },
+                {
+                  "FnCall": {
+                    "instruction": 6376,
+                    "signature": "solana_msg::sol_log",
+                    "loc": {
+                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "line": 79
+                    },
+                    "children": [
+                      {
+                        "Log": {
+                          "message": "Program log: NFT config initialized by 2BvB1NcpfCNudu59VtgdbqEiVQSD44z8pbAYxd8xudcq"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "FnCall": {
+              "instruction": 6408,
+              "signature": "nftminter::mint_contributor_badge",
+              "loc": {
+                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "line": 33
+              },
+              "children": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Log": {
+        "message": "Program 77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H consumed 6836 of 600000 compute units"
+      }
+    },
+    {
+      "Account": {
+        "key": "2euvoiLKXgJ7qKxGF9obF1YtmgzNYzmmE2oUvNrFoeeb",
+        "before": {
+          "lamports": 1120560,
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+          "executable": false,
+          "rent_epoch": 0
+        },
+        "after": {
+          "lamports": 1120560,
+          "data": [
+            17,
+            167,
+            158,
+            12,
+            196,
+            175,
+            130,
+            60,
+            237,
+            54,
+            2,
+            82,
+            93,
+            140,
+            173,
+            54,
+            72,
+            188,
+            147,
+            166,
+            72,
+            60,
+            1,
+            8,
+            63,
+            81,
+            75,
+            103,
+            51,
+            194,
+            146,
+            158,
+            255
+          ],
+          "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+          "executable": false,
+          "rent_epoch": 0
+        }
+      }
+    },
+    {
+      "Log": {
+        "message": "Program 77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H success"
+      }
+    }
+  ]
+}
