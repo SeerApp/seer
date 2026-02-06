@@ -23,9 +23,11 @@ impl InstructionContext {
         Self {
             index,
             tracer: Tracer::new(fee_payer),
-            analysis: sig
-                .map(|s| Some(Analysis::new(s.to_string(), index)))
-                .unwrap_or(None),
+            analysis: sig.and_then(|s| {
+                std::env::var("SEER_ANALYSIS")
+                    .ok()
+                    .map(|_| Analysis::new(s.to_string(), index))
+            }),
         }
     }
 

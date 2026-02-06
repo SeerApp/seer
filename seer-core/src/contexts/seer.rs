@@ -6,9 +6,9 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    entrypoint_lookup::EntrypointLookup,
     contexts::transaction::TransactionContext,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
+    entrypoint_lookup::EntrypointLookup,
     save::{save, save_trace_tree},
     seer_trace,
     sources::Sources,
@@ -32,14 +32,18 @@ impl SeerContext {
         for program_address in dwarf_manager.get_pubkeys() {
             let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
             let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
-            let _ = save(
-                serde_json::to_string_pretty(&source_die_trace)
-                    .ok()
-                    .unwrap(),
-                format!("{}", program_address),
-                "json",
-                false,
-            );
+
+            if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
+                let _ = save(
+                    serde_json::to_string_pretty(&source_die_trace)
+                        .ok()
+                        .unwrap(),
+                    format!("{}", program_address),
+                    "json",
+                    false,
+                );
+            }
+
             let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
 
             lookups.insert(program_address.clone(), entrypoint_lookup);
@@ -78,7 +82,7 @@ impl SeerContext {
             .expect("Instruction ended before transaction context exists");
 
         if let Some((instruction, trace_tree)) = txc.end_instruction() {
-            save_trace_tree((&txc.signature).to_string(), instruction, trace_tree);
+            save_trace_tree(&txc.signature.to_string(), instruction, trace_tree);
         }
     }
 

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
-    save::load_trace_tree,
+    save::{load_trace_tree, save_trace_tree},
     sources::Sources,
 };
 use solana_pubkey::Pubkey;
@@ -42,8 +42,11 @@ fn test_instruction_context() {
         lookups.insert(program_address.clone(), call_trace_lookup);
     }
 
-    assert!(
-        load_trace_tree(&canonical_result_root, 0, &sig)
-            == run_tx(&analysis_root, fee_payer, 0, &sig, &lookups)
-    )
+    let result = run_tx(&analysis_root, fee_payer, 0, &sig, &lookups);
+    if std::env::var("SEER_TEST_SAVE").is_ok() {
+        save_trace_tree(&sig, 0, result);
+    } else {
+        let expected = load_trace_tree(&canonical_result_root, 0, &sig);
+        assert!(expected == result, "Puppet trace tree mismatch at index");
+    }
 }

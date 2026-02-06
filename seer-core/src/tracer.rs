@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 use crate::{
     entrypoint_lookup::EntrypointLookup,
     tree::{
-        nodes::{RootViewChildren, TreeRoot, TreeAccount},
+        nodes::{RootViewChildren, TreeAccount, TreeRoot},
         InvokeContext,
     },
 };

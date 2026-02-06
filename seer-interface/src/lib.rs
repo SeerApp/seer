@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use solana_account::AccountSharedData;
 use solana_pubkey::Pubkey;
 
@@ -10,9 +8,9 @@ pub trait GuestMemory {
 pub type TransactionAccount = (Pubkey, AccountSharedData);
 
 pub trait GuestStepMirror {
-    fn clone_flags(&self) -> RefCell<Box<[bool]>>;
-
     fn get_account_at_index(&self, index: usize) -> Option<AccountSharedData>;
 
-    fn read_account_at_index(&self, index: usize) -> Option<(Pubkey, AccountSharedData)>;
+    fn get_account_keys(&self) -> Vec<Pubkey>;
+
+    fn get_accounts(&self) -> Vec<(Pubkey, AccountSharedData)>;
 }

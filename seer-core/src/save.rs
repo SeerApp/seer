@@ -10,7 +10,7 @@ use crate::{
     get_cwd, tree::nodes::{RootViewChildren, TreeRoot},
 };
 
-pub fn save_trace_tree(signature: String, instruction: u8, trace_tree: TreeRoot<RootViewChildren>) {
+pub fn save_trace_tree(signature: &String, instruction: u8, trace_tree: TreeRoot<RootViewChildren>) {
     let filename = format!("{}_{}.json", signature, instruction);
 
     let output_path = get_output_path(&filename);

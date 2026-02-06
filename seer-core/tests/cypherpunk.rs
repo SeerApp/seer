@@ -6,7 +6,7 @@ use common::run_tx;
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
-    save::load_trace_tree,
+    save::{load_trace_tree, save_trace_tree},
     sources::Sources,
 };
 use solana_pubkey::Pubkey;
@@ -43,16 +43,14 @@ fn test_instruction_context() {
     let sig =
         "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
             .to_string();
-    assert!(
-        load_trace_tree(&canonical_result_root, 0, &sig)
-            == run_tx(&analysis_root, fee_payer, 0, &sig, &lookups)
-    );
-    assert!(
-        load_trace_tree(&canonical_result_root, 1, &sig)
-            == run_tx(&analysis_root, fee_payer, 1, &sig, &lookups)
-    );
-    assert!(
-        load_trace_tree(&canonical_result_root, 2, &sig)
-            == run_tx(&analysis_root, fee_payer, 2, &sig, &lookups)
-    );
+
+    for index in 0..=2 {
+        let result = run_tx(&analysis_root, fee_payer, index, &sig, &lookups);
+        if std::env::var("SEER_TEST_SAVE").is_ok() {
+            save_trace_tree(&sig, index, result);
+        } else {
+            let expected = load_trace_tree(&canonical_result_root, index, &sig);
+            assert!(expected == result, "Trace tree mismatch at index {}", index);
+        }
+    }
 }

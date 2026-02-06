@@ -73,6 +73,8 @@ impl<'a> TransactionContext {
         let icx = self.instruction_context
             .as_mut()
             .expect("Logging before instruction context exists");
+
+        icx.log(message);
             
         if icx.executed() {
             if let Some(step_mirror) = &mut self.step_mirror {
@@ -81,8 +83,6 @@ impl<'a> TransactionContext {
                 }
             }
         }
-            
-        icx.log(message);
     }
 
     pub fn step<M: GuestMemory>(

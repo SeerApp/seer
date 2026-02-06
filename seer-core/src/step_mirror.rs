@@ -1,28 +1,18 @@
 use seer_interface::GuestStepMirror;
 use solana_account::AccountSharedData;
+use solana_pubkey::Pubkey;
 
 use crate::tree::nodes::TreeAccount;
 
 pub struct StepMirror {
-    accounts: Vec<AccountSharedData>,
+    accounts: Vec<(Pubkey, AccountSharedData)>,
     mirror_ptr: Option<*const dyn GuestStepMirror>,
 }
 
 impl StepMirror {
     pub unsafe fn new(mirror: &dyn GuestStepMirror) -> Self {
-        let touched_flags = mirror.clone_flags().into_inner();
-
-        let mut accounts = Vec::new();
-
-        let num_accounts = touched_flags.len();
-        for index in 0..num_accounts {
-            if let Some(account) = mirror.get_account_at_index(index) {
-                accounts.push(account);
-            }
-        }
-
         Self {
-            accounts,
+            accounts: mirror.get_accounts(),
             mirror_ptr: Some(std::ptr::from_ref(mirror) as *const dyn GuestStepMirror),
         }
     }
@@ -31,27 +21,23 @@ impl StepMirror {
         let mirror_ptr = self.mirror_ptr.expect("StepMirror has been cleared");
         let mirror = unsafe { &*mirror_ptr };
 
-        let current_flags = mirror.clone_flags();
-        let current_flags_ref = current_flags.borrow();
-
+        let accounts = mirror.get_accounts();
+        let num_accounts = accounts.len();
         let mut changed_accounts = Vec::new();
 
-        let num_accounts = current_flags_ref.len();
         for index in 0..num_accounts {
-            let current_flag = current_flags_ref[index];
-            if current_flag == true {
-                if let Some((key, current_account)) = mirror.read_account_at_index(index) {
-                    if let Some(old_account) = self.accounts.get(index) {
-                        if current_account != *old_account {
-                            changed_accounts.push(TreeAccount {
-                                key,
-                                before: old_account.clone().into(),
-                                after: current_account.clone().into(),
-                            });
-                            self.accounts[index] = current_account;
-                        }
-                    }
-                }
+            if accounts[index].0 != self.accounts[index].0 {
+                panic!("Account pubkey different");
+            }
+
+            if accounts[index].1 != self.accounts[index].1 {
+                changed_accounts.push(TreeAccount {
+                    key: accounts[index].0,
+                    before: self.accounts[index].1.clone().into(),
+                    after: accounts[index].1.clone().into(),
+                });
+
+                self.accounts[index] = accounts[index].clone();
             }
         }
 
