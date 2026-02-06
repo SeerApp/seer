@@ -1,6 +1,6 @@
 mod common;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
@@ -20,9 +20,9 @@ fn test_instruction_context() {
             "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3",
         );
 
-    let fee_payer = Pubkey::new_unique();
+    let fee_payer = Pubkey::from_str("EmPkKuzAdBZRC4jH2N12D4HJS3TZTQ41c9NB5Gzzdqrq").ok().unwrap();
     let sig: String =
-        "C8P1zJQbsoThR9QrswLCg34shp4yWaEfyzMUtA4S5VnwSRaznzCK95QzZWLZ1R7tYaPLgindDaF7Au2CK8C6gfS"
+        "5jVZw9AHxDMW346wjG1XeBu4gcvazLcQWJEVoiVNi1efhJXUF8Rmb7H8BE3PwXSBWaMMehdefMTVq8pkcnKNX6ZQ"
             .to_string();
 
     let dwarf_manager = DwarfManager::new(deploy_folder_root);

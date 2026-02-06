@@ -1,6 +1,6 @@
 mod common;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use common::run_tx;
 use seer_core::{
@@ -21,7 +21,7 @@ fn test_instruction_context() {
             "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo",
         );
 
-    let fee_payer = Pubkey::new_unique();
+    let fee_payer =     Pubkey::from_str("J6X9c9BNoWFmE7RNa3qJ7kQ3e7JwJN63hjc2X1VdQGS9").ok().unwrap();
 
     let dwarf_manager = DwarfManager::new(deploy_folder_root);
     let sources = Sources::new(
@@ -41,7 +41,7 @@ fn test_instruction_context() {
     }
 
     let sig =
-        "4VU2UdbGYyE6pcr8E6bMhiT4ZPaiVyN4zVBRhBj3BqTiALcRv9S3VWZeCgFMSNfFoeEr2dyMeDrHMm3Bsqc4siQf"
+        "JuiMHw4p3kgdBsgXK8134Vb4jaL8gfvsXYNvxfi6XgRRckZCugVNuReWUBpg1dTncXoEi8QmAz5fbHP1cvgb45Q"
             .to_string();
 
     for index in 0..=2 {
