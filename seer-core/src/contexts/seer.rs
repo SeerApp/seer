@@ -10,7 +10,7 @@ use crate::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
     save::{save, save_trace_tree},
-    seer_trace,
+    seer_debug, seer_trace,
     sources::Sources,
 };
 
@@ -21,11 +21,19 @@ pub struct SeerContext {
 
 impl SeerContext {
     pub fn new(source_project_root: PathBuf, deploy_folder_root: PathBuf) -> Self {
+        seer_debug!(
+            "Provided roots\n\t{:?}\n\t{:?}",
+            source_project_root,
+            deploy_folder_root
+        );
+
         let dwarf_manager = DwarfManager::new(deploy_folder_root);
         let sources = Sources::new(
             source_project_root.clone(),
             dwarf_manager.get_all_source_files(&source_project_root, &source_project_root),
         );
+
+        seer_debug!("About to search for {} DWARF source(s)...", sources.len());
 
         let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
@@ -48,6 +56,8 @@ impl SeerContext {
 
             lookups.insert(program_address.clone(), entrypoint_lookup);
         }
+
+        seer_debug!("Successfully collected {} program source(s)", lookups.len());
 
         Self {
             lookups,
