@@ -11,17 +11,17 @@ use solana_keypair::read_keypair_file;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
-pub struct DwarfManager {
+pub struct DwarfReader {
     sections: HashMap<Pubkey, DwarfSections<Vec<u8>>>,
 }
 
-impl DwarfManager {
-    pub fn new(target_deploy_dir: &PathBuf) -> Self {
-        let mut manager = DwarfManager {
+impl DwarfReader {
+    pub fn new(deploy_folder_root: PathBuf) -> Self {
+        let mut manager = DwarfReader {
             sections: HashMap::new(),
         };
 
-        manager.set_dwarf_sections(target_deploy_dir);
+        manager.set_dwarf_sections(deploy_folder_root);
 
         manager
     }
@@ -46,11 +46,11 @@ impl DwarfManager {
         self.sections.contains_key(program_address)
     }
 
-    pub fn get_all_source_files(&self, runtime_dir: &PathBuf, dwarf_compile_dir: &PathBuf) -> HashSet<PathBuf> {
+    pub fn get_all_source_files(&self, cwd: &PathBuf, source_project_root: &PathBuf) -> HashSet<PathBuf> {
         let mut all_source_files = HashSet::new();
 
         for (program_address, _) in &self.sections {
-            all_source_files.extend(self.get_source_files(runtime_dir, dwarf_compile_dir, program_address));
+            all_source_files.extend(self.get_source_files(cwd, source_project_root, program_address));
         }
 
         all_source_files
@@ -58,8 +58,8 @@ impl DwarfManager {
 
     pub fn get_source_files(
         &self,
-        runtime_dir: &PathBuf,
-        dwarf_compile_dir: &PathBuf,
+        cwd: &PathBuf,
+        source_project_root: &PathBuf,
         program_address: &Pubkey,
     ) -> HashSet<PathBuf> {
         let dwarf = self
@@ -79,19 +79,18 @@ impl DwarfManager {
     
                     let dir_path = PathBuf::from(&dir_str).clean();
     
-                    let relative_source_dir = dir_path
-                        .strip_prefix(dwarf_compile_dir)
-                        .expect("dwarf_compile_dir not found in dir_path");
-                    let resolved = runtime_dir.join(relative_source_dir).clean();
+                    let resolved = cwd.join(&dir_path).clean();
     
-                    if resolved.is_dir() {    
+                    if resolved.exists() && resolved.is_dir() {
+                        let relative_to_root = source_project_root.join(&dir_path).clean();
+                        
                         let files: HashSet<PathBuf> = std::fs::read_dir(&resolved)
                             .ok()
                             .unwrap()
                             .filter_map(|entry| entry.ok())
                             .map(|entry| {
                                 let filename = entry.file_name();
-                                resolved.join(filename)
+                                relative_to_root.join(filename)
                             })
                             .filter(|_| true)
                             .collect();
@@ -105,10 +104,10 @@ impl DwarfManager {
         HashSet::new()
     }
 
-    fn set_dwarf_sections(&mut self, target_deploy_dir: &PathBuf) {
+    fn set_dwarf_sections(&mut self, deploy_folder_root: PathBuf) {
         let mut bases: HashSet<String> = HashSet::new();
 
-        let entries = match fs::read_dir(target_deploy_dir) {
+        let entries = match fs::read_dir(&deploy_folder_root) {
             Ok(e) => e,
             Err(_) => return,
         };
@@ -130,8 +129,8 @@ impl DwarfManager {
         }
 
         for base in bases {
-            let keypair_path = target_deploy_dir.join(format!("{base}-keypair.json"));
-            let dwarf_path = target_deploy_dir.join(format!("{base}.debug"));
+            let keypair_path = deploy_folder_root.join(format!("{base}-keypair.json"));
+            let dwarf_path = deploy_folder_root.join(format!("{base}.debug"));
 
             if !keypair_path.exists() {
                 panic!(

@@ -32,6 +32,8 @@ solana-account = { version = "=3.0.0", features = ["serde"] }
 path-clean = "1.0.1"
 serde_with = "3.16.1"
 chrono = "0.4.42"
+common = { workspace = true }
+external-program = { workspace = true }
 
 [lints]
 workspace = true

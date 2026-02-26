@@ -39,7 +39,7 @@ pub struct Sources {
 }
 
 impl Sources {
-    pub fn new(_: PathBuf, source_files: HashSet<PathBuf>) -> Self {
+    pub fn new(source_files: HashSet<PathBuf>) -> Self {
         let mut infos = HashMap::new();
 
         for sf in &source_files {

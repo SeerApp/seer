@@ -1,5 +1,7 @@
 [workspace]
-members = [
+members = [ 
+    "common", 
+    "external-program", 
     "seer-core",
     "seer-interface"
 ]
@@ -9,6 +11,8 @@ edition = "2021"
 
 [workspace.dependencies]
 seer-interface = { path = "seer-interface" }
+common = { path = "common" }
+external-program = { path = "external-program" }
 
 [workspace.lints.rust]
 warnings = "deny"
