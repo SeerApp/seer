@@ -3,10 +3,7 @@ mod common;
 use std::{collections::HashMap, str::FromStr};
 
 use seer_core::{
-    dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
-    entrypoint_lookup::EntrypointLookup,
-    save::{load_trace_tree, save_trace_tree},
-    sources::Sources,
+    dwarf::{manager::DwarfManager, source_die::SourceDieTrace}, entrypoint_lookup::EntrypointLookup, path_resolver::PathResolver, save::{load_trace_tree, save_trace_tree}, sources::Sources
 };
 use solana_pubkey::Pubkey;
 
@@ -25,12 +22,11 @@ fn test_instruction_context() {
         "5jVZw9AHxDMW346wjG1XeBu4gcvazLcQWJEVoiVNi1efhJXUF8Rmb7H8BE3PwXSBWaMMehdefMTVq8pkcnKNX6ZQ"
             .to_string();
 
-    let dwarf_manager = DwarfManager::new(deploy_folder_root);
-    let sources = Sources::new(
-        source_project_root.clone(),
-        dwarf_manager.get_all_source_files(&cwd, &source_project_root),
-    );
-
+    let dwarf_manager = DwarfManager::new(&deploy_folder_root);
+    let path_resolver = PathResolver::new(source_project_root, cwd);
+    let source_files = dwarf_manager.get_all_source_files(&path_resolver);
+    let sources = Sources::new(path_resolver, source_files);
+        
     let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
     for program_address in dwarf_manager.get_pubkeys() {

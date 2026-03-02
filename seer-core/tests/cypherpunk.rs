@@ -6,6 +6,7 @@ use common::run_tx;
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
+    path_resolver::PathResolver,
     save::{load_trace_tree, save_trace_tree},
     sources::Sources,
 };
@@ -21,13 +22,14 @@ fn test_instruction_context() {
             "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo",
         );
 
-    let fee_payer =     Pubkey::from_str("J6X9c9BNoWFmE7RNa3qJ7kQ3e7JwJN63hjc2X1VdQGS9").ok().unwrap();
+    let fee_payer = Pubkey::from_str("J6X9c9BNoWFmE7RNa3qJ7kQ3e7JwJN63hjc2X1VdQGS9")
+        .ok()
+        .unwrap();
 
-    let dwarf_manager = DwarfManager::new(deploy_folder_root);
-    let sources = Sources::new(
-        source_project_root.clone(),
-        dwarf_manager.get_all_source_files(&cwd, &source_project_root),
-    );
+    let dwarf_manager = DwarfManager::new(&deploy_folder_root);
+    let path_resolver = PathResolver::new(source_project_root, cwd);
+    let source_files = dwarf_manager.get_all_source_files(&path_resolver);
+    let sources = Sources::new(path_resolver, source_files);
 
     let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 

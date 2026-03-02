@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use seer_interface::{GuestMemory, GuestStepMirror};
 use solana_instruction::error::InstructionError;
@@ -9,10 +9,56 @@ use crate::{
     contexts::transaction::TransactionContext,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
+    get_cwd,
+    path_resolver::PathResolver,
     save::{save, save_trace_tree},
     seer_debug, seer_trace,
     sources::Sources,
 };
+
+pub fn get_lookups(
+    runtime_dir: &PathBuf,
+    dwarf_compile_dir: &PathBuf,
+) -> HashMap<Pubkey, EntrypointLookup> {
+    seer_debug!(
+        "Provided roots\n\t{:?}\n\t{:?}",
+        runtime_dir,
+        dwarf_compile_dir
+    );
+
+    let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
+    let dwarf_reader = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
+    let source_files = dwarf_reader.get_all_source_files(&path_resolver);
+    let sources = Sources::new(path_resolver, source_files);
+
+    seer_debug!("About to search for {} DWARF source(s)...", sources.len());
+
+    let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
+
+    for program_address in dwarf_reader.get_pubkeys() {
+        let dwarf = dwarf_reader.get_dwarf(program_address).unwrap();
+        let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
+
+        if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
+            let _ = save(
+                serde_json::to_string_pretty(&source_die_trace)
+                    .ok()
+                    .unwrap(),
+                format!("{}", program_address),
+                "json",
+                false,
+            );
+        }
+
+        let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
+
+        lookups.insert(program_address.clone(), entrypoint_lookup);
+    }
+
+    seer_debug!("Successfully collected {} program source(s)", lookups.len());
+
+    lookups
+}
 
 pub struct SeerContext {
     lookups: HashMap<Pubkey, EntrypointLookup>,
@@ -20,48 +66,27 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new(source_project_root: PathBuf, deploy_folder_root: PathBuf) -> Self {
-        seer_debug!(
-            "Provided roots\n\t{:?}\n\t{:?}",
-            source_project_root,
-            deploy_folder_root
-        );
+    pub fn new() -> Self {
+        let runtime_dir = env::var("SEER_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| get_cwd());
 
-        let dwarf_manager = DwarfManager::new(deploy_folder_root);
-        let sources = Sources::new(
-            source_project_root.clone(),
-            dwarf_manager.get_all_source_files(&source_project_root, &source_project_root),
-        );
-
-        seer_debug!("About to search for {} DWARF source(s)...", sources.len());
-
-        let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
-
-        for program_address in dwarf_manager.get_pubkeys() {
-            let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
-            let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
-
-            if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
-                let _ = save(
-                    serde_json::to_string_pretty(&source_die_trace)
-                        .ok()
-                        .unwrap(),
-                    format!("{}", program_address),
-                    "json",
-                    false,
-                );
-            }
-
-            let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
-
-            lookups.insert(program_address.clone(), entrypoint_lookup);
-        }
-
-        seer_debug!("Successfully collected {} program source(s)", lookups.len());
+        let target_deploy_dir = env::var("SEER_DWARF_COMPILE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| get_cwd());
 
         Self {
-            lookups,
+            lookups: get_lookups(&runtime_dir, &target_deploy_dir),
             transaction_context: None,
+        }
+    }
+
+    pub fn add_lookups(&mut self, runtime_dir: &PathBuf, target_deploy_dir: &PathBuf) {
+        for (key, value) in get_lookups(runtime_dir, target_deploy_dir) {
+            if self.lookups.contains_key(&key) {
+                panic!("Collision detected for key: {:?}", key);
+            }
+            self.lookups.insert(key, value);
         }
     }
 

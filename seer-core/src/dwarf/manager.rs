@@ -11,17 +11,19 @@ use solana_keypair::read_keypair_file;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
+use crate::path_resolver::PathResolver;
+
 pub struct DwarfManager {
     sections: HashMap<Pubkey, DwarfSections<Vec<u8>>>,
 }
 
 impl DwarfManager {
-    pub fn new(deploy_folder_root: PathBuf) -> Self {
+    pub fn new(target_deploy_dir: &PathBuf) -> Self {
         let mut manager = DwarfManager {
             sections: HashMap::new(),
         };
 
-        manager.set_dwarf_sections(deploy_folder_root);
+        manager.set_dwarf_sections(target_deploy_dir);
 
         manager
     }
@@ -46,67 +48,64 @@ impl DwarfManager {
         self.sections.contains_key(program_address)
     }
 
-    pub fn get_all_source_files(&self, cwd: &PathBuf, source_project_root: &PathBuf) -> HashSet<PathBuf> {
+    pub fn get_all_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
         let mut all_source_files = HashSet::new();
 
         for (program_address, _) in &self.sections {
-            all_source_files.extend(self.get_source_files(cwd, source_project_root, program_address));
+            all_source_files.extend(self.get_source_files(path_resolver, program_address));
         }
 
         all_source_files
     }
+
     pub fn get_source_files(
         &self,
-        cwd: &PathBuf,
-        source_project_root: &PathBuf,
+        path_resolver: &PathResolver,
         program_address: &Pubkey,
     ) -> HashSet<PathBuf> {
         let dwarf = self
             .get_dwarf(program_address)
             .expect("Failed to fetch dwarf for program");
-    
+
         let mut units = dwarf.units();
         while let Some(header) = units.next().ok().unwrap() {
             let unit = dwarf.unit(header).ok().unwrap();
-    
+
             if let Some(line_prog) = unit.line_program.clone() {
                 let header = line_prog.header();
-    
+
                 for dir_attr in header.include_directories() {
                     let cow = dwarf.attr_string(&unit, dir_attr.clone()).ok().unwrap();
                     let dir_str = cow.to_string_lossy().ok().unwrap().into_owned();
-    
+
                     let dir_path = PathBuf::from(&dir_str).clean();
-    
-                    let resolved = cwd.join(&dir_path).clean();
-    
-                    if resolved.exists() && resolved.is_dir() {
-                        let relative_to_root = source_project_root.join(&dir_path).clean();
-                        
-                        let files: HashSet<PathBuf> = std::fs::read_dir(&resolved)
+                    let runtime_dir = path_resolver.relative_path_to_runtime_path(&dir_path);
+
+                    if runtime_dir.is_dir() {
+                        let files: HashSet<PathBuf> = std::fs::read_dir(&runtime_dir)
                             .ok()
                             .unwrap()
                             .filter_map(|entry| entry.ok())
                             .map(|entry| {
                                 let filename = entry.file_name();
-                                relative_to_root.join(filename)
+                                runtime_dir.join(filename)
                             })
                             .filter(|_| true)
                             .collect();
-    
+
                         return files;
                     }
                 }
             }
         }
-    
+
         HashSet::new()
     }
 
-    fn set_dwarf_sections(&mut self, deploy_folder_root: PathBuf) {
+    fn set_dwarf_sections(&mut self, target_deploy_dir: &PathBuf) {
         let mut bases: HashSet<String> = HashSet::new();
 
-        let entries = match fs::read_dir(&deploy_folder_root) {
+        let entries = match fs::read_dir(target_deploy_dir) {
             Ok(e) => e,
             Err(_) => return,
         };
@@ -128,8 +127,8 @@ impl DwarfManager {
         }
 
         for base in bases {
-            let keypair_path = deploy_folder_root.join(format!("{base}-keypair.json"));
-            let dwarf_path = deploy_folder_root.join(format!("{base}.debug"));
+            let keypair_path = target_deploy_dir.join(format!("{base}-keypair.json"));
+            let dwarf_path = target_deploy_dir.join(format!("{base}.debug"));
 
             if !keypair_path.exists() {
                 panic!(
