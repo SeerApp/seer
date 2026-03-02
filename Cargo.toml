@@ -1,7 +1,5 @@
 [workspace]
-members = [ 
-    "common", 
-    "external-program", 
+members = [
     "seer-core",
     "seer-interface"
 ]
@@ -11,8 +9,6 @@ edition = "2021"
 
 [workspace.dependencies]
 seer-interface = { path = "seer-interface" }
-common = { path = "common" }
-external-program = { path = "external-program" }
 
 [workspace.lints.rust]
 warnings = "deny"
@@ -30,10 +26,3 @@ arithmetic_side_effects = "deny"
 default_trait_access = "deny"
 manual_let_else = "deny"
 used_underscore_binding = "deny"
-
-[patch.crates-io]
-solana-sbpf = { path = "../sbpf/" }
-solana-svm-log-collector = { path = "../agave/svm-log-collector/" }
-solana-program-runtime = { path = "../agave/program-runtime/" }
-seer-core = { path = "seer-core" }
-seer-interface = { path = "seer-interface" }

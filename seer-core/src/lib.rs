@@ -9,6 +9,7 @@ pub mod sources;
 pub mod step_mirror;
 pub mod tracer;
 pub mod tree;
+pub mod path_resolver;
 
 use std::cell::RefCell;
 use std::{env, path::PathBuf};

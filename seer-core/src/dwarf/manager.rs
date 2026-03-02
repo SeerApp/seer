@@ -11,6 +11,8 @@ use solana_keypair::read_keypair_file;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
+use crate::path_resolver::PathResolver;
+
 pub struct DwarfManager {
     sections: HashMap<Pubkey, DwarfSections<Vec<u8>>>,
 }
@@ -46,11 +48,11 @@ impl DwarfManager {
         self.sections.contains_key(program_address)
     }
 
-    pub fn get_all_source_files(&self, runtime_dir: &PathBuf, dwarf_compile_dir: &PathBuf) -> HashSet<PathBuf> {
+    pub fn get_all_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
         let mut all_source_files = HashSet::new();
 
         for (program_address, _) in &self.sections {
-            all_source_files.extend(self.get_source_files(runtime_dir, dwarf_compile_dir, program_address));
+            all_source_files.extend(self.get_source_files(path_resolver, program_address));
         }
 
         all_source_files
@@ -58,50 +60,45 @@ impl DwarfManager {
 
     pub fn get_source_files(
         &self,
-        runtime_dir: &PathBuf,
-        dwarf_compile_dir: &PathBuf,
+        path_resolver: &PathResolver,
         program_address: &Pubkey,
     ) -> HashSet<PathBuf> {
         let dwarf = self
             .get_dwarf(program_address)
             .expect("Failed to fetch dwarf for program");
-    
+
         let mut units = dwarf.units();
         while let Some(header) = units.next().ok().unwrap() {
             let unit = dwarf.unit(header).ok().unwrap();
-    
+
             if let Some(line_prog) = unit.line_program.clone() {
                 let header = line_prog.header();
-    
+
                 for dir_attr in header.include_directories() {
                     let cow = dwarf.attr_string(&unit, dir_attr.clone()).ok().unwrap();
                     let dir_str = cow.to_string_lossy().ok().unwrap().into_owned();
-    
+
                     let dir_path = PathBuf::from(&dir_str).clean();
-    
-                    let relative_source_dir = dir_path
-                        .strip_prefix(dwarf_compile_dir)
-                        .expect("dwarf_compile_dir not found in dir_path");
-                    let resolved = runtime_dir.join(relative_source_dir).clean();
-    
-                    if resolved.is_dir() {    
-                        let files: HashSet<PathBuf> = std::fs::read_dir(&resolved)
+                    let runtime_dir = path_resolver.relative_path_to_runtime_path(&dir_path);
+
+                    if runtime_dir.is_dir() {
+                        let files: HashSet<PathBuf> = std::fs::read_dir(&runtime_dir)
                             .ok()
                             .unwrap()
                             .filter_map(|entry| entry.ok())
                             .map(|entry| {
                                 let filename = entry.file_name();
-                                resolved.join(filename)
+                                runtime_dir.join(filename)
                             })
                             .filter(|_| true)
                             .collect();
-    
+
                         return files;
                     }
                 }
             }
         }
-    
+
         HashSet::new()
     }
 

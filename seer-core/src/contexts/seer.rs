@@ -10,6 +10,7 @@ use crate::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
     get_cwd,
+    path_resolver::PathResolver,
     save::{save, save_trace_tree},
     seer_debug, seer_trace,
     sources::Sources,
@@ -25,8 +26,10 @@ pub fn get_lookups(
         dwarf_compile_dir
     );
 
+    let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
     let dwarf_reader = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
-    let sources = Sources::new(dwarf_reader.get_all_source_files(&runtime_dir, &dwarf_compile_dir));
+    let source_files = dwarf_reader.get_all_source_files(&path_resolver);
+    let sources = Sources::new(path_resolver, source_files);
 
     seer_debug!("About to search for {} DWARF source(s)...", sources.len());
 

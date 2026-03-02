@@ -37,7 +37,10 @@ impl Loc {
             .expect("Failed to get line on a DIE with existing file");
 
             if sources.is_valid_source(&file, line) {
-                return Ok(Some(Self { file, line }));
+                return Ok(Some(Self {
+                    file: sources.path_resolver.dwarf_path_to_relative_path(&file).unwrap(),
+                    line,
+                }));
             }
         }
 
