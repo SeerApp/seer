@@ -27,16 +27,16 @@ pub fn get_lookups(
     );
 
     let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
-    let dwarf_reader = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
-    let source_files = dwarf_reader.get_all_source_files(&path_resolver);
+    let dwarf_manager = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
+    let source_files = dwarf_manager.get_all_source_files(&path_resolver);
     let sources = Sources::new(path_resolver, source_files);
 
     seer_debug!("About to search for {} DWARF source(s)...", sources.len());
 
     let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
-    for program_address in dwarf_reader.get_pubkeys() {
-        let dwarf = dwarf_reader.get_dwarf(program_address).unwrap();
+    for program_address in dwarf_manager.get_pubkeys() {
+        let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
         let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
 
         if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {

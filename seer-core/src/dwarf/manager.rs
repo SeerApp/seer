@@ -119,6 +119,8 @@ impl DwarfManager {
 
             if let Some(base) = file_name.strip_suffix("-keypair.json") {
                 bases.insert(base.to_string());
+            } else if let Some(base) = file_name.strip_suffix("-pubkey.json") {
+                bases.insert(base.to_string());
             } else if let Some(base) = file_name.strip_suffix(".so") {
                 bases.insert(base.to_string());
             } else if let Some(base) = file_name.strip_suffix(".debug") {
@@ -128,14 +130,38 @@ impl DwarfManager {
 
         for base in bases {
             let keypair_path = target_deploy_dir.join(format!("{base}-keypair.json"));
+            let pubkey_path = target_deploy_dir.join(format!("{base}-pubkey.json"));
             let dwarf_path = target_deploy_dir.join(format!("{base}.debug"));
 
-            if !keypair_path.exists() {
+            let pubkey = if keypair_path.exists() {
+                let keypair = read_keypair_file(&keypair_path).unwrap_or_else(|e| {
+                    panic!("Failed to read keypair `{}`: {e}", keypair_path.display())
+                });
+                keypair.pubkey()
+            } else if pubkey_path.exists() {
+                let pubkey_str: String =
+                    serde_json::from_str(&fs::read_to_string(&pubkey_path).unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to read pubkey file `{}`: {e}",
+                            pubkey_path.display()
+                        )
+                    }))
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to parse pubkey file `{}`: {e}",
+                            pubkey_path.display()
+                        )
+                    });
+                pubkey_str.parse().unwrap_or_else(|e| {
+                    panic!("Failed to parse pubkey string `{}`: {e}", pubkey_str)
+                })
+            } else {
                 panic!(
-                    "Program `{base}` is missing keypair file: {}",
-                    keypair_path.display()
+                    "Program `{base}` is missing both keypair and pubkey file (expected `{}` or `{}`)",
+                    keypair_path.display(),
+                    pubkey_path.display()
                 );
-            }
+            };
 
             if !dwarf_path.exists() {
                 panic!(
@@ -144,11 +170,6 @@ impl DwarfManager {
                 );
             }
 
-            let keypair = read_keypair_file(&keypair_path).unwrap_or_else(|e| {
-                panic!("Failed to read keypair `{}`: {e}", keypair_path.display())
-            });
-
-            let pubkey = keypair.pubkey();
             self.set_dwarf_section(pubkey, &dwarf_path);
         }
     }
