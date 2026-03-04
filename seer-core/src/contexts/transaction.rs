@@ -75,7 +75,7 @@ impl<'a> TransactionContext {
             .expect("Logging before instruction context exists");
 
         icx.log(message);
-            
+
         if icx.executed() {
             if let Some(step_mirror) = &mut self.step_mirror {
                 for acc in step_mirror.check_diffs() {

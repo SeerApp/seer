@@ -126,8 +126,8 @@ impl InvokeContext {
             if let Some(entrypoint) = lookup.get_entrypoint(i) {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
-                *executed = true;
             }
+            *executed = true;
         }
     }
 

@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-/// Sender-preseerving layer
+/// Sender-preserving layer
 pub struct Tracer {
     sender: Pubkey,
     invoke_context: Option<InvokeContext>,

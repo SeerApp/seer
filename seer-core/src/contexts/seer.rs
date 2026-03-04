@@ -40,6 +40,7 @@ pub fn get_lookups(
         let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
 
         if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
+            seer_debug!("Saving source trace for program {}", program_address);
             let _ = save(
                 serde_json::to_string_pretty(&source_die_trace)
                     .ok()
@@ -67,6 +68,8 @@ pub struct SeerContext {
 
 impl SeerContext {
     pub fn new() -> Self {
+        seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
+
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
@@ -123,7 +126,7 @@ impl SeerContext {
 
     pub unsafe fn end_transaction_context(&mut self) {
         if let Some(txc) = self.transaction_context.as_mut() {
-            if let Some(step_mirror) = txc.step_mirror.take().as_mut() {
+            if let Some(mut step_mirror) = txc.step_mirror.take() {
                 step_mirror.clear();
             }
         }
