@@ -9,14 +9,13 @@ use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    entrypoint_lookup::EntrypointLookup,
-    tree::{
+    entrypoint_lookup::EntrypointLookup, seer_trace, tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
         nodes::{
             EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint,
             TreeLog, TreeRoot,
         },
-    },
+    }
 };
 
 struct LiveTrace {
@@ -127,6 +126,8 @@ impl InvokeContext {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
             }
+
+            seer_trace!("Caught execition in step");
             *executed = true;
         }
     }
