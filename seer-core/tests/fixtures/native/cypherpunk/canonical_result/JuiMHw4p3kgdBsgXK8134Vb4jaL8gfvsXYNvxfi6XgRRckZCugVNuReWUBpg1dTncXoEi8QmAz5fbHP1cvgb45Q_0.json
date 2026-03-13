@@ -12,7 +12,7 @@
         "instruction": 3480,
         "signature": "nftminter::process_instruction",
         "loc": {
-          "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+          "file": "programs/nftminter/src/lib.rs",
           "line": 25
         },
         "children": [
@@ -21,7 +21,7 @@
               "instruction": 3504,
               "signature": "borsh::de::BorshDeserialize::try_from_slice",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "file": "programs/nftminter/src/lib.rs",
                 "line": 30
               },
               "children": []
@@ -32,7 +32,7 @@
               "instruction": 3704,
               "signature": "nftminter::initialize_config",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "file": "programs/nftminter/src/lib.rs",
                 "line": 32
               },
               "children": [
@@ -41,7 +41,7 @@
                     "instruction": 3704,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 40
                     },
                     "children": []
@@ -52,7 +52,7 @@
                     "instruction": 3728,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 41
                     },
                     "children": []
@@ -63,7 +63,7 @@
                     "instruction": 4064,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 42
                     },
                     "children": []
@@ -74,7 +74,7 @@
                     "instruction": 4272,
                     "signature": "core::cmp::PartialEq::ne",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 50
                     },
                     "children": []
@@ -85,7 +85,7 @@
                     "instruction": 4592,
                     "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 55
                     },
                     "children": []
@@ -96,7 +96,7 @@
                     "instruction": 4704,
                     "signature": "solana_rent::Rent::minimum_balance",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 57
                     },
                     "children": []
@@ -197,7 +197,7 @@
                     "instruction": 5392,
                     "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 67
                     },
                     "children": []
@@ -208,7 +208,7 @@
                     "instruction": 5528,
                     "signature": "<alloc::rc::Rc<T,A> as core::ops::deref::Deref>::deref",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 77
                     },
                     "children": []
@@ -219,7 +219,7 @@
                     "instruction": 5544,
                     "signature": "core::cell::RefCell<T>::borrow_mut",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 77
                     },
                     "children": []
@@ -230,7 +230,7 @@
                     "instruction": 5584,
                     "signature": "<nftminter::state::NftConfig as borsh::ser::BorshSerialize>::serialize",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 77
                     },
                     "children": []
@@ -241,7 +241,7 @@
                     "instruction": 6184,
                     "signature": "core::ptr::drop_in_place<core::cell::RefMut<&mut [u8]>>",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 77
                     },
                     "children": []
@@ -252,7 +252,7 @@
                     "instruction": 6208,
                     "signature": "core::fmt::Arguments::new_v1",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 79
                     },
                     "children": []
@@ -263,7 +263,7 @@
                     "instruction": 6360,
                     "signature": "core::hint::must_use",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 79
                     },
                     "children": []
@@ -274,7 +274,7 @@
                     "instruction": 6376,
                     "signature": "solana_msg::sol_log",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                      "file": "programs/nftminter/src/lib.rs",
                       "line": 79
                     },
                     "children": [
@@ -294,7 +294,7 @@
               "instruction": 6408,
               "signature": "nftminter::mint_contributor_badge",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/nftminter/src/lib.rs",
+                "file": "programs/nftminter/src/lib.rs",
                 "line": 33
               },
               "children": []

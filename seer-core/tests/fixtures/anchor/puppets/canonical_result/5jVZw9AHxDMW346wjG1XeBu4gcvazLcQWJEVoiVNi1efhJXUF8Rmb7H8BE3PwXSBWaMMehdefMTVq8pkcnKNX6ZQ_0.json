@@ -17,7 +17,7 @@
         "instruction": 2936,
         "signature": "puppet_master::puppet_master::pull_strings",
         "loc": {
-          "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+          "file": "programs/puppet-master/src/lib.rs",
           "line": 12
         },
         "children": [
@@ -26,7 +26,7 @@
               "instruction": 2936,
               "signature": "anchor_lang::accounts::account_info::<impl anchor_lang::Key for solana_account_info::AccountInfo>::key",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+                "file": "programs/puppet-master/src/lib.rs",
                 "line": 13
               },
               "children": []
@@ -37,7 +37,7 @@
               "instruction": 3008,
               "signature": "anchor_lang::context::CpiContext<T>::new",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
+                "file": "programs/puppet-master/src/lib.rs",
                 "line": 17
               },
               "children": []
@@ -63,7 +63,7 @@
                     "instruction": 9968,
                     "signature": "puppet::puppet::set_data",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/Seer/code/puppets/examples/tutorial/basic-3/programs/puppet/src/lib.rs",
+                      "file": "programs/puppet/src/lib.rs",
                       "line": 12
                     },
                     "children": []

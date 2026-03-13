@@ -6,9 +6,11 @@ use common::run_tx;
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
+    init_seer_logger,
     path_resolver::PathResolver,
     save::{load_trace_tree, save_trace_tree},
     sources::Sources,
+    SeerLogger,
 };
 use solana_pubkey::Pubkey;
 
@@ -16,6 +18,8 @@ use crate::common::get_analysis_directories;
 
 #[test]
 fn test_instruction_context() {
+    init_seer_logger(SeerLogger::from_env());
+
     let (source_project_root, cwd, deploy_folder_root, analysis_root, canonical_result_root) =
         get_analysis_directories(
             "native/cypherpunk",

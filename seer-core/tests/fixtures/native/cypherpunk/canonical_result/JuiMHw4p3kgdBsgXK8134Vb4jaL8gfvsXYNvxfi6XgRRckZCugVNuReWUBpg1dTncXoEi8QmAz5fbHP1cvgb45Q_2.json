@@ -12,7 +12,7 @@
         "instruction": 8680,
         "signature": "manager::process_instruction",
         "loc": {
-          "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+          "file": "programs/manager/src/lib.rs",
           "line": 26
         },
         "children": [
@@ -21,7 +21,7 @@
               "instruction": 8696,
               "signature": "borsh::de::BorshDeserialize::try_from_slice",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                "file": "programs/manager/src/lib.rs",
                 "line": 31
               },
               "children": []
@@ -32,7 +32,7 @@
               "instruction": 10912,
               "signature": "manager::contribute",
               "loc": {
-                "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                "file": "programs/manager/src/lib.rs",
                 "line": 35
               },
               "children": [
@@ -41,7 +41,7 @@
                     "instruction": 10912,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 110
                     },
                     "children": []
@@ -52,7 +52,7 @@
                     "instruction": 10936,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 111
                     },
                     "children": []
@@ -63,7 +63,7 @@
                     "instruction": 11144,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 112
                     },
                     "children": []
@@ -74,7 +74,7 @@
                     "instruction": 11184,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 113
                     },
                     "children": []
@@ -85,7 +85,7 @@
                     "instruction": 11200,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 114
                     },
                     "children": []
@@ -96,7 +96,7 @@
                     "instruction": 11240,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 115
                     },
                     "children": []
@@ -107,7 +107,7 @@
                     "instruction": 11296,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 116
                     },
                     "children": []
@@ -118,7 +118,7 @@
                     "instruction": 11416,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 117
                     },
                     "children": []
@@ -129,7 +129,7 @@
                     "instruction": 11448,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 118
                     },
                     "children": []
@@ -140,7 +140,7 @@
                     "instruction": 11480,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 119
                     },
                     "children": []
@@ -151,7 +151,7 @@
                     "instruction": 11544,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 120
                     },
                     "children": []
@@ -162,7 +162,7 @@
                     "instruction": 11904,
                     "signature": "solana_account_info::next_account_info",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/lib.rs",
+                      "file": "programs/manager/src/lib.rs",
                       "line": 121
                     },
                     "children": []
@@ -173,7 +173,7 @@
                     "instruction": 7784,
                     "signature": "manager::treasury_instruction::deposit_funds_ix",
                     "loc": {
-                      "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                      "file": "programs/manager/src/treasury_instruction.rs",
                       "line": 31
                     },
                     "children": [
@@ -182,7 +182,7 @@
                           "instruction": 7800,
                           "signature": "alloc::alloc::exchange_malloc",
                           "loc": {
-                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                            "file": "programs/manager/src/treasury_instruction.rs",
                             "line": 40
                           },
                           "children": []
@@ -193,7 +193,7 @@
                           "instruction": 8192,
                           "signature": "borsh::ser::helpers::to_vec",
                           "loc": {
-                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/manager/src/treasury_instruction.rs",
+                            "file": "programs/manager/src/treasury_instruction.rs",
                             "line": 46
                           },
                           "children": []
@@ -217,7 +217,7 @@
                           "instruction": 3104,
                           "signature": "treasury::process_instruction",
                           "loc": {
-                            "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                            "file": "programs/treasury/src/lib.rs",
                             "line": 25
                           },
                           "children": [
@@ -226,7 +226,7 @@
                                 "instruction": 3120,
                                 "signature": "borsh::de::BorshDeserialize::try_from_slice",
                                 "loc": {
-                                  "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                  "file": "programs/treasury/src/lib.rs",
                                   "line": 30
                                 },
                                 "children": []
@@ -237,7 +237,7 @@
                                 "instruction": 3480,
                                 "signature": "treasury::process_deposit_funds",
                                 "loc": {
-                                  "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                  "file": "programs/treasury/src/lib.rs",
                                   "line": 34
                                 },
                                 "children": [
@@ -246,7 +246,7 @@
                                       "instruction": 3480,
                                       "signature": "solana_account_info::next_account_info",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 95
                                       },
                                       "children": []
@@ -257,7 +257,7 @@
                                       "instruction": 3504,
                                       "signature": "solana_account_info::next_account_info",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 96
                                       },
                                       "children": []
@@ -268,7 +268,7 @@
                                       "instruction": 3528,
                                       "signature": "solana_account_info::next_account_info",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 97
                                       },
                                       "children": []
@@ -279,7 +279,7 @@
                                       "instruction": 3784,
                                       "signature": "solana_account_info::next_account_info",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 98
                                       },
                                       "children": []
@@ -290,7 +290,7 @@
                                       "instruction": 4424,
                                       "signature": "core::cmp::PartialEq::ne",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 110
                                       },
                                       "children": []
@@ -301,7 +301,7 @@
                                       "instruction": 6240,
                                       "signature": "core::fmt::Arguments::new_v1",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 116
                                       },
                                       "children": []
@@ -312,7 +312,7 @@
                                       "instruction": 6400,
                                       "signature": "core::hint::must_use",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 116
                                       },
                                       "children": []
@@ -323,7 +323,7 @@
                                       "instruction": 6416,
                                       "signature": "solana_msg::sol_log",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 116
                                       },
                                       "children": [
@@ -494,7 +494,7 @@
                                       "instruction": 6736,
                                       "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 123
                                       },
                                       "children": []
@@ -505,7 +505,7 @@
                                       "instruction": 6792,
                                       "signature": "<alloc::rc::Rc<T,A> as core::ops::deref::Deref>::deref",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 133
                                       },
                                       "children": []
@@ -516,7 +516,7 @@
                                       "instruction": 6808,
                                       "signature": "core::cell::RefCell<T>::borrow_mut",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 133
                                       },
                                       "children": []
@@ -527,7 +527,7 @@
                                       "instruction": 6872,
                                       "signature": "<core::result::Result<T,E> as core::ops::try_trait::Try>::branch",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 134
                                       },
                                       "children": []
@@ -538,7 +538,7 @@
                                       "instruction": 6896,
                                       "signature": "<core::result::Result<T,F> as core::ops::try_trait::FromResidual<core::result::Result<core::convert::Infallible,E>>>::from_residual",
                                       "loc": {
-                                        "file": "/Users/vasilygerrans/Desktop/work/code/seer-repo/demo/programs/treasury/src/lib.rs",
+                                        "file": "programs/treasury/src/lib.rs",
                                         "line": 134
                                       },
                                       "children": []
