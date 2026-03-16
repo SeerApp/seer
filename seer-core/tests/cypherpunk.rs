@@ -2,7 +2,7 @@ mod common;
 
 use std::{collections::HashMap, str::FromStr};
 
-use common::run_tx;
+use common::_run_tx;
 use seer_core::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
@@ -51,7 +51,7 @@ fn test_instruction_context() {
             .to_string();
 
     for index in 0..=2 {
-        let result = run_tx(&analysis_root, fee_payer, index, &sig, &lookups);
+        let result = _run_tx(&analysis_root, fee_payer, index, &sig, &lookups);
         if std::env::var("SEER_TEST_SAVE").is_ok() {
             save_trace_tree(&sig, index, result);
         } else {

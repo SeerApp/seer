@@ -42,4 +42,12 @@ impl PathResolver {
             .expect("Runtime path does not correspond to runtime directory")
             .to_path_buf()
     }
+
+    pub fn compile_dir(&self) -> &PathBuf {
+        &self.compile_dir
+    }
+
+    pub fn runtime_dir(&self) -> &PathBuf {
+        &self.runtime_dir
+    }
 }

@@ -9,7 +9,7 @@ use seer_core::{
 };
 use solana_pubkey::Pubkey;
 
-pub fn run_tx(
+pub fn _run_tx(
     analysis_root: &PathBuf,
     fee_payer: Pubkey,
     index: u8,

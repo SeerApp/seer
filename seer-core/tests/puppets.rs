@@ -13,7 +13,7 @@ use seer_core::{
 };
 use solana_pubkey::Pubkey;
 
-use crate::common::{get_analysis_directories, run_tx};
+use crate::common::{get_analysis_directories, _run_tx};
 
 #[test]
 fn test_instruction_context() {
@@ -48,7 +48,7 @@ fn test_instruction_context() {
         lookups.insert(program_address.clone(), call_trace_lookup);
     }
 
-    let result = run_tx(&analysis_root, fee_payer, 0, &sig, &lookups);
+    let result = _run_tx(&analysis_root, fee_payer, 0, &sig, &lookups);
     if std::env::var("SEER_TEST_SAVE").is_ok() {
         save_trace_tree(&sig, 0, result);
     } else {

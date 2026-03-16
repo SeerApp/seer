@@ -68,38 +68,70 @@ impl DwarfManager {
             .expect("Failed to fetch dwarf for program");
 
         let mut units = dwarf.units();
-        while let Some(header) = units.next().ok().unwrap() {
-            let unit = dwarf.unit(header).ok().unwrap();
 
-            if let Some(line_prog) = unit.line_program.clone() {
-                let header = line_prog.header();
+        let Some(unit_header) = units.next().ok().unwrap() else {
+            return HashSet::new();
+        };
 
-                for dir_attr in header.include_directories() {
-                    let cow = dwarf.attr_string(&unit, dir_attr.clone()).ok().unwrap();
-                    let dir_str = cow.to_string_lossy().ok().unwrap().into_owned();
+        let unit = dwarf.unit(unit_header).ok().unwrap();
 
-                    let dir_path = PathBuf::from(&dir_str).clean();
-                    let runtime_dir = path_resolver.relative_path_to_runtime_path(&dir_path);
+        let Some(line_program) = unit.line_program.clone() else {
+            return HashSet::new();
+        };
 
-                    if runtime_dir.is_dir() {
-                        let files: HashSet<PathBuf> = std::fs::read_dir(&runtime_dir)
-                            .ok()
-                            .unwrap()
-                            .filter_map(|entry| entry.ok())
-                            .map(|entry| {
-                                let filename = entry.file_name();
-                                runtime_dir.join(filename)
-                            })
-                            .filter(|_| true)
-                            .collect();
+        let header = line_program.header();
+        let mut files = HashSet::new();
 
-                        return files;
-                    }
+        for file_entry in header.file_names() {
+            let file_name = match dwarf.attr_string(&unit, file_entry.path_name()) {
+                Ok(name) => match name.to_string_lossy() {
+                    Ok(s) => s.into_owned(),
+                    Err(_) => continue,
+                },
+                Err(_) => continue,
+            };
+
+            let file_path = PathBuf::from(&file_name);
+
+            let resolved_path = if file_path.is_absolute() {
+                file_path.clean()
+            } else {
+                let dir_path = match file_entry.directory(header) {
+                    Some(dir_attr) => match dwarf.attr_string(&unit, dir_attr) {
+                        Ok(dir) => match dir.to_string_lossy() {
+                            Ok(s) => PathBuf::from(s.as_ref()).clean(),
+                            Err(_) => continue,
+                        },
+                        Err(_) => continue,
+                    },
+                    None => PathBuf::new(),
+                };
+
+                dir_path.join(file_path).clean()
+            };
+
+            let runtime_path = if resolved_path.is_absolute() {
+                if let Some(runtime_path) = path_resolver
+                    .dwarf_path_to_runtime_path(&resolved_path)
+                    .ok()
+                {
+                    runtime_path
+                } else {
+                    continue;
                 }
+            } else {
+                path_resolver.relative_path_to_runtime_path(&resolved_path)
+            };
+
+            if runtime_path.is_file()
+                && runtime_path.extension().and_then(|e| e.to_str()) == Some("rs")
+                && runtime_path.starts_with(path_resolver.runtime_dir())
+            {
+                files.insert(runtime_path.clean());
             }
         }
 
-        HashSet::new()
+        files
     }
 
     fn set_dwarf_sections(&mut self, target_deploy_dir: &PathBuf) {

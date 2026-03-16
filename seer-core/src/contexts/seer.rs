@@ -21,14 +21,16 @@ pub fn get_lookups(
     dwarf_compile_dir: &PathBuf,
 ) -> HashMap<Pubkey, EntrypointLookup> {
     seer_debug!(
-        "Provided roots\n\t{:?}\n\t{:?}",
+        "Resolving paths\n\t{:?}\n\t{:?}",
         runtime_dir,
         dwarf_compile_dir
     );
-
     let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
+    seer_debug!("Assembling dwarf manager");
     let dwarf_manager = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
+    seer_debug!("Fetching source files");
     let source_files = dwarf_manager.get_all_source_files(&path_resolver);
+    seer_debug!("Found source files\n\t{:?}", source_files);
     let sources = Sources::new(path_resolver, source_files);
 
     seer_debug!("About to search for {} DWARF source(s)...", sources.len());
