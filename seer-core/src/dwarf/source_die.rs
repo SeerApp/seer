@@ -256,6 +256,10 @@ impl SourceDieTrace {
             self.build(sources, dwarf, unit, child, next_parent_offset, depth + 1);
         }
     }
+
+    pub fn sizes(&self) -> (usize, usize, usize) {
+        (self.trace.len(), self.parents.len(), self.source_die_ranges.len())
+    }
 }
 
 impl From<SourceDieTrace> for EntrypointLookup {

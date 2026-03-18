@@ -38,8 +38,13 @@ pub fn get_lookups(
     let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
 
     for program_address in dwarf_manager.get_pubkeys() {
+        seer_debug!("Building lookup for {:?}", program_address);
         let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
         let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
+
+        let sizes = source_die_trace.sizes();
+
+        seer_debug!("Assembled Source Die Trace for program {:?} with {} traces {} parents and {} die ranges", program_address, sizes.0, sizes.1, sizes.2);
 
         if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
             seer_debug!("Saving source trace for program {}", program_address);
