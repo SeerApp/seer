@@ -11,6 +11,7 @@ use crate::{
     entrypoint_lookup::EntrypointLookup,
     get_cwd,
     path_resolver::PathResolver,
+    runbook::{generate_runbooks, save_runbooks},
     save::{save, save_trace_tree},
     seer_debug, seer_trace,
     sources::Sources,
@@ -74,7 +75,7 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new() -> Self {
+    pub fn new(authority: Pubkey) -> Self {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -84,6 +85,9 @@ impl SeerContext {
         let target_deploy_dir = env::var("SEER_DWARF_COMPILE_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
+
+        let (txtx, main) = generate_runbooks(authority, &runtime_dir);
+        save_runbooks(&runtime_dir, txtx, main);
 
         Self {
             lookups: get_lookups(&runtime_dir, &target_deploy_dir),

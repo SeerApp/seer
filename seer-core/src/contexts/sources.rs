@@ -1,3 +1,5 @@
+use solana_pubkey::Pubkey;
+
 use crate::contexts::seer::SeerContext;
 
 pub struct SourcesContext {
@@ -6,7 +8,7 @@ pub struct SourcesContext {
 }
 
 impl SourcesContext {
-    pub async fn new() -> Self {
+    pub async fn new(authority: Pubkey) -> Self {
         // let eps = match Config::from_env().ok().expect("Error in parsing config") {
         //     Some(config) => Some(ExternalProgramService::new(config).await),
         //     None => {
@@ -15,7 +17,7 @@ impl SourcesContext {
         // };
 
         Self {
-            seer: SeerContext::new(),
+            seer: SeerContext::new(authority),
             // eps,
         }
     }

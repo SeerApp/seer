@@ -6,10 +6,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    analysis::Analysis,
-    entrypoint_lookup::EntrypointLookup,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
-    tracer::Tracer,
+    analysis::Analysis, entrypoint_lookup::EntrypointLookup, seer_debug, tracer::Tracer, tree::nodes::{RootViewChildren, TreeAccount, TreeRoot}
 };
 
 pub struct InstructionContext {
@@ -84,6 +81,7 @@ impl InstructionContext {
 
 impl From<InstructionContext> for Option<(u8, TreeRoot<RootViewChildren>)> {
     fn from(value: InstructionContext) -> Self {
+        seer_debug!("Program executed: {:?}", value.tracer.executed());
         Into::<Option<TreeRoot<RootViewChildren>>>::into(value.tracer).map(|tracer| {
             if let Some(analysis) = value.analysis {
                 analysis.save();

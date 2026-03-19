@@ -4,16 +4,18 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod logger;
+pub mod path_resolver;
+pub mod runbook;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
 pub mod tracer;
 pub mod tree;
-pub mod path_resolver;
 
 use std::cell::RefCell;
 use std::{env, path::PathBuf};
 
+use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::contexts::seer::SeerContext;
@@ -31,10 +33,6 @@ impl SeerSingleton {
             context: None,
             active: false,
         }
-    }
-
-    pub async fn init(&mut self) {
-        self.context = Some(SourcesContext::new().await);
     }
 
     pub fn set(&mut self, tx: Signature) {
@@ -62,10 +60,10 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init() {
+pub async fn init(authority: Pubkey) {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new().await;
+    let ctx = SourcesContext::new(authority).await;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
