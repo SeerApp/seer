@@ -8,7 +8,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-solana-account = "=3.0.0"
+solana-account = "^3.0.0"
 solana-pubkey = "=3.0.0"
 
 [lints]
