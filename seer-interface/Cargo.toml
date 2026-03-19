@@ -1,7 +1,7 @@
 [package]
 name = "seer-interface"
-version = "0.8.2"
-edition.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
 
 [lib]
 path = "src/lib.rs"

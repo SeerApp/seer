@@ -1063,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "seer-core"
-version = "0.8.2"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "seer-interface"
-version = "0.8.2"
+version = "1.1.1"
 dependencies = [
  "solana-account",
  "solana-pubkey 3.0.0",
