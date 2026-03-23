@@ -7,9 +7,23 @@ use std::{
 use chrono::Local;
 
 use crate::{
-    get_cwd, seer_debug,
+    get_cwd,
+    meta::TxMetadata,
+    seer_debug,
     tree::nodes::{RootViewChildren, TreeRoot},
 };
+
+pub fn save_meta(signature: &String, meta: &TxMetadata) {
+    let filename = format!("{}_meta.json", signature);
+
+    let output_path = get_output_path(&filename);
+    if !output_path.exists() {
+        seer_debug!("Creating meta file: {}", output_path.to_string_lossy());
+        let json = serde_json::to_string_pretty(&meta).unwrap();
+        let mut file = File::create(output_path).expect("Failed to write file");
+        file.write_all(json.as_bytes()).ok().unwrap();
+    }
+}
 
 pub fn save_trace_tree(
     signature: &String,
@@ -66,11 +80,10 @@ pub fn save(data: String, filename: String, extension: &str, timestamp: bool) {
         let mut file = File::create(output_path).expect("Failed to write file");
         file.write_all(data.as_bytes()).ok().unwrap();
     }
-
 }
 
 fn add_timestamp(filename: String) -> String {
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
 
-    format!{"{}_{}", filename, timestamp}
+    format! {"{}_{}", filename, timestamp}
 }

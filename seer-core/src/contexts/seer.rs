@@ -12,7 +12,7 @@ use crate::{
     get_cwd,
     path_resolver::PathResolver,
     runbook::{generate_runbooks, save_runbooks},
-    save::{save, save_trace_tree},
+    save::{save, save_meta, save_trace_tree},
     seer_debug, seer_trace,
     sources::Sources,
 };
@@ -112,6 +112,10 @@ impl SeerContext {
     pub fn unset_current_tx(&mut self) {
         if let Some(txc) = &self.transaction_context.take() {
             seer_trace!("Tx unset: {:?}", txc.signature);
+
+            if *txc.executed() {
+                save_meta(&txc.signature.to_string(), &txc.meta);
+            }
         }
     }
 

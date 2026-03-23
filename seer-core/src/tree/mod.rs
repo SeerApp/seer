@@ -86,7 +86,7 @@ impl InvokeContext {
         let root = &mut self.trees[live_trace.tree_index];
 
         if let Some(err) = maybe_err {
-            root.push_err(err.to_string());
+            root.push_err(err);
         }
 
         for p in &live_trace.pushables {

@@ -4,6 +4,7 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod logger;
+pub mod meta;
 pub mod path_resolver;
 pub mod runbook;
 pub mod save;

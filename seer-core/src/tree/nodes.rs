@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_account::{AccountSharedData, ReadableAccount};
+use solana_instruction_error::InstructionError;
 use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
@@ -61,14 +62,35 @@ impl TreeLog {
     }
 }
 
+fn deserialize_tree_error_message<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Text(String),
+        Error(InstructionError),
+    }
+    Ok(match Repr::deserialize(deserializer)? {
+        Repr::Text(s) => s,
+        Repr::Error(e) => e.to_string(),
+    })
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TreeError {
+    /// Human-readable text from [`InstructionError`]; JSON is always a string on write. Reads accept
+    /// either a string or legacy tagged `InstructionError` JSON (e.g. `{"Custom": 0}`).
+    #[serde(deserialize_with = "deserialize_tree_error_message")]
     pub message: String,
 }
 
 impl TreeError {
-    pub fn new(message: String) -> Self {
-        Self { message }
+    pub fn new(message: InstructionError) -> Self {
+        Self {
+            message: message.to_string(),
+        }
     }
 }
 
@@ -225,7 +247,7 @@ impl TreeRoot<RootChildren> {
         tree_view
     }
 
-    pub fn push_err(&mut self, error_message: String) {
+    pub fn push_err(&mut self, error_message: InstructionError) {
         match self.children.last_mut() {
             Some(RootChildren::Entrypoint(e)) => e.push_err(error_message),
             _ => self
@@ -320,7 +342,7 @@ impl TreeEntrypoint<EntrypointChildren> {
         tree_view
     }
 
-    pub fn push_err(&mut self, error_message: String) {
+    pub fn push_err(&mut self, error_message: InstructionError) {
         match self.children.last_mut() {
             Some(EntrypointChildren::Entrypoint(e)) => e.push_err(error_message),
             Some(EntrypointChildren::FnCall(f)) if f.has_fn_children() => f.push_err(error_message),
@@ -515,7 +537,7 @@ impl TreeFnCall<FnCallChildren> {
         tree_view
     }
 
-    pub fn push_err(&mut self, error_message: String) {
+    pub fn push_err(&mut self, error_message: InstructionError) {
         match self.children.last_mut() {
             Some(FnCallChildren::Entrypoint(e)) => e.push_err(error_message),
             _ => self

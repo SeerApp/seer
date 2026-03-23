@@ -6,16 +6,19 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    entrypoint_lookup::EntrypointLookup,
     contexts::instruction::InstructionContext,
-    tree::nodes::{RootViewChildren, TreeRoot},
+    entrypoint_lookup::EntrypointLookup,
+    meta::TxMetadata,
     step_mirror::StepMirror,
+    tree::nodes::{RootViewChildren, TreeRoot},
 };
 
 pub struct TransactionContext {
     pub signature: Signature,
     instruction_context: Option<InstructionContext>,
     pub step_mirror: Option<StepMirror>,
+    pub meta: TxMetadata,
+    executed: bool,
 }
 
 impl<'a> TransactionContext {
@@ -24,6 +27,8 @@ impl<'a> TransactionContext {
             signature,
             instruction_context: None,
             step_mirror: None,
+            meta: TxMetadata::default(),
+            executed: false,
         }
     }
 
@@ -36,11 +41,13 @@ impl<'a> TransactionContext {
     }
 
     pub fn end_instruction(&mut self) -> Option<(u8, TreeRoot<RootViewChildren>)> {
-        let mut icx = self.instruction_context
+        let mut icx = self
+            .instruction_context
             .take()
             .expect("Ending instruction before it exists");
 
         if icx.executed() {
+            self.executed = true;
             if let Some(step_mirror) = &mut self.step_mirror {
                 for acc in step_mirror.check_diffs() {
                     icx.account_diff(acc);
@@ -63,6 +70,7 @@ impl<'a> TransactionContext {
     }
 
     pub fn end_program(&mut self, err: Option<InstructionError>) {
+        self.meta.set_output(err.clone());
         self.instruction_context
             .as_mut()
             .expect("Ending program before instruction context exists")
@@ -70,7 +78,8 @@ impl<'a> TransactionContext {
     }
 
     pub fn log(&mut self, message: &str) {
-        let icx = self.instruction_context
+        let icx = self
+            .instruction_context
             .as_mut()
             .expect("Logging before instruction context exists");
 
@@ -104,5 +113,9 @@ impl<'a> TransactionContext {
         }
 
         icx.step(lookups, i, mem, reg);
+    }
+
+    pub fn executed(&self) -> &bool {
+        &self.executed
     }
 }
