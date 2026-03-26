@@ -58,7 +58,13 @@ impl<'a> TransactionContext {
         icx.into()
     }
 
-    pub unsafe fn start_program(&mut self, program_address: Pubkey, mirror: &dyn GuestStepMirror) {
+    pub unsafe fn start_program(
+        &mut self,
+        accounts: Vec<Pubkey>,
+        data: Vec<u8>,
+        program_address: Pubkey,
+        mirror: &dyn GuestStepMirror,
+    ) {
         if self.step_mirror.is_none() {
             self.step_mirror = Some(StepMirror::new(mirror));
         }
@@ -66,7 +72,7 @@ impl<'a> TransactionContext {
         self.instruction_context
             .as_mut()
             .expect("Starting program before instruction context exists")
-            .start_program(program_address);
+            .start_program(accounts, data, program_address);
     }
 
     pub fn end_program(&mut self, err: Option<InstructionError>) {

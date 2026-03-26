@@ -40,7 +40,7 @@ impl InvokeContext {
         }
     }
 
-    pub fn start_program(&mut self, sender: Pubkey, receiver: Pubkey) {
+    pub fn start_program(&mut self, accounts: Vec<Pubkey>, data: Vec<u8>, sender: Pubkey, receiver: Pubkey) {
         let tree_len = self.trees.len();
 
         if let Some(live_trace) = self.live_trace.last_mut() {
@@ -67,6 +67,8 @@ impl InvokeContext {
         self.trees.push(TreeRoot {
             sender,
             receiver,
+            accounts,
+            data,
             children: vec![],
         });
 
@@ -183,6 +185,8 @@ impl InvokeContext {
 
 impl From<InvokeContext> for TreeRoot<RootViewChildren> {
     fn from(value: InvokeContext) -> Self {
-        TreeRoot::clone_into_view(0, &value.trees)
+        let mut root = TreeRoot::clone_into_view(0, &value.trees);
+        root.flatten_account_diffs();
+        root
     }
 }

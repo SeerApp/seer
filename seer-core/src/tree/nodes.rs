@@ -18,6 +18,9 @@ pub struct TreeRoot<C> {
     pub sender: Pubkey,
     #[serde_as(as = "DisplayFromStr")]
     pub receiver: Pubkey,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub accounts: Vec<Pubkey>,
+    pub data: Vec<u8>,
     pub children: Vec<C>,
 }
 
@@ -206,6 +209,127 @@ impl From<&EntrypointChildren> for RootChildren {
     }
 }
 
+impl TreeRoot<RootViewChildren> {
+    /// Flattens *sequential sibling* `Account` diffs that target the same account `key`.
+    ///
+    /// For runs like `Account(k, before=a1, after=b1)` followed later by
+    /// `Account(k, before=a2, after=b2)` (adjacent siblings only), we merge them into:
+    /// `Account(k, before=a1, after=b2)`.
+    ///
+    /// This pass is applied recursively for all levels of nesting in the trace tree.
+    pub fn flatten_account_diffs(&mut self) {
+        Self::flatten_root_view_children(&mut self.children);
+    }
+
+    fn flatten_root_view_children(children: &mut Vec<RootViewChildren>) {
+        let old_children = std::mem::take(children);
+        let mut new_children: Vec<RootViewChildren> = Vec::with_capacity(old_children.len());
+
+        for child in old_children {
+            match child {
+                RootViewChildren::Invoke(mut root) => {
+                    root.flatten_account_diffs();
+                    new_children.push(RootViewChildren::Invoke(root));
+                }
+                RootViewChildren::Entrypoint(mut entrypoint) => {
+                    Self::flatten_entrypoint_view_children(&mut entrypoint.children);
+                    new_children.push(RootViewChildren::Entrypoint(entrypoint));
+                }
+                RootViewChildren::Account(acc) => {
+                    if let Some(RootViewChildren::Account(prev)) = new_children.last_mut() {
+                        if prev.key == acc.key {
+                            // Keep the original "before" (from the first element in the run),
+                            // but extend the "after" to the last element in the run.
+                            prev.after = acc.after;
+                            continue;
+                        }
+                    }
+
+                    new_children.push(RootViewChildren::Account(acc));
+                }
+                RootViewChildren::Log(l) => new_children.push(RootViewChildren::Log(l)),
+                RootViewChildren::Error(e) => new_children.push(RootViewChildren::Error(e)),
+            }
+        }
+
+        *children = new_children;
+    }
+
+    fn flatten_entrypoint_view_children(children: &mut Vec<EntrypointViewChildren>) {
+        let old_children = std::mem::take(children);
+        let mut new_children: Vec<EntrypointViewChildren> = Vec::with_capacity(old_children.len());
+
+        for child in old_children {
+            match child {
+                EntrypointViewChildren::Invoke(mut root) => {
+                    root.flatten_account_diffs();
+                    new_children.push(EntrypointViewChildren::Invoke(root));
+                }
+                EntrypointViewChildren::Entrypoint(mut entrypoint) => {
+                    Self::flatten_entrypoint_view_children(&mut entrypoint.children);
+                    new_children.push(EntrypointViewChildren::Entrypoint(entrypoint));
+                }
+                EntrypointViewChildren::FnCall(mut fn_call) => {
+                    Self::flatten_fn_call_view_children(&mut fn_call.children);
+                    new_children.push(EntrypointViewChildren::FnCall(fn_call));
+                }
+                EntrypointViewChildren::Account(acc) => {
+                    if let Some(EntrypointViewChildren::Account(prev)) = new_children.last_mut() {
+                        if prev.key == acc.key {
+                            prev.after = acc.after;
+                            continue;
+                        }
+                    }
+
+                    new_children.push(EntrypointViewChildren::Account(acc));
+                }
+                EntrypointViewChildren::Log(l) => new_children.push(EntrypointViewChildren::Log(l)),
+                EntrypointViewChildren::Error(e) => {
+                    new_children.push(EntrypointViewChildren::Error(e))
+                }
+            }
+        }
+
+        *children = new_children;
+    }
+
+    fn flatten_fn_call_view_children(children: &mut Vec<FnCallViewChildren>) {
+        let old_children = std::mem::take(children);
+        let mut new_children: Vec<FnCallViewChildren> = Vec::with_capacity(old_children.len());
+
+        for child in old_children {
+            match child {
+                FnCallViewChildren::Entrypoint(mut entrypoint) => {
+                    Self::flatten_entrypoint_view_children(&mut entrypoint.children);
+                    new_children.push(FnCallViewChildren::Entrypoint(entrypoint));
+                }
+                FnCallViewChildren::FnCall(mut fn_call) => {
+                    Self::flatten_fn_call_view_children(&mut fn_call.children);
+                    new_children.push(FnCallViewChildren::FnCall(fn_call));
+                }
+                FnCallViewChildren::Invoke(mut root) => {
+                    root.flatten_account_diffs();
+                    new_children.push(FnCallViewChildren::Invoke(root));
+                }
+                FnCallViewChildren::Account(acc) => {
+                    if let Some(FnCallViewChildren::Account(prev)) = new_children.last_mut() {
+                        if prev.key == acc.key {
+                            prev.after = acc.after;
+                            continue;
+                        }
+                    }
+
+                    new_children.push(FnCallViewChildren::Account(acc));
+                }
+                FnCallViewChildren::Log(l) => new_children.push(FnCallViewChildren::Log(l)),
+                FnCallViewChildren::Error(e) => new_children.push(FnCallViewChildren::Error(e)),
+            }
+        }
+
+        *children = new_children;
+    }
+}
+
 impl TreeRoot<RootChildren> {
     pub fn clone_into_view(
         source_index: usize,
@@ -217,6 +341,8 @@ impl TreeRoot<RootChildren> {
             sender: root.sender,
             receiver: root.receiver,
             children: vec![],
+            data: root.data.clone(),
+            accounts: root.accounts.clone(),
         };
 
         for child in &root.children {

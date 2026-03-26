@@ -149,6 +149,8 @@ impl SeerContext {
 
     pub unsafe fn start_program(
         &mut self,
+        accounts: Vec<Pubkey>,
+        data: Vec<u8>,
         program_address: Pubkey,
         step_mirror: &dyn GuestStepMirror,
     ) {
@@ -156,7 +158,7 @@ impl SeerContext {
         self.transaction_context
             .as_mut()
             .expect("Starting program before transaction context")
-            .start_program(program_address, step_mirror);
+            .start_program(accounts, data, program_address, step_mirror);
     }
 
     pub fn end_program(&mut self, program_address: Pubkey, err: Option<InstructionError>) {

@@ -22,7 +22,7 @@ pub fn _run_tx(
 
     for e in analysis_trace.events {
         match e {
-            ExecutionEvent::StartProgram(program_address) => tracer.start_program(program_address),
+            ExecutionEvent::StartProgram(program_address) => tracer.start_program(Vec::new(), Vec::new(), program_address),
             ExecutionEvent::EndProgram(err) => tracer.end_program(err),
             ExecutionEvent::AccountDiff(data) => tracer.account_diff(data),
             ExecutionEvent::Log(log) => tracer.log(&log),

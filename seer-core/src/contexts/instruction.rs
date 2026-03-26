@@ -36,8 +36,8 @@ impl InstructionContext {
         }
     }
 
-    pub fn start_program(&mut self, program_address: Pubkey) {
-        self.tracer.start_program(program_address);
+    pub fn start_program(&mut self, accounts: Vec<Pubkey>, data: Vec<u8>, program_address: Pubkey) {
+        self.tracer.start_program(accounts, data, program_address);
 
         if let Some(analysis) = self.analysis.as_mut() {
             analysis.start_program(program_address);
