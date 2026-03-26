@@ -2,9 +2,9 @@ use std::{collections::HashMap, path::PathBuf};
 
 use seer_core::{
     analysis::{Analysis, ExecutionEvent},
+    contexts::tracer::Tracer,
     entrypoint_lookup::EntrypointLookup,
     get_cwd,
-    tracer::Tracer,
     tree::nodes::{RootViewChildren, TreeRoot},
 };
 use solana_pubkey::Pubkey;
@@ -22,7 +22,9 @@ pub fn _run_tx(
 
     for e in analysis_trace.events {
         match e {
-            ExecutionEvent::StartProgram(program_address) => tracer.start_program(Vec::new(), Vec::new(), program_address),
+            ExecutionEvent::StartProgram(program_address) => {
+                tracer.start_program(Vec::new(), Vec::new(), program_address)
+            }
             ExecutionEvent::EndProgram(err) => tracer.end_program(err),
             ExecutionEvent::AccountDiff(data) => tracer.account_diff(data),
             ExecutionEvent::Log(log) => tracer.log(&log),

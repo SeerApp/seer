@@ -4,11 +4,9 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
+    contexts::invoke::InvokeContext,
     entrypoint_lookup::EntrypointLookup,
-    tree::{
-        nodes::{RootViewChildren, TreeAccount, TreeRoot},
-        InvokeContext,
-    },
+    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
 /// Sender-preserving layer
@@ -29,7 +27,12 @@ impl Tracer {
 
     pub fn start_program(&mut self, accounts: Vec<Pubkey>, data: Vec<u8>, program_address: Pubkey) {
         if let Some(invoke_context) = self.invoke_context.as_mut() {
-            invoke_context.start_program(accounts, data, invoke_context.get_last_receiver(), program_address);
+            invoke_context.start_program(
+                accounts,
+                data,
+                invoke_context.get_last_receiver(),
+                program_address,
+            );
         } else {
             let mut invoke_context = InvokeContext::new();
             invoke_context.start_program(accounts, data, self.sender, program_address);

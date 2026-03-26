@@ -11,6 +11,26 @@ use solana_instruction_error::InstructionError;
 use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum ProgramIdentifier {
+
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct ParsedInstruction {
+    pub id: ProgramIdentifier,
+    pub name: String,
+    pub account_names: Vec<String>,
+    pub args: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ParsedAccount {
+    pub id: ProgramIdentifier,
+    pub account_type: String,
+    pub data: serde_json::Value,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, PartialEq)]
 pub struct TreeRoot<C> {
@@ -22,6 +42,7 @@ pub struct TreeRoot<C> {
     pub accounts: Vec<Pubkey>,
     pub data: Vec<u8>,
     pub children: Vec<C>,
+    pub parsed: Option<ParsedInstruction>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -115,6 +136,7 @@ pub struct AccountSharedDataWrapper {
     owner: Pubkey,
     executable: bool,
     rent_epoch: Epoch,
+    parsed: Option<ParsedAccount>,
 }
 
 impl From<AccountSharedData> for AccountSharedDataWrapper {
@@ -125,6 +147,7 @@ impl From<AccountSharedData> for AccountSharedDataWrapper {
             owner: *value.owner(),
             executable: value.executable(),
             rent_epoch: value.rent_epoch(),
+            parsed: None,
         }
     }
 }
@@ -343,6 +366,7 @@ impl TreeRoot<RootChildren> {
             children: vec![],
             data: root.data.clone(),
             accounts: root.accounts.clone(),
+            parsed: root.parsed.clone(),
         };
 
         for child in &root.children {

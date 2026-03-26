@@ -10,7 +10,6 @@ pub mod runbook;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
-pub mod tracer;
 pub mod tree;
 
 use std::cell::RefCell;

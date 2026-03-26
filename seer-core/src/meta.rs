@@ -13,9 +13,15 @@ struct TxOutput {
 }
 
 #[derive(Serialize, Clone)]
+struct TxNotes {
+    warnings: Vec<String>,
+}
+
+#[derive(Serialize, Clone)]
 struct TxData {
     success: bool,
     output: TxOutput,
+    notes: TxNotes,
 }
 
 #[derive(Serialize, Clone)]
@@ -31,6 +37,7 @@ impl TxMetadata {
             data: TxData {
                 success: true,
                 output: TxOutput { error: None },
+                notes: TxNotes { warnings: vec![] }
             },
         }
     }

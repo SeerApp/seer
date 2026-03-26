@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    analysis::Analysis, entrypoint_lookup::EntrypointLookup, seer_debug, tracer::Tracer, tree::nodes::{RootViewChildren, TreeAccount, TreeRoot}
+    analysis::Analysis, contexts::tracer::Tracer, entrypoint_lookup::EntrypointLookup, seer_debug, tree::nodes::{RootViewChildren, TreeAccount, TreeRoot}
 };
 
 pub struct InstructionContext {
