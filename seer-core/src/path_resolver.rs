@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PathResolver {
     // Necessary for resolving absolute DWARF paths to relative paths.
     compile_dir: PathBuf,

@@ -3,13 +3,16 @@ pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
+pub mod idl;
 pub mod logger;
 pub mod meta;
 pub mod path_resolver;
+pub mod program_manager;
 pub mod runbook;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
+pub mod target_reader;
 pub mod tree;
 
 use std::cell::RefCell;

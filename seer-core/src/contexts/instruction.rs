@@ -1,12 +1,14 @@
-use std::collections::HashMap;
-
 use seer_interface::GuestMemory;
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    analysis::Analysis, contexts::tracer::Tracer, entrypoint_lookup::EntrypointLookup, seer_debug, tree::nodes::{RootViewChildren, TreeAccount, TreeRoot}
+    analysis::Analysis,
+    contexts::tracer::Tracer,
+    program_manager::program_manager::ProgramManager,
+    seer_debug,
+    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
 pub struct InstructionContext {
@@ -54,12 +56,12 @@ impl InstructionContext {
 
     pub fn step<M: GuestMemory>(
         &mut self,
-        lookups: &HashMap<Pubkey, EntrypointLookup>,
+        program_manager: &ProgramManager,
         i: u64,
         _: &mut M,
         _: &[u64; 12],
     ) {
-        self.tracer.step(lookups, i);
+        self.tracer.step(program_manager, i);
 
         if let Some(analysis) = self.analysis.as_mut() {
             analysis.step(i);
@@ -76,6 +78,10 @@ impl InstructionContext {
 
     pub fn executed(&self) -> bool {
         self.tracer.executed()
+    }
+
+    pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
+        self.tracer.finalize_tree(&program_manager);
     }
 }
 

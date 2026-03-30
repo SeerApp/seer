@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use seer_interface::{GuestMemory, GuestStepMirror};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
@@ -7,8 +5,8 @@ use solana_signature::Signature;
 
 use crate::{
     contexts::instruction::InstructionContext,
-    entrypoint_lookup::EntrypointLookup,
     meta::TxMetadata,
+    program_manager::program_manager::ProgramManager,
     step_mirror::StepMirror,
     tree::nodes::{RootViewChildren, TreeRoot},
 };
@@ -40,7 +38,10 @@ impl<'a> TransactionContext {
         ));
     }
 
-    pub fn end_instruction(&mut self) -> Option<(u8, TreeRoot<RootViewChildren>)> {
+    pub fn end_instruction(
+        &mut self,
+        program_manager: &ProgramManager,
+    ) -> Option<(u8, TreeRoot<RootViewChildren>)> {
         let mut icx = self
             .instruction_context
             .take()
@@ -53,6 +54,8 @@ impl<'a> TransactionContext {
                     icx.account_diff(acc);
                 }
             }
+
+            icx.finalize_tree(program_manager);
         }
 
         icx.into()
@@ -102,7 +105,7 @@ impl<'a> TransactionContext {
 
     pub fn step<M: GuestMemory>(
         &mut self,
-        lookups: &HashMap<Pubkey, EntrypointLookup>,
+        program_manager: &ProgramManager,
         i: u64,
         mem: &mut M,
         reg: &[u64; 12],
@@ -118,7 +121,7 @@ impl<'a> TransactionContext {
             }
         }
 
-        icx.step(lookups, i, mem, reg);
+        icx.step(program_manager, i, mem, reg);
     }
 
     pub fn executed(&self) -> &bool {

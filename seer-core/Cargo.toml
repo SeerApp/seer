@@ -33,6 +33,11 @@ path-clean = "1.0.1"
 serde_with = "3.16.1"
 chrono = "0.4.42"
 pathdiff = "0.2"
+codama-nodes = "0.8.0"
+byteorder = "1.5.0"
+hex = "0.4.3"
+bs58 = "0.5.1"
+base64 = "0.22.1"
 
 [lints]
 workspace = true

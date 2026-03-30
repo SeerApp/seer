@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fs, io,
     path::PathBuf,
 };
@@ -7,65 +7,38 @@ use std::{
 use gimli::{Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
 use path_clean::PathClean;
-use solana_keypair::read_keypair_file;
-use solana_pubkey::Pubkey;
-use solana_signer::Signer;
 
 use crate::path_resolver::PathResolver;
 
+/// Keeps living references to sections, to avoid borrow issues.
 pub struct DwarfManager {
-    sections: HashMap<Pubkey, DwarfSections<Vec<u8>>>,
+    sections: Option<DwarfSections<Vec<u8>>>,
 }
 
 impl DwarfManager {
-    pub fn new(target_deploy_dir: &PathBuf) -> Self {
-        let mut manager = DwarfManager {
-            sections: HashMap::new(),
-        };
-
-        manager.set_dwarf_sections(target_deploy_dir);
-
-        manager
-    }
-
-    pub fn get_dwarf(&self, program_address: &Pubkey) -> Option<Dwarf<impl Reader + use<'_>>> {
-        if self.sections.contains_key(program_address) {
-            return Some(
-                self.sections[&program_address]
-                    .borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little))
-                    .into(),
-            );
+    pub fn new() -> Self {
+        Self {
+            sections: None,
         }
-
-        None
     }
 
-    pub fn get_pubkeys(&self) -> Vec<&Pubkey> {
-        self.sections.keys().collect()
-    }
-
-    pub fn contains(&self, program_address: &Pubkey) -> bool {
-        self.sections.contains_key(program_address)
+    pub fn get_dwarf(&self) -> Option<Dwarf<impl Reader + use<'_>>> {
+        let sections = self.sections.as_ref()?;
+        Some(
+            sections
+                .borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little))
+                .into(),
+        )
     }
 
     pub fn get_all_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
-        let mut all_source_files = HashSet::new();
-
-        for (program_address, _) in &self.sections {
-            all_source_files.extend(self.get_source_files(path_resolver, program_address));
-        }
-
-        all_source_files
+        self.get_source_files(path_resolver)
     }
 
-    pub fn get_source_files(
-        &self,
-        path_resolver: &PathResolver,
-        program_address: &Pubkey,
-    ) -> HashSet<PathBuf> {
+    pub fn get_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
         let dwarf = self
-            .get_dwarf(program_address)
-            .expect("Failed to fetch dwarf for program");
+            .get_dwarf()
+            .expect("Failed to fetch dwarf");
 
         let mut units = dwarf.units();
 
@@ -134,83 +107,11 @@ impl DwarfManager {
         files
     }
 
-    fn set_dwarf_sections(&mut self, target_deploy_dir: &PathBuf) {
-        let mut bases: HashSet<String> = HashSet::new();
-
-        let entries = match fs::read_dir(target_deploy_dir) {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let file_name = match path.file_name().and_then(|s| s.to_str()) {
-                Some(s) => s,
-                None => continue,
-            };
-
-            if let Some(base) = file_name.strip_suffix("-keypair.json") {
-                bases.insert(base.to_string());
-            } else if let Some(base) = file_name.strip_suffix("-pubkey.json") {
-                bases.insert(base.to_string());
-            } else if let Some(base) = file_name.strip_suffix(".so") {
-                bases.insert(base.to_string());
-            } else if let Some(base) = file_name.strip_suffix(".debug") {
-                bases.insert(base.to_string());
-            }
-        }
-
-        for base in bases {
-            let keypair_path = target_deploy_dir.join(format!("{base}-keypair.json"));
-            let pubkey_path = target_deploy_dir.join(format!("{base}-pubkey.json"));
-            let dwarf_path = target_deploy_dir.join(format!("{base}.debug"));
-
-            let pubkey = if keypair_path.exists() {
-                let keypair = read_keypair_file(&keypair_path).unwrap_or_else(|e| {
-                    panic!("Failed to read keypair `{}`: {e}", keypair_path.display())
-                });
-                keypair.pubkey()
-            } else if pubkey_path.exists() {
-                let pubkey_str: String =
-                    serde_json::from_str(&fs::read_to_string(&pubkey_path).unwrap_or_else(|e| {
-                        panic!(
-                            "Failed to read pubkey file `{}`: {e}",
-                            pubkey_path.display()
-                        )
-                    }))
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "Failed to parse pubkey file `{}`: {e}",
-                            pubkey_path.display()
-                        )
-                    });
-                pubkey_str.parse().unwrap_or_else(|e| {
-                    panic!("Failed to parse pubkey string `{}`: {e}", pubkey_str)
-                })
-            } else {
-                panic!(
-                    "Program `{base}` is missing both keypair and pubkey file (expected `{}` or `{}`)",
-                    keypair_path.display(),
-                    pubkey_path.display()
-                );
-            };
-
-            if !dwarf_path.exists() {
-                panic!(
-                    "Program `{base}` is missing DWARF file: {}",
-                    dwarf_path.display()
-                );
-            }
-
-            self.set_dwarf_section(pubkey, &dwarf_path);
-        }
-    }
-
-    fn set_dwarf_section(&mut self, program_address: Pubkey, path: &PathBuf) {
+    pub fn set_dwarf_section(&mut self, path: &PathBuf) {
         let data = fs::read(path).expect("Failed to read DWARF path");
         let obj = object::File::parse(&*data).expect("Failed to parse DWARF data");
 
-        let sections = DwarfSections::load(|id: SectionId| -> io::Result<Vec<u8>> {
+        let sections: DwarfSections<Vec<u8>> = DwarfSections::load(|id: SectionId| -> io::Result<Vec<u8>> {
             match obj.section_by_name(id.name()) {
                 Some(s) => Ok(s
                     .uncompressed_data()
@@ -221,6 +122,6 @@ impl DwarfManager {
         })
         .expect("Failed to parse DWARF sections");
 
-        self.sections.insert(program_address, sections);
+        self.sections = Some(sections);
     }
 }

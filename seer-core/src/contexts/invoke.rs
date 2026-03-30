@@ -1,16 +1,17 @@
-use std::{collections::HashMap, vec};
+use std::vec;
 
 use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    entrypoint_lookup::EntrypointLookup, seer_trace, tree::{
+    program_manager::program_manager::ProgramManager,
+    tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
         nodes::{
             EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint,
             TreeLog, TreeRoot,
         },
-    }
+    },
 };
 
 struct LiveTrace {
@@ -35,7 +36,13 @@ impl InvokeContext {
         }
     }
 
-    pub fn start_program(&mut self, accounts: Vec<Pubkey>, data: Vec<u8>, sender: Pubkey, receiver: Pubkey) {
+    pub fn start_program(
+        &mut self,
+        accounts: Vec<Pubkey>,
+        data: Vec<u8>,
+        sender: Pubkey,
+        receiver: Pubkey,
+    ) {
         let tree_len = self.trees.len();
 
         if let Some(live_trace) = self.live_trace.last_mut() {
@@ -94,12 +101,7 @@ impl InvokeContext {
         self.live_trace.pop();
     }
 
-    pub fn step(
-        &mut self,
-        lookups: &HashMap<Pubkey, EntrypointLookup>,
-        i: u64,
-        executed: &mut bool,
-    ) {
+    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, executed: &mut bool) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -119,13 +121,14 @@ impl InvokeContext {
             root.push_entrypoint(lke);
         }
 
-        if let Some(lookup) = lookups.get(&self.trees[live_trace.tree_index].receiver) {
-            if let Some(entrypoint) = lookup.get_entrypoint(i) {
+        let current_program = &self.trees[live_trace.tree_index].receiver;
+
+        if let Some(entrypoint_lookup) = program_manager.get_entrypoint_lookup(current_program) {
+            if let Some(entrypoint) = entrypoint_lookup.get_entrypoint(i) {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
             }
 
-            seer_trace!("Caught execition in step");
             *executed = true;
         }
     }
@@ -177,12 +180,20 @@ impl InvokeContext {
             .tree_index]
             .receiver
     }
+
+    pub fn trees_iter_mut(&mut self) -> impl Iterator<Item = &mut TreeRoot<RootChildren>> {
+        self.trees.iter_mut()
+    }
+
+    pub fn flatten_account_diffs(&mut self) {
+        for tree in self.trees.iter_mut() {
+            tree.flatten_account_diffs();
+        }
+    }
 }
 
 impl From<InvokeContext> for TreeRoot<RootViewChildren> {
     fn from(value: InvokeContext) -> Self {
-        let mut root = TreeRoot::clone_into_view(0, &value.trees);
-        root.flatten_account_diffs();
-        root
+        TreeRoot::clone_into_view(0, &value.trees)
     }
 }

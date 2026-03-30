@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
     contexts::invoke::InvokeContext,
-    entrypoint_lookup::EntrypointLookup,
+    program_manager::program_manager::ProgramManager,
     tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
@@ -47,11 +45,11 @@ impl Tracer {
             .end_program(err);
     }
 
-    pub fn step(&mut self, lookups: &HashMap<Pubkey, EntrypointLookup>, i: u64) {
+    pub fn step(&mut self, program_manager: &ProgramManager, i: u64) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
-            .step(lookups, i, &mut self.executed);
+            .step(program_manager, i, &mut self.executed);
     }
 
     pub fn log(&mut self, message: &str) {
@@ -70,6 +68,21 @@ impl Tracer {
 
     pub fn executed(&self) -> bool {
         self.executed
+    }
+
+    pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
+        let invoke_context = self
+            .invoke_context
+            .as_mut()
+            .expect("Finalizing tree on empty invoke context");
+
+        invoke_context.flatten_account_diffs();
+
+        for tree in invoke_context.trees_iter_mut() {
+            if let Some(idl_lookup) = program_manager.get_idl_lookup(&tree.receiver) {
+                idl_lookup.parse_tree(tree);
+            }
+        }
     }
 }
 
