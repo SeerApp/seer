@@ -2,9 +2,8 @@ pub mod cursor;
 pub mod parsed_arg;
 
 use codama_nodes::{
-    DefaultValueStrategy, DiscriminatorNode, InstructionInputValueNode, InstructionNode, Number,
-    NumberFormat::{self},
-    RootNode, TypeNode,
+    AccountNode, DefaultValueStrategy, DiscriminatorNode, InstructionNode, NestedTypeNodeTrait,
+    RootNode, StructTypeNode, ValueNode,
 };
 use solana_pubkey::Pubkey;
 
@@ -12,9 +11,9 @@ use crate::{
     idl::{
         lookup::{
             cursor::Cursor,
-            parsed_arg::{ParsedArg, ParsedArgValue},
+            parsed_arg::{ParsedArg, ParsedArgValue, ViewStructTypeNode},
         },
-        types::{ParsedInstruction, ProgramIdentifier},
+        types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
     },
     tree::nodes::{RootChildren, TreeRoot},
 };
@@ -30,7 +29,63 @@ impl IdlLookup {
 
     pub fn parse_tree(&self, _: &mut TreeRoot<RootChildren>) {}
 
-    pub fn get_instruction(&self, _: &Vec<Pubkey>, data: &mut &[u8]) -> Option<ParsedInstruction> {
+    fn parse_at_offset_matches<F>(
+        &self,
+        data: &[u8],
+        offset: usize,
+        is_last: bool,
+        ty: &codama_nodes::TypeNode,
+        cmp: F,
+    ) -> bool
+    where
+        F: FnOnce(&ParsedArgValue) -> bool,
+    {
+        let defined_types = &self.root_node.program.defined_types;
+
+        if offset >= data.len() {
+            return false;
+        }
+
+        let slice = &data[offset..];
+        let mut cur = Cursor::new(slice);
+        ParsedArgValue::from(ty, &mut cur, defined_types, is_last, None)
+            .map_or(false, |parsed| cmp(&parsed))
+    }
+
+    fn discriminator_matches<'a, F>(
+        &'a self,
+        data: &[u8],
+        is_last: bool,
+        discriminator: &DiscriminatorNode,
+        resolve_field: F,
+    ) -> bool
+    where
+        F: FnOnce(
+            &str,
+        ) -> Option<(
+            &'a codama_nodes::TypeNode,
+            Box<dyn Fn(&ParsedArgValue) -> bool + 'a>,
+        )>,
+    {
+        match discriminator {
+            DiscriminatorNode::Constant(node) => {
+                self.parse_at_offset_matches(data, node.offset, is_last, &node.constant.r#type, |parsed| {
+                    parsed.eq_value_node(&node.constant.value)
+                })
+            }
+            DiscriminatorNode::Field(node) => {
+                let field_name = node.name.to_string();
+                let (ty, cmp) = match resolve_field(&field_name) {
+                    Some(v) => v,
+                    None => return false,
+                };
+                self.parse_at_offset_matches(data, node.offset, is_last, ty, move |parsed| cmp(parsed))
+            }
+            DiscriminatorNode::Size(node) => data.len() == node.size,
+        }
+    }
+
+    pub fn get_instruction(&self, _: &Vec<Pubkey>, data: &[u8]) -> Option<ParsedInstruction> {
         if let Some(ix) = self.get_instruction_node(data) {
             let mut parsed_args = vec![];
             let mut account_names = vec![];
@@ -78,112 +133,81 @@ impl IdlLookup {
         }
     }
 
-    fn get_instruction_node(&self, data: &mut &[u8]) -> Option<&InstructionNode> {
-        for ix in &self.root_node.program.instructions {
-            if ix.discriminators.len() != 1 {
-                continue;
-            }
+    fn get_instruction_node(&self, data: &[u8]) -> Option<&InstructionNode> {
+        self.root_node
+            .program
+            .instructions
+            .iter()
+            .filter(|ix| ix.discriminators.len() == 1)
+            .find_map(|ix| {
+                self.discriminator_matches(data, true, &ix.discriminators[0], |field_name| {
+                    let argument = ix
+                        .arguments
+                        .iter()
+                        .find(|arg| arg.name.to_string() == field_name)?;
+                    let default_value = argument.default_value.as_ref()?;
+                    Some((
+                        &argument.r#type,
+                        Box::new(move |parsed| {
+                            parsed.eq_instruciton_input_value_node(default_value)
+                        }),
+                    ))
+                })
+                .then_some(ix)
+            })
+    }
 
-            let matched = match &ix.discriminators[0] {
-                DiscriminatorNode::Constant(_) => false,
-                DiscriminatorNode::Field(node) => {
-                    match ix.arguments.iter().find(|arg| {
-                        arg.name.to_string() == node.name.to_string()
-                            && matches!(
-                                &arg.r#type,
-                                TypeNode::Number(nt) if nt.format == NumberFormat::U8
-                            )
-                    }) {
-                        Some(argument) if node.offset < data.len() => {
-                            match argument.default_value.as_ref() {
-                                Some(InstructionInputValueNode::Number(number)) => {
-                                    match number.number {
-                                        Number::UnsignedInteger(n) => {
-                                            // We explicitly skip non-0 offset cases for now.
-                                            if node.offset != 0 {
-                                                false
-                                            } else {
-                                                data[node.offset] == n as u8
-                                            }
-                                        }
-                                        Number::SignedInteger(n) => {
-                                            // We explicitly skip non-0 offset cases for now.
-                                            if node.offset != 0 {
-                                                false
-                                            } else {
-                                                data[node.offset] == n as u8
-                                            }
-                                        }
-                                        Number::Float(_) => false,
-                                    }
-                                }
-                                _ => false,
-                            }
-                        }
-                        _ => false,
-                    }
-                }
-                DiscriminatorNode::Size(_) => false,
+    pub fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
+        if let Some(ax) = self.get_account_node(data) {
+            let mut cur = Cursor::new(data);
+            let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
+
+            let defined_types = &self.root_node.program.defined_types;
+
+            let parsed_arg = ParsedArg {
+                name: String::from(ax.name.clone()),
+                value: ParsedArgValue::Struct(ViewStructTypeNode::from(
+                    inner_struct,
+                    &mut cur,
+                    defined_types,
+                    false,
+                )),
             };
 
-            if matched {
-                return Some(ix);
-            }
+            Some(ParsedAccount {
+                id: ProgramIdentifier::Default,
+                data: parsed_arg,
+            })
+        } else {
+            None
         }
+    }
 
-        None
+    fn get_account_node(&self, data: &[u8]) -> Option<&AccountNode> {
+        self.root_node
+            .program
+            .accounts
+            .iter()
+            .filter(|ax| ax.discriminators.len() == 1)
+            .find_map(|ax| {
+                self.discriminator_matches(data, true, &ax.discriminators[0], |field_name| {
+                    let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
+                    let field = inner_struct
+                        .fields
+                        .iter()
+                        .find(|field| field.name.to_string() == field_name)?;
+                    let default_value: &ValueNode = field.default_value.as_ref()?;
+                    Some((
+                        &field.r#type,
+                        Box::new(move |parsed| parsed.eq_value_node(default_value)),
+                    ))
+                })
+                .then_some(ax)
+            })
     }
 
     // fn get_message(&self, message: String) -> String;
 
     // fn get_error(&self, error: Option<InstructionError>) -> Option<String>;
-
-    // fn get_account(&self, data: &Vec<u8>) -> Option<ParsedAccount>;
 }
 
-#[cfg(test)]
-mod test {
-    use std::str::FromStr;
-
-    use solana_pubkey::Pubkey;
-
-    use crate::program_manager::known_programs::get_known_programs;
-
-    #[test]
-    fn test_token_program_initialize_instruction_parse() {
-        let (_, token_program_idl_lookup) = &get_known_programs()[0];
-
-        let accounts = vec![
-            Pubkey::from_str("Gqdd8HC3FW5dBR2F6aNZagZrGbbUiHiMBq7oA7m8CfU").unwrap(),
-            Pubkey::from_str("HYTLyA85bXocKVYnQuNPFqCtF4xXfFSvC17awsonMfV9").unwrap(),
-        ];
-        let invoke_data: Vec<u8> = vec![
-            18, 138, 129, 140, 92, 164, 216, 236, 167, 115, 236, 179, 240, 124, 136, 192, 103, 163,
-            246, 23, 107, 172, 219, 65, 180, 86, 198, 48, 116, 73, 165, 107, 248,
-        ];
-
-        let mut data: &[u8] = &invoke_data[..];
-        let parsed_ix = token_program_idl_lookup.get_instruction(&accounts, &mut data);
-
-        println!("{:?}", parsed_ix);
-    }
-
-    #[test]
-    fn test_token_program_parse() {
-        let (_, token_program_idl_lookup) = &get_known_programs()[0];
-
-        let accounts = vec![
-            Pubkey::from_str("Gqdd8HC3FW5dBR2F6aNZagZrGbbUiHiMBq7oA7m8CfU").unwrap(),
-            Pubkey::from_str("AKfqTU9gGTCXoAjiZEpKt5x9fBwD3ZU4D3wCJ87KZqTu").unwrap(),
-        ];
-        let invoke_data: Vec<u8> = vec![
-            6, 2, 1, 30, 185, 24, 117, 164, 97, 180, 227, 158, 14, 164, 123, 209, 60, 254, 122,
-            218, 196, 232, 100, 78, 46, 201, 109, 241, 146, 1, 242, 62, 118, 123, 76,
-        ];
-
-        let mut data: &[u8] = &invoke_data[..];
-        let parsed_ix = token_program_idl_lookup.get_instruction(&accounts, &mut data);
-
-        println!("{:?}", parsed_ix);
-    }
-}

@@ -3,9 +3,14 @@ use core::panic;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use codama_nodes::{
-    AmountTypeNode, ArrayTypeNode, BooleanTypeNode, BytesEncoding, BytesValueNode, CamelCaseString, DateTimeTypeNode, DefinedTypeNode, Docs, EnumTypeNode, EnumVariantTypeNode, HiddenPrefixTypeNode, HiddenSuffixTypeNode, NestedTypeNodeTrait, NumberFormat, NumberTypeNode, OptionTypeNode, SetTypeNode, StringTypeNode, StructTypeNode, TupleTypeNode, TypeNode,
+    AmountTypeNode, ArrayTypeNode, BooleanTypeNode, BytesEncoding, BytesValueNode,
+    DateTimeTypeNode, DefinedTypeNode, Docs, EnumTypeNode, EnumVariantTypeNode,
+    HiddenPrefixTypeNode, HiddenSuffixTypeNode, InstructionInputValueNode, NestedTypeNodeTrait,
+    Number, NumberFormat, NumberTypeNode, NumberValueNode, OptionTypeNode, SetTypeNode,
+    StringTypeNode, StructTypeNode, TupleTypeNode, TypeNode, ValueNode,
 };
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use solana_pubkey::Pubkey;
 
 use crate::idl::lookup::cursor::Cursor;
@@ -17,6 +22,7 @@ pub struct ParsedArg {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(tag = "type", content = "value")]
 pub enum ParsedArgValue {
     Amount(ViewAmountTypeNode),
     Array(ViewArrayTypeNode),
@@ -38,6 +44,31 @@ pub enum ParsedArgValue {
 }
 
 impl ParsedArgValue {
+    fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
+        match (arg.format, node_number) {
+            (
+                NumberFormat::U8
+                | NumberFormat::U16
+                | NumberFormat::U32
+                | NumberFormat::U64
+                | NumberFormat::U128,
+                Number::UnsignedInteger(node_number),
+            ) => arg.value.parse::<u64>().unwrap() == node_number,
+            (
+                NumberFormat::I8
+                | NumberFormat::I16
+                | NumberFormat::I32
+                | NumberFormat::I64
+                | NumberFormat::I128,
+                Number::SignedInteger(node_number),
+            ) => arg.value.parse::<i64>().unwrap() == node_number,
+            (NumberFormat::F32 | NumberFormat::F64, Number::Float(node_number)) => {
+                arg.value.parse::<f64>().unwrap() == node_number
+            }
+            _ => false,
+        }
+    }
+
     pub fn from<'a>(
         origin: &TypeNode,
         cur: &mut Cursor<'a>,
@@ -62,14 +93,20 @@ impl ParsedArgValue {
                 defined_types,
                 is_last,
             ))),
-            TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(ViewBooleanTypeNode::from(b, cur))),
+            TypeNode::Boolean(b) => {
+                Some(ParsedArgValue::Boolean(ViewBooleanTypeNode::from(b, cur)))
+            }
             TypeNode::Bytes(_) => {
                 if !is_last && passed_len.is_none() {
                     panic!("No passed length detected for non-final argument");
                 }
-                Some(ParsedArgValue::Bytes(ViewBytesTypeNode::from(cur, passed_len)))
+                Some(ParsedArgValue::Bytes(ViewBytesTypeNode::from(
+                    cur, passed_len,
+                )))
             }
-            TypeNode::DateTime(d) => Some(ParsedArgValue::DateTime(ViewDateTimeTypeNode::from(d, cur))),
+            TypeNode::DateTime(d) => {
+                Some(ParsedArgValue::DateTime(ViewDateTimeTypeNode::from(d, cur)))
+            }
             TypeNode::Enum(e) => Some(ParsedArgValue::Enum(ViewEnumTypeNode::from(
                 e,
                 cur,
@@ -101,7 +138,9 @@ impl ParsedArgValue {
                 defined_types,
                 is_last,
             ))),
-            TypeNode::PublicKey(_) => Some(ParsedArgValue::PublicKey(ViewPublicKeyTypeNode::from(cur))),
+            TypeNode::PublicKey(_) => {
+                Some(ParsedArgValue::PublicKey(ViewPublicKeyTypeNode::from(cur)))
+            }
             TypeNode::Tuple(t) => Some(ParsedArgValue::Tuple(ViewTupleTypeNode::from(
                 t,
                 cur,
@@ -116,7 +155,7 @@ impl ParsedArgValue {
                     s, cur, passed_len,
                 )))
             }
-            TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, defined_types, is_last),
+            TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, defined_types),
             TypeNode::PostOffset(p) => cur.get_post_offset_value(p, defined_types, is_last),
             TypeNode::PreOffset(p) => cur.get_pre_offset_value(p, defined_types, is_last),
             TypeNode::RemainderOption(r) => {
@@ -144,6 +183,34 @@ impl ParsedArgValue {
             TypeNode::ZeroableOption(_) => {
                 panic!("Debugger not yet equipped for ZeroableOption IDL layouts")
             }
+        }
+    }
+
+    pub fn eq_value_node(&self, value: &ValueNode) -> bool {
+        match (self, value) {
+            (ParsedArgValue::Number(arg), ValueNode::Number(node)) => {
+                let node: &NumberValueNode = node;
+                Self::eq_number_value(arg, node.number)
+            }
+            (ParsedArgValue::Bytes(arg), ValueNode::Bytes(node)) => {
+                let node: &BytesValueNode = node;
+                arg.value == ViewBytesTypeNode::from_value(node).value
+            }
+            _ => false,
+        }
+    }
+
+    pub fn eq_instruciton_input_value_node(&self, value: &InstructionInputValueNode) -> bool {
+        match (self, value) {
+            (ParsedArgValue::Number(arg), InstructionInputValueNode::Number(node)) => {
+                let node: &NumberValueNode = node;
+                Self::eq_number_value(arg, node.number)
+            }
+            (ParsedArgValue::Bytes(arg), InstructionInputValueNode::Bytes(node)) => {
+                let node: &BytesValueNode = node;
+                arg.value == ViewBytesTypeNode::from_value(node).value
+            }
+            _ => false,
         }
     }
 
@@ -231,7 +298,7 @@ impl ViewStructTypeNode {
 
         for field in &origin.fields {
             let view_field: ViewStructFieldTypeNode = ViewStructFieldTypeNode {
-                name: field.name.clone(),
+                name: String::from(field.name.clone()),
                 docs: field.docs.clone(),
                 value: ParsedArgValue::from(&field.r#type, cur, defined_types, is_last, None)
                     .expect("Struct field cannot be residual"),
@@ -246,7 +313,8 @@ impl ViewStructTypeNode {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewStructFieldTypeNode {
-    pub name: CamelCaseString,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "crate::is_default")]
     pub docs: Docs,
 
     pub value: ParsedArgValue,
@@ -270,8 +338,10 @@ impl ViewOptionTypeNode {
     }
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewPublicKeyTypeNode {
+    #[serde_as(as = "DisplayFromStr")]
     pub value: Pubkey,
 }
 

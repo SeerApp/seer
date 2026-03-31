@@ -7,9 +7,9 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     entrypoint_lookup::EntrypointLookup,
-    idl::lookup::IdlLookup,
+    idl::{get_idl_from_target, lookup::IdlLookup},
     path_resolver::PathResolver,
-    program_manager::{entrypoints::get_entrypoint, idls::get_idl_from_target, known_programs::add_known_programs},
+    program_manager::{entrypoints::get_entrypoint, known_programs::add_known_programs},
     target_reader::get_targets,
 };
 

@@ -13,8 +13,7 @@ pub struct ParsedInstruction {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ParsedAccount {
     pub id: ProgramIdentifier,
-    pub account_type: String,
-    pub data: serde_json::Value,
+    pub data: ParsedArg,
 }
 
 /// Identifier to inform UI. Used for special cases which require unique

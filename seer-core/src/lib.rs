@@ -105,3 +105,10 @@ pub fn unset() {
 pub fn get_cwd() -> PathBuf {
     env::current_dir().expect("env::curnet_dir failed!")
 }
+
+pub fn is_default<T>(value: &T) -> bool
+where
+    T: Default + PartialEq,
+{
+    value == &T::default()
+}

@@ -322,13 +322,12 @@ impl<'a> Cursor<'a> {
         &mut self,
         origin: &FixedSizeTypeNode<TypeNode>,
         defined_types: &[DefinedTypeNode],
-        is_last: bool,
     ) -> Option<ParsedArgValue> {
         let bytes = self.take(origin.size);
 
         // Decode the wrapped type from the fixed-size slice only.
         let mut inner = Cursor::new(bytes);
-        ParsedArgValue::from(&origin.r#type, &mut inner, defined_types, is_last, None)
+        ParsedArgValue::from(&origin.r#type, &mut inner, defined_types, true, None)
     }
 
     pub fn get_post_offset_value(

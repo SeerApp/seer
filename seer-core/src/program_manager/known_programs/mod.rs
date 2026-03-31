@@ -9,8 +9,9 @@ use solana_pubkey::Pubkey;
 use crate::{idl::lookup::IdlLookup, program_manager::program_manager::ProgramInfo};
 
 
-const KNOWN_PROGRAMS: [(&str, &str); 1] = [
-    ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", include_str!("token_program.json"))
+const KNOWN_PROGRAMS: [(&str, &str); 2] = [
+    ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", include_str!("token_program.json")),
+    ("11111111111111111111111111111111", include_str!("system_program.json")),
 ];
 
 pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {
@@ -25,20 +26,22 @@ pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {
 }
 
 pub fn get_known_programs() -> Vec<(Pubkey, IdlLookup)> {
-    KNOWN_PROGRAMS
-        .iter()
-        .map(|(key_str, idl_json)| get_known_program(key_str, idl_json))
-        .collect()
+    build_idl_lookups(&KNOWN_PROGRAMS)
 }
 
-fn get_known_program(key_str: &str, idl_json: &str) -> (Pubkey, IdlLookup) {
-    (
-        Pubkey::from_str(key_str).unwrap(),
-        IdlLookup::new(
-            serde_json::from_str::<RootNode>(idl_json)
-                .expect("Known program must have valid embedded IDL JSON"),
-        ),
-    )
+pub fn build_idl_lookups(entries: &[(&str, &str)]) -> Vec<(Pubkey, IdlLookup)> {
+    entries
+        .iter()
+        .map(|(key_str, idl_json)| {
+            (
+                Pubkey::from_str(key_str).unwrap(),
+                IdlLookup::new(
+                    serde_json::from_str::<RootNode>(idl_json)
+                        .expect("Known program must have valid embedded IDL JSON"),
+                ),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]
