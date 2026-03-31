@@ -3,18 +3,21 @@ use core::panic;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use codama_nodes::{
-    AmountTypeNode, ArrayTypeNode, BooleanTypeNode, BytesEncoding, BytesValueNode, CamelCaseString,
-    DateTimeTypeNode, Docs, EnumTypeNode, EnumVariantTypeNode, HiddenPrefixTypeNode,
-    HiddenSuffixTypeNode, NestedTypeNodeTrait, NumberFormat, NumberTypeNode, OptionTypeNode,
-    SetTypeNode, StringTypeNode, StructTypeNode, TupleTypeNode, TypeNode,
+    AmountTypeNode, ArrayTypeNode, BooleanTypeNode, BytesEncoding, BytesValueNode, CamelCaseString, DateTimeTypeNode, DefinedTypeNode, Docs, EnumTypeNode, EnumVariantTypeNode, HiddenPrefixTypeNode, HiddenSuffixTypeNode, NestedTypeNodeTrait, NumberFormat, NumberTypeNode, OptionTypeNode, SetTypeNode, StringTypeNode, StructTypeNode, TupleTypeNode, TypeNode,
 };
 use serde::{Deserialize, Serialize};
 use solana_pubkey::Pubkey;
 
 use crate::idl::lookup::cursor::Cursor;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
-pub enum ParsedArg {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ParsedArg {
+    pub name: String,
+    pub value: ParsedArgValue,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub enum ParsedArgValue {
     Amount(ViewAmountTypeNode),
     Array(ViewArrayTypeNode),
     Boolean(ViewBooleanTypeNode),
@@ -34,37 +37,113 @@ pub enum ParsedArg {
     Set(ViewSetTypeNode),
 }
 
-impl ParsedArg {
-    pub fn from<'a>(origin: &TypeNode, cur: &mut Cursor<'a>) -> Option<Self> {
+impl ParsedArgValue {
+    pub fn from<'a>(
+        origin: &TypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+        passed_len: Option<usize>,
+    ) -> Option<Self> {
         match origin {
-            TypeNode::Amount(a) => Some(ParsedArg::Amount(ViewAmountTypeNode::from(a, cur))),
-            TypeNode::Array(a) => Some(ParsedArg::Array(ViewArrayTypeNode::from(a, cur))),
-            TypeNode::Boolean(b) => Some(ParsedArg::Boolean(ViewBooleanTypeNode::from(b, cur))),
-            TypeNode::Bytes(_) => Some(ParsedArg::Bytes(ViewBytesTypeNode::from(cur))),
-            TypeNode::DateTime(d) => Some(ParsedArg::DateTime(ViewDateTimeTypeNode::from(d, cur))),
-            TypeNode::Enum(e) => Some(ParsedArg::Enum(ViewEnumTypeNode::from(e, cur))),
-            TypeNode::HiddenPrefix(h) => Some(ParsedArg::HiddenPrefix(
-                ViewHiddenPrefixTypeNode::from(h, cur),
+            TypeNode::Link(link) => {
+                let resolved = defined_types
+                    .iter()
+                    .find(|dt| dt.name == link.name)
+                    .unwrap_or_else(|| {
+                        panic!("defined type not found for link {:?}", link.name);
+                    });
+                Self::from(&resolved.r#type, cur, defined_types, is_last, passed_len)
+            }
+            TypeNode::Amount(a) => Some(ParsedArgValue::Amount(ViewAmountTypeNode::from(a, cur))),
+            TypeNode::Array(a) => Some(ParsedArgValue::Array(ViewArrayTypeNode::from(
+                a,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(ViewBooleanTypeNode::from(b, cur))),
+            TypeNode::Bytes(_) => {
+                if !is_last && passed_len.is_none() {
+                    panic!("No passed length detected for non-final argument");
+                }
+                Some(ParsedArgValue::Bytes(ViewBytesTypeNode::from(cur, passed_len)))
+            }
+            TypeNode::DateTime(d) => Some(ParsedArgValue::DateTime(ViewDateTimeTypeNode::from(d, cur))),
+            TypeNode::Enum(e) => Some(ParsedArgValue::Enum(ViewEnumTypeNode::from(
+                e,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::HiddenPrefix(h) => Some(ParsedArgValue::HiddenPrefix(
+                ViewHiddenPrefixTypeNode::from(h, cur, defined_types, is_last),
             )),
-            TypeNode::HiddenSuffix(h) => Some(ParsedArg::HiddenSuffix(
-                ViewHiddenSuffixTypeNode::from(h, cur),
+            TypeNode::HiddenSuffix(h) => Some(ParsedArgValue::HiddenSuffix(
+                ViewHiddenSuffixTypeNode::from(h, cur, defined_types, is_last),
             )),
-            TypeNode::Map(m) => Some(ParsedArg::Map(ViewMapTypeNode::from(m, cur))),
-            TypeNode::Number(n) => Some(ParsedArg::Number(ViewNumberTypeNode::from(n, cur))),
-            TypeNode::Struct(s) => Some(ParsedArg::Struct(ViewStructTypeNode::from(s, cur))),
-            TypeNode::Option(o) => Some(ParsedArg::Option(ViewOptionTypeNode::from(o, cur))),
-            TypeNode::PublicKey(_) => Some(ParsedArg::PublicKey(ViewPublicKeyTypeNode::from(cur))),
-            TypeNode::Tuple(t) => Some(ParsedArg::Tuple(ViewTupleTypeNode::from(t, cur))),
-            TypeNode::String(s) => Some(ParsedArg::String(ViewStringTypeNode::from(s, cur))),
-            TypeNode::FixedSize(f) => cur.get_fixed_size_value(f),
-            TypeNode::PostOffset(p) => cur.get_post_offset_value(p),
-            TypeNode::PreOffset(p) => cur.get_pre_offset_value(p),
-            TypeNode::RemainderOption(r) if !cur.is_empty() => ParsedArg::from(&r.item, cur),
+            TypeNode::Map(m) => Some(ParsedArgValue::Map(ViewMapTypeNode::from(
+                m,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::Number(n) => Some(ParsedArgValue::Number(ViewNumberTypeNode::from(n, cur))),
+            TypeNode::Struct(s) => Some(ParsedArgValue::Struct(ViewStructTypeNode::from(
+                s,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::Option(o) => Some(ParsedArgValue::Option(ViewOptionTypeNode::from(
+                o,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::PublicKey(_) => Some(ParsedArgValue::PublicKey(ViewPublicKeyTypeNode::from(cur))),
+            TypeNode::Tuple(t) => Some(ParsedArgValue::Tuple(ViewTupleTypeNode::from(
+                t,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::String(s) => {
+                if !is_last && passed_len.is_none() {
+                    panic!("No passed length detected for non-final argument");
+                }
+                Some(ParsedArgValue::String(ViewStringTypeNode::from(
+                    s, cur, passed_len,
+                )))
+            }
+            TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, defined_types, is_last),
+            TypeNode::PostOffset(p) => cur.get_post_offset_value(p, defined_types, is_last),
+            TypeNode::PreOffset(p) => cur.get_pre_offset_value(p, defined_types, is_last),
+            TypeNode::RemainderOption(r) => {
+                if !is_last {
+                    panic!("Remained option must be last argument");
+                }
+                if !cur.is_empty() {
+                    ParsedArgValue::from(&r.item, cur, defined_types, is_last, passed_len)
+                } else {
+                    None
+                }
+            }
             TypeNode::Sentinel(_) => panic!("Debugger not yet equipped for Sentinel IDL layouts"),
-            TypeNode::Set(s) => Some(ParsedArg::Set(ViewSetTypeNode::from(s, cur))),
-            // This implies a significant change to how I currently manage dynamic data structures. 
-            TypeNode::SizePrefix(s) => {}
-            _ => panic!("Unsupported TypeNode variant for ParsedArg view"),
+            TypeNode::Set(s) => Some(ParsedArgValue::Set(ViewSetTypeNode::from(
+                s,
+                cur,
+                defined_types,
+                is_last,
+            ))),
+            TypeNode::SizePrefix(s) => cur.get_dynamic_value(s, defined_types, is_last),
+            TypeNode::SolAmount(s) => Some(ParsedArgValue::Number(ViewNumberTypeNode::from(
+                s.number.get_nested_type_node(),
+                cur,
+            ))),
+            TypeNode::ZeroableOption(_) => {
+                panic!("Debugger not yet equipped for ZeroableOption IDL layouts")
+            }
         }
     }
 
@@ -76,19 +155,19 @@ impl ParsedArg {
     //         }
     //         ValueNode::Boolean(v) => {
     //             let v = v as &BooleanValueNode;
-    //             ParsedArg::Boolean(ViewBooleanTypeNode::from_value(v.boolean))
+    //             ParsedArgValue::Boolean(ViewBooleanTypeNode::from_value(v.boolean))
     //         }
     //         ValueNode::Bytes(v) => {
     //             let v = v as &BytesValueNode;
-    //             ParsedArg::Bytes(ViewBytesTypeNode::from_value(v))
+    //             ParsedArgValue::Bytes(ViewBytesTypeNode::from_value(v))
     //         }
     //         ValueNode::Constant(v) => {
     //             let v = v as &ConstantValueNode;
-    //             ParsedArg::from_value(&v.value)
+    //             ParsedArgValue::from_value(&v.value)
     //         }
     //         ValueNode::Enum(v) => {
     //             let v = v as &EnumValueNode;
-    //             ParsedArg::Enum(ViewEnumTypeNode::from_value(v))
+    //             ParsedArgValue::Enum(ViewEnumTypeNode::from_value(v))
     //         }
     //         ValueNode::Map(v) => {
     //             let v = v as MapValueNode;
@@ -121,7 +200,7 @@ impl ParsedArg {
     // }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewNumberTypeNode {
     pub value: String,
     pub format: NumberFormat,
@@ -136,20 +215,25 @@ impl ViewNumberTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewStructTypeNode {
     pub fields: Vec<ViewStructFieldTypeNode>,
 }
 
 impl ViewStructTypeNode {
-    pub fn from<'a>(origin: &StructTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &StructTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         let mut fields = vec![];
 
         for field in &origin.fields {
             let view_field: ViewStructFieldTypeNode = ViewStructFieldTypeNode {
                 name: field.name.clone(),
                 docs: field.docs.clone(),
-                value: ParsedArg::from(&field.r#type, cur)
+                value: ParsedArgValue::from(&field.r#type, cur, defined_types, is_last, None)
                     .expect("Struct field cannot be residual"),
             };
 
@@ -160,28 +244,33 @@ impl ViewStructTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewStructFieldTypeNode {
     pub name: CamelCaseString,
     pub docs: Docs,
 
-    pub value: ParsedArg,
+    pub value: ParsedArgValue,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewOptionTypeNode {
-    pub value: Box<Option<ParsedArg>>,
+    pub value: Box<Option<ParsedArgValue>>,
 }
 
 impl ViewOptionTypeNode {
-    pub fn from<'a>(origin: &OptionTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &OptionTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         Self {
-            value: Box::new(cur.get_option_value(origin)),
+            value: Box::new(cur.get_option_value(origin, defined_types, is_last)),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewPublicKeyTypeNode {
     pub value: Pubkey,
 }
@@ -194,20 +283,24 @@ impl ViewPublicKeyTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewStringTypeNode {
     pub value: String,
 }
 
 impl ViewStringTypeNode {
-    pub fn from<'a>(origin: &StringTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &StringTypeNode,
+        cur: &mut Cursor<'a>,
+        passed_len: Option<usize>,
+    ) -> Self {
         Self {
-            value: cur.get_string_value(origin),
+            value: cur.get_string_value(origin, passed_len),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewAmountTypeNode {
     pub decimals: u8,
     pub unit: Option<String>,
@@ -224,7 +317,7 @@ impl ViewAmountTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewBooleanTypeNode {
     pub value: bool,
 }
@@ -242,58 +335,76 @@ impl ViewBooleanTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewArrayTypeNode {
-    pub values: Vec<ParsedArg>,
+    pub values: Vec<ParsedArgValue>,
 }
 
 impl ViewArrayTypeNode {
-    pub fn from<'a>(origin: &ArrayTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &ArrayTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         Self {
-            values: cur.get_array_value(origin),
+            values: cur.get_array_value(origin, defined_types, is_last),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewSetTypeNode {
-    pub values: Vec<ParsedArg>,
+    pub values: Vec<ParsedArgValue>,
 }
 
 impl ViewSetTypeNode {
-    pub fn from<'a>(origin: &SetTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &SetTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         Self {
-            values: cur.get_set_value(origin),
+            values: cur.get_set_value(origin, defined_types, is_last),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewTupleTypeNode {
-    pub items: Vec<ParsedArg>,
+    pub items: Vec<ParsedArgValue>,
 }
 
 impl ViewTupleTypeNode {
-    pub fn from<'a>(origin: &TupleTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &TupleTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         let items = origin
             .items
             .iter()
-            .map(|item| ParsedArg::from(item, cur).expect("Tuple items cannot be residual"))
+            .map(|item| {
+                ParsedArgValue::from(item, cur, defined_types, is_last, None)
+                    .expect("Tuple items cannot be residual")
+            })
             .collect();
 
         Self { items }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewBytesTypeNode {
     pub value: String,
 }
 
 impl ViewBytesTypeNode {
-    pub fn from<'a>(cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(cur: &mut Cursor<'a>, passed_len: Option<usize>) -> Self {
         Self {
-            value: cur.get_bytes_value(),
+            value: cur.get_bytes_value(passed_len),
         }
     }
 
@@ -310,7 +421,7 @@ impl ViewBytesTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewDateTimeTypeNode {
     pub value: String,
     pub format: NumberFormat,
@@ -326,18 +437,23 @@ impl ViewDateTimeTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewHiddenPrefixTypeNode {
-    pub prefix: Vec<ParsedArg>,
-    pub value: Box<ParsedArg>,
+    pub prefix: Vec<ParsedArgValue>,
+    pub value: Box<ParsedArgValue>,
 }
 
 impl ViewHiddenPrefixTypeNode {
-    pub fn from<'a>(origin: &HiddenPrefixTypeNode<TypeNode>, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &HiddenPrefixTypeNode<TypeNode>,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         let mut prefix = vec![];
         for constant in &origin.prefix {
             prefix.push(
-                ParsedArg::from(&*constant.r#type, cur)
+                ParsedArgValue::from(&*constant.r#type, cur, defined_types, is_last, None)
                     .expect("Hidden prefixes cannot be residual"),
             );
         }
@@ -345,31 +461,37 @@ impl ViewHiddenPrefixTypeNode {
         Self {
             prefix,
             value: Box::new(
-                ParsedArg::from(&*origin.r#type, cur)
+                ParsedArgValue::from(&*origin.r#type, cur, defined_types, is_last, None)
                     .expect("Hidden prefix values cannot be residual"),
             ),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewHiddenSuffixTypeNode {
-    pub suffix: Vec<ParsedArg>,
-    pub value: Box<ParsedArg>,
+    pub suffix: Vec<ParsedArgValue>,
+    pub value: Box<ParsedArgValue>,
 }
 
 impl ViewHiddenSuffixTypeNode {
-    pub fn from<'a>(origin: &HiddenSuffixTypeNode<TypeNode>, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &HiddenSuffixTypeNode<TypeNode>,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         // `HiddenSuffixTypeNode` serializes the wrapped `type` first, then the `suffix` constants.
         // Decode the wrapped value first, then consume the suffix from the input cursor.
         let value = Box::new(
-            ParsedArg::from(&*origin.r#type, cur).expect("Hidden suffix values cannot be residual"),
+            ParsedArgValue::from(&*origin.r#type, cur, defined_types, is_last, None)
+                .expect("Hidden suffix values cannot be residual"),
         );
 
         let mut suffix = vec![];
         for constant in &origin.suffix {
             suffix.push(
-                ParsedArg::from(&*constant.r#type, cur)
+                ParsedArgValue::from(&*constant.r#type, cur, defined_types, is_last, None)
                     .expect("Hidden suffixes cannot be residual"),
             );
         }
@@ -378,9 +500,9 @@ impl ViewHiddenSuffixTypeNode {
     }
 }
 
-// #[derive(Serialize, Deserialize, Clone, PartialEq)]
+// #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 // pub struct ViewSentinelTypeNode {
-//     pub value: Box<ParsedArg>,
+//     pub value: Box<ParsedArgValue>,
 //     pub sentinel: ConstantValueNode,
 // }
 
@@ -388,27 +510,32 @@ impl ViewHiddenSuffixTypeNode {
 //     pub fn from<'a>(origin: &SentinelTypeNode<TypeNode>, cur: &mut Cursor<'a>) -> Self {
 //         Self {
 //             value: Box::new(
-//                 ParsedArg::from(&origin.r#type, cur).expect("Sentinel values cannot be residual"),
+//                 ParsedArgValue::from(&origin.r#type, cur).expect("Sentinel values cannot be residual"),
 //             ),
 //             sentinel: origin.sentinel.clone(),
 //         }
 //     }
 // }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewMapTypeNode {
     pub entries: Vec<ViewMapEntryTypeNode>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewMapEntryTypeNode {
-    pub key: ParsedArg,
-    pub value: ParsedArg,
+    pub key: ParsedArgValue,
+    pub value: ParsedArgValue,
 }
 
 impl ViewMapTypeNode {
-    pub fn from<'a>(origin: &codama_nodes::MapTypeNode, cur: &mut Cursor<'a>) -> Self {
-        let pairs = cur.get_map_value(origin);
+    pub fn from<'a>(
+        origin: &codama_nodes::MapTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
+        let pairs = cur.get_map_value(origin, defined_types, is_last);
         let entries = pairs
             .into_iter()
             .map(|(key, value)| ViewMapEntryTypeNode { key, value })
@@ -417,14 +544,14 @@ impl ViewMapTypeNode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewEnumTypeNode {
     pub discriminant: String,
     pub name: String,
     pub value: ViewEnumValue,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub enum ViewEnumValue {
     Empty,
     Tuple(ViewTupleTypeNode),
@@ -432,7 +559,12 @@ pub enum ViewEnumValue {
 }
 
 impl ViewEnumTypeNode {
-    pub fn from<'a>(origin: &EnumTypeNode, cur: &mut Cursor<'a>) -> Self {
+    pub fn from<'a>(
+        origin: &EnumTypeNode,
+        cur: &mut Cursor<'a>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Self {
         let discriminant = cur.get_number_value(origin.size.get_nested_type_node());
         let tag = discriminant.parse::<usize>().unwrap_or_default();
 
@@ -460,6 +592,8 @@ impl ViewEnumTypeNode {
                 value: ViewEnumValue::Struct(ViewStructTypeNode::from(
                     ev.r#struct.get_nested_type_node(),
                     cur,
+                    defined_types,
+                    is_last,
                 )),
             },
             EnumVariantTypeNode::Tuple(ev) => Self {
@@ -468,6 +602,8 @@ impl ViewEnumTypeNode {
                 value: ViewEnumValue::Tuple(ViewTupleTypeNode::from(
                     ev.tuple.get_nested_type_node(),
                     cur,
+                    defined_types,
+                    is_last,
                 )),
             },
         }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::idl::lookup::parsed_arg::ParsedArg;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ParsedInstruction {
     pub id: ProgramIdentifier,
     pub name: String,

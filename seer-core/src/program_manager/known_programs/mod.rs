@@ -24,7 +24,7 @@ pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {
     }
 }
 
-fn get_known_programs() -> Vec<(Pubkey, IdlLookup)> {
+pub fn get_known_programs() -> Vec<(Pubkey, IdlLookup)> {
     KNOWN_PROGRAMS
         .iter()
         .map(|(key_str, idl_json)| get_known_program(key_str, idl_json))

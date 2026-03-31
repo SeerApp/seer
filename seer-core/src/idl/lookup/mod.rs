@@ -6,11 +6,16 @@ use codama_nodes::{
     NumberFormat::{self},
     RootNode, TypeNode,
 };
-use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    idl::{lookup::{cursor::Cursor, parsed_arg::ParsedArg}, types::{ParsedAccount, ParsedInstruction}},
+    idl::{
+        lookup::{
+            cursor::Cursor,
+            parsed_arg::{ParsedArg, ParsedArgValue},
+        },
+        types::{ParsedInstruction, ProgramIdentifier},
+    },
     tree::nodes::{RootChildren, TreeRoot},
 };
 
@@ -25,15 +30,25 @@ impl IdlLookup {
 
     pub fn parse_tree(&self, _: &mut TreeRoot<RootChildren>) {}
 
-    fn get_instruction(
-        &self,
-        accounts: &Vec<Pubkey>,
-        data: &mut &[u8],
-    ) -> Option<&ParsedInstruction> {
+    pub fn get_instruction(&self, _: &Vec<Pubkey>, data: &mut &[u8]) -> Option<ParsedInstruction> {
         if let Some(ix) = self.get_instruction_node(data) {
-            for argument in &ix.arguments {
-                let mut cur = Cursor::new(data);
-                let parsed_arg = ParsedArg::from(&argument.r#type, &mut cur);
+            let mut parsed_args = vec![];
+            let mut account_names = vec![];
+
+            for account in &ix.accounts {
+                account_names.push(String::from(account.name.clone()));
+            }
+
+            let arg_count = ix.arguments.len();
+            let mut cur = Cursor::new(data);
+            for (idx, argument) in ix.arguments.iter().enumerate() {
+                let parsed_arg_value = ParsedArgValue::from(
+                    &argument.r#type,
+                    &mut cur,
+                    &self.root_node.program.defined_types,
+                    idx + 1 == arg_count,
+                    None,
+                );
 
                 if let Some(default_value_strategy) = argument.default_value_strategy {
                     match default_value_strategy {
@@ -43,9 +58,21 @@ impl IdlLookup {
                         _ => {}
                     }
                 }
+
+                if let Some(parsed_arg_value) = parsed_arg_value {
+                    parsed_args.push(ParsedArg {
+                        name: argument.name.clone().to_string(),
+                        value: parsed_arg_value,
+                    });
+                }
             }
 
-            None
+            Some(ParsedInstruction {
+                id: ProgramIdentifier::Default,
+                name: String::from(ix.name.clone()),
+                account_names,
+                args: parsed_args,
+            })
         } else {
             None
         }
@@ -107,9 +134,56 @@ impl IdlLookup {
         None
     }
 
-    fn get_message(&self, message: String) -> String;
+    // fn get_message(&self, message: String) -> String;
 
-    fn get_error(&self, error: Option<InstructionError>) -> Option<String>;
+    // fn get_error(&self, error: Option<InstructionError>) -> Option<String>;
 
-    fn get_account(&self, data: &Vec<u8>) -> Option<ParsedAccount>;
+    // fn get_account(&self, data: &Vec<u8>) -> Option<ParsedAccount>;
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use solana_pubkey::Pubkey;
+
+    use crate::program_manager::known_programs::get_known_programs;
+
+    #[test]
+    fn test_token_program_initialize_instruction_parse() {
+        let (_, token_program_idl_lookup) = &get_known_programs()[0];
+
+        let accounts = vec![
+            Pubkey::from_str("Gqdd8HC3FW5dBR2F6aNZagZrGbbUiHiMBq7oA7m8CfU").unwrap(),
+            Pubkey::from_str("HYTLyA85bXocKVYnQuNPFqCtF4xXfFSvC17awsonMfV9").unwrap(),
+        ];
+        let invoke_data: Vec<u8> = vec![
+            18, 138, 129, 140, 92, 164, 216, 236, 167, 115, 236, 179, 240, 124, 136, 192, 103, 163,
+            246, 23, 107, 172, 219, 65, 180, 86, 198, 48, 116, 73, 165, 107, 248,
+        ];
+
+        let mut data: &[u8] = &invoke_data[..];
+        let parsed_ix = token_program_idl_lookup.get_instruction(&accounts, &mut data);
+
+        println!("{:?}", parsed_ix);
+    }
+
+    #[test]
+    fn test_token_program_parse() {
+        let (_, token_program_idl_lookup) = &get_known_programs()[0];
+
+        let accounts = vec![
+            Pubkey::from_str("Gqdd8HC3FW5dBR2F6aNZagZrGbbUiHiMBq7oA7m8CfU").unwrap(),
+            Pubkey::from_str("AKfqTU9gGTCXoAjiZEpKt5x9fBwD3ZU4D3wCJ87KZqTu").unwrap(),
+        ];
+        let invoke_data: Vec<u8> = vec![
+            6, 2, 1, 30, 185, 24, 117, 164, 97, 180, 227, 158, 14, 164, 123, 209, 60, 254, 122,
+            218, 196, 232, 100, 78, 46, 201, 109, 241, 146, 1, 242, 62, 118, 123, 76,
+        ];
+
+        let mut data: &[u8] = &invoke_data[..];
+        let parsed_ix = token_program_idl_lookup.get_instruction(&accounts, &mut data);
+
+        println!("{:?}", parsed_ix);
+    }
 }

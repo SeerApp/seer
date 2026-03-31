@@ -4,15 +4,15 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use codama_nodes::{
-    ArrayTypeNode, BytesEncoding, CountNode, Endian, FixedSizeTypeNode, MapTypeNode,
-    NestedTypeNodeTrait, NumberFormat, NumberTypeNode, OptionTypeNode, PostOffsetStrategy,
-    PostOffsetTypeNode, PreOffsetStrategy, PreOffsetTypeNode, SetTypeNode, StringTypeNode,
-    TypeNode,
+    ArrayTypeNode, BytesEncoding, CountNode, DefinedTypeNode, Endian, FixedSizeTypeNode,
+    MapTypeNode, NestedTypeNodeTrait, NumberFormat, NumberTypeNode, OptionTypeNode,
+    PostOffsetStrategy, PostOffsetTypeNode, PreOffsetStrategy, PreOffsetTypeNode, SetTypeNode,
+    SizePrefixTypeNode, StringTypeNode, TypeNode,
 };
 use solana_program::short_vec::decode_shortu16_len;
 use solana_pubkey::Pubkey;
 
-use crate::idl::lookup::parsed_arg::ParsedArg;
+use crate::idl::lookup::parsed_arg::ParsedArgValue;
 
 pub struct Cursor<'a> {
     buf: &'a [u8],
@@ -228,7 +228,12 @@ impl<'a> Cursor<'a> {
         Pubkey::new_from_array(arr)
     }
 
-    pub fn get_option_value(&mut self, origin: &OptionTypeNode) -> Option<ParsedArg> {
+    pub fn get_option_value(
+        &mut self,
+        origin: &OptionTypeNode,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Option<ParsedArgValue> {
         // Move tracking index up the prefix amount.
         let number_value = self.get_number_value(origin.prefix.get_nested_type_node());
 
@@ -237,23 +242,23 @@ impl<'a> Cursor<'a> {
             // Reserve space for absent value.
             if !origin.fixed {
                 // Move tracking index up the reserved amount.
-                ParsedArg::from(&*origin.item, self);
+                ParsedArgValue::from(&*origin.item, self, defined_types, is_last, None);
             }
 
             None
         // Some case.
         } else if number_value == "1" {
-            Some(ParsedArg::from(&*origin.item, self).expect("Option values cannot be residual"))
+            Some(
+                ParsedArgValue::from(&*origin.item, self, defined_types, is_last, None)
+                    .expect("Option values cannot be residual"),
+            )
         } else {
             panic!("Option value prefix is {}", number_value);
         }
     }
 
-    pub fn get_string_value(&mut self, origin: &StringTypeNode) -> String {
-        let remaining = &self.buf[self.pos..];
-        let (len, consumed) = decode_shortu16_len(remaining).unwrap();
-        self.pos += consumed;
-
+    pub fn get_string_value(&mut self, origin: &StringTypeNode, len: Option<usize>) -> String {
+        let len = len.unwrap_or(self.remaining());
         let bytes = self.take(len);
 
         match origin.encoding {
@@ -264,35 +269,50 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn get_array_value(&mut self, origin: &ArrayTypeNode) -> Vec<ParsedArg> {
+    pub fn get_array_value(
+        &mut self,
+        origin: &ArrayTypeNode,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Vec<ParsedArgValue> {
         let item = &origin.item;
-        self.decode_with_count_node(&origin.count, |cursor| ParsedArg::from(item, cursor))
+        self.decode_with_count_node(&origin.count, |cursor| {
+            ParsedArgValue::from(item, cursor, defined_types, is_last, None)
+        })
     }
 
-    pub fn get_set_value(&mut self, origin: &SetTypeNode) -> Vec<ParsedArg> {
+    pub fn get_set_value(
+        &mut self,
+        origin: &SetTypeNode,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Vec<ParsedArgValue> {
         let item = &origin.item;
-        self.decode_with_count_node(&origin.count, |cursor| ParsedArg::from(item, cursor))
+        self.decode_with_count_node(&origin.count, |cursor| {
+            ParsedArgValue::from(item, cursor, defined_types, is_last, None)
+        })
     }
 
-    pub fn get_map_value(&mut self, origin: &MapTypeNode) -> Vec<(ParsedArg, ParsedArg)> {
+    pub fn get_map_value(
+        &mut self,
+        origin: &MapTypeNode,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Vec<(ParsedArgValue, ParsedArgValue)> {
         let key = &origin.key;
         let value = &origin.value;
         self.decode_with_count_node(&origin.count, |cursor| {
-            let decoded_key = ParsedArg::from(key, cursor).expect("Map values cannot be residual");
-            let decoded_value =
-                ParsedArg::from(value, cursor).expect("Map values cannot be residual");
+            let decoded_key = ParsedArgValue::from(key, cursor, defined_types, is_last, None)
+                .expect("Map values cannot be residual");
+            let decoded_value = ParsedArgValue::from(value, cursor, defined_types, is_last, None)
+                .expect("Map values cannot be residual");
             Some((decoded_key, decoded_value))
         })
     }
 
-    pub fn get_bytes_value(&mut self) -> String {
-        let remaining = &self.buf[self.pos..];
-        let (len, consumed) = decode_shortu16_len(remaining).expect("Bytes cannot be parsed");
-        self.pos += consumed;
-
-        let end = self.pos + len;
-        let bytes = &self.buf[self.pos..end];
-        self.pos = end;
+    pub fn get_bytes_value(&mut self, len: Option<usize>) -> String {
+        let len = len.unwrap_or(self.remaining());
+        let bytes = self.take(len);
 
         // Use hex for a stable, reversible representation regardless of UTF-8 validity.
         hex::encode(bytes)
@@ -301,33 +321,40 @@ impl<'a> Cursor<'a> {
     pub fn get_fixed_size_value(
         &mut self,
         origin: &FixedSizeTypeNode<TypeNode>,
-    ) -> Option<ParsedArg> {
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Option<ParsedArgValue> {
         let bytes = self.take(origin.size);
 
         // Decode the wrapped type from the fixed-size slice only.
         let mut inner = Cursor::new(bytes);
-        ParsedArg::from(&origin.r#type, &mut inner)
+        ParsedArgValue::from(&origin.r#type, &mut inner, defined_types, is_last, None)
     }
 
     pub fn get_post_offset_value(
         &mut self,
         origin: &PostOffsetTypeNode<TypeNode>,
-    ) -> Option<ParsedArg> {
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Option<ParsedArgValue> {
         match origin.strategy {
             PostOffsetStrategy::Absolute => {
-                let value = ParsedArg::from(&origin.r#type, self);
+                let value =
+                    ParsedArgValue::from(&origin.r#type, self, defined_types, is_last, None);
                 self.set_pos_absolute(origin.offset);
                 value
             }
             // Identical when decoding.
             PostOffsetStrategy::Padded | PostOffsetStrategy::Relative => {
-                let value = ParsedArg::from(&origin.r#type, self);
+                let value =
+                    ParsedArgValue::from(&origin.r#type, self, defined_types, is_last, None);
                 self.set_pos_relative(origin.offset);
                 value
             }
             PostOffsetStrategy::PreOffset => {
                 let start_pos = self.pos;
-                let value = ParsedArg::from(&origin.r#type, self);
+                let value =
+                    ParsedArgValue::from(&origin.r#type, self, defined_types, is_last, None);
                 self.set_pos_relative_from(origin.offset, start_pos);
                 value
             }
@@ -337,7 +364,9 @@ impl<'a> Cursor<'a> {
     pub fn get_pre_offset_value(
         &mut self,
         origin: &PreOffsetTypeNode<TypeNode>,
-    ) -> Option<ParsedArg> {
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Option<ParsedArgValue> {
         match origin.strategy {
             PreOffsetStrategy::Absolute => {
                 self.set_pos_absolute(origin.offset);
@@ -347,13 +376,32 @@ impl<'a> Cursor<'a> {
             }
         }
 
-        ParsedArg::from(&origin.r#type, self)
+        ParsedArgValue::from(&origin.r#type, self, defined_types, is_last, None)
+    }
+
+    pub fn get_dynamic_value(
+        &mut self,
+        origin: &SizePrefixTypeNode<TypeNode>,
+        defined_types: &[DefinedTypeNode],
+        is_last: bool,
+    ) -> Option<ParsedArgValue> {
+        let string_number = self.get_number_value(origin.prefix.get_nested_type_node());
+        let passed_len: usize = string_number
+            .parse()
+            .expect("Size prefix must be a non-negative integer");
+        ParsedArgValue::from(
+            &origin.r#type,
+            self,
+            defined_types,
+            is_last,
+            Some(passed_len),
+        )
     }
 
     // Sentinel-related
-    // pub fn get_sentinel_value(&mut self, origin: &SentinelTypeNode<TypeNode>) -> Vec<ParsedArg> {
+    // pub fn get_sentinel_value(&mut self, origin: &SentinelTypeNode<TypeNode>) -> Vec<ParsedArgValue> {
     //     let mut sentinel_cursor = self.clone();
-    //     let sentinel_value = ParsedArg::from(&origin.sentinel.r#type, &mut sentinel_cursor)
+    //     let sentinel_value = ParsedArgValue::from(&origin.sentinel.r#type, &mut sentinel_cursor)
     //         .expect("Sentinel cannot be residual value");
 
     //     origin.sentinel.value
