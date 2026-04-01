@@ -7,6 +7,7 @@ use solana_signature::Signature;
 
 use crate::{
     contexts::transaction::TransactionContext,
+    errors::{IrrecoverableError, Warning},
     get_cwd,
     program_manager::program_manager::ProgramManager,
     runbook::{generate_runbooks, save_runbooks},
@@ -17,10 +18,11 @@ use crate::{
 pub struct SeerContext {
     pub program_manager: ProgramManager,
     pub transaction_context: Option<TransactionContext>,
+    pub warnings: Vec<Warning>,
 }
 
 impl SeerContext {
-    pub fn new(authority: Pubkey) -> Self {
+    pub fn new(authority: Pubkey) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -33,11 +35,13 @@ impl SeerContext {
 
         let (txtx, main) = generate_runbooks(authority, &runtime_dir);
         save_runbooks(&runtime_dir, txtx, main);
+        let (program_manager, warnings) = ProgramManager::init(&runtime_dir, &dwarf_compile_dir)?;
 
-        Self {
-            program_manager: ProgramManager::init(&runtime_dir, &dwarf_compile_dir),
+        Ok(Self {
+            program_manager,
             transaction_context: None,
-        }
+            warnings,
+        })
     }
 
     pub fn set_current_tx(&mut self, tx: Signature) {

@@ -8,7 +8,7 @@ use gimli::{Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId}
 use object::{Object, ObjectSection};
 use path_clean::PathClean;
 
-use crate::path_resolver::PathResolver;
+use crate::{errors::IrrecoverableError, path_resolver::PathResolver};
 
 /// Keeps living references to sections, to avoid borrow issues.
 pub struct DwarfManager {
@@ -107,9 +107,15 @@ impl DwarfManager {
         files
     }
 
-    pub fn set_dwarf_section(&mut self, path: &PathBuf) {
-        let data = fs::read(path).expect("Failed to read DWARF path");
-        let obj = object::File::parse(&*data).expect("Failed to parse DWARF data");
+    pub fn set_dwarf_section(&mut self, path: &PathBuf) -> Result<(), IrrecoverableError> {
+        let data = fs::read(path).map_err(|e| IrrecoverableError::DwarfFileRead {
+            filename: path.to_string_lossy().to_string(),
+            detail: e.to_string(),
+        })?;
+        let obj = object::File::parse(&*data).map_err(|e| IrrecoverableError::DwarfFileParse {
+            filename: path.to_string_lossy().to_string(),
+            detail: e.to_string(),
+        })?;
 
         let sections: DwarfSections<Vec<u8>> = DwarfSections::load(|id: SectionId| -> io::Result<Vec<u8>> {
             match obj.section_by_name(id.name()) {
@@ -120,8 +126,12 @@ impl DwarfManager {
                 None => Ok(Vec::new()),
             }
         })
-        .expect("Failed to parse DWARF sections");
+        .map_err(|e| IrrecoverableError::DwarfFileParse {
+            filename: path.to_string_lossy().to_string(),
+            detail: e.to_string(),
+        })?;
 
         self.sections = Some(sections);
+        Ok(())
     }
 }

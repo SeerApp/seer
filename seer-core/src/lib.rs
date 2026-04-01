@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
+pub mod errors;
 pub mod entrypoint_lookup;
 pub mod idl;
 pub mod logger;
@@ -23,6 +24,7 @@ use solana_signature::Signature;
 
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
+use crate::errors::IrrecoverableError;
 pub use crate::logger::{init_seer_logger, seer_logger, SeerLogger, SeerLoggerLevel};
 
 pub struct SeerSingleton {
@@ -63,15 +65,17 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init(authority: Pubkey) {
+pub async fn init(authority: Pubkey) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(authority).await;
+    let ctx = SourcesContext::new(authority).await?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
         seer.context = Some(ctx);
     });
+
+    Ok(())
 }
 
 pub fn get<F>(f: F)

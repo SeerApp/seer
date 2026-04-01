@@ -18,6 +18,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-lang-idl-spec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bdf143115440fe621bdac3a29a1f7472e09f6cd82b2aa569429a0c13f103838"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1154,6 +1164,7 @@ dependencies = [
 name = "seer-core"
 version = "1.1.1"
 dependencies = [
+ "anchor-lang-idl-spec",
  "anyhow",
  "base64",
  "bs58",
@@ -1183,6 +1194,7 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-signature",
  "solana-signer",
+ "thiserror",
  "typed-arena",
 ]
 

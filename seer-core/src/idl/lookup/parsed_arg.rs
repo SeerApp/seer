@@ -44,31 +44,6 @@ pub enum ParsedArgValue {
 }
 
 impl ParsedArgValue {
-    fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
-        match (arg.format, node_number) {
-            (
-                NumberFormat::U8
-                | NumberFormat::U16
-                | NumberFormat::U32
-                | NumberFormat::U64
-                | NumberFormat::U128,
-                Number::UnsignedInteger(node_number),
-            ) => arg.value.parse::<u64>().unwrap() == node_number,
-            (
-                NumberFormat::I8
-                | NumberFormat::I16
-                | NumberFormat::I32
-                | NumberFormat::I64
-                | NumberFormat::I128,
-                Number::SignedInteger(node_number),
-            ) => arg.value.parse::<i64>().unwrap() == node_number,
-            (NumberFormat::F32 | NumberFormat::F64, Number::Float(node_number)) => {
-                arg.value.parse::<f64>().unwrap() == node_number
-            }
-            _ => false,
-        }
-    }
-
     pub fn from<'a>(
         origin: &TypeNode,
         cur: &mut Cursor<'a>,
@@ -209,6 +184,31 @@ impl ParsedArgValue {
             (ParsedArgValue::Bytes(arg), InstructionInputValueNode::Bytes(node)) => {
                 let node: &BytesValueNode = node;
                 arg.value == ViewBytesTypeNode::from_value(node).value
+            }
+            _ => false,
+        }
+    }
+
+    fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
+        match (arg.format, node_number) {
+            (
+                NumberFormat::U8
+                | NumberFormat::U16
+                | NumberFormat::U32
+                | NumberFormat::U64
+                | NumberFormat::U128,
+                Number::UnsignedInteger(node_number),
+            ) => arg.value.parse::<u64>().unwrap() == node_number,
+            (
+                NumberFormat::I8
+                | NumberFormat::I16
+                | NumberFormat::I32
+                | NumberFormat::I64
+                | NumberFormat::I128,
+                Number::SignedInteger(node_number),
+            ) => arg.value.parse::<i64>().unwrap() == node_number,
+            (NumberFormat::F32 | NumberFormat::F64, Number::Float(node_number)) => {
+                arg.value.parse::<f64>().unwrap() == node_number
             }
             _ => false,
         }

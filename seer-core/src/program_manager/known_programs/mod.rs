@@ -3,10 +3,9 @@ use std::{
     str::FromStr,
 };
 
-use codama_nodes::RootNode;
 use solana_pubkey::Pubkey;
 
-use crate::{idl::lookup::IdlLookup, program_manager::program_manager::ProgramInfo};
+use crate::{idl::IdlLookup, program_manager::program_manager::ProgramInfo};
 
 
 const KNOWN_PROGRAMS: [(&str, &str); 2] = [
@@ -33,12 +32,11 @@ pub fn build_idl_lookups(entries: &[(&str, &str)]) -> Vec<(Pubkey, IdlLookup)> {
     entries
         .iter()
         .map(|(key_str, idl_json)| {
+            let key = Pubkey::from_str(key_str).unwrap();
             (
-                Pubkey::from_str(key_str).unwrap(),
-                IdlLookup::new(
-                    serde_json::from_str::<RootNode>(idl_json)
-                        .expect("Known program must have valid embedded IDL JSON"),
-                ),
+                key,
+                IdlLookup::new(idl_json, key_str)
+                    .expect("Known program must have parseable embedded IDL JSON"),
             )
         })
         .collect()

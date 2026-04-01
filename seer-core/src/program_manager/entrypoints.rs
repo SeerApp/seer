@@ -1,6 +1,7 @@
 use crate::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
+    errors::IrrecoverableError,
     path_resolver::PathResolver,
     save::save,
     seer_debug,
@@ -11,11 +12,13 @@ use crate::{
 pub fn get_entrypoint(
     target: &Target,
     path_resolver: PathResolver,
-) -> Option<EntrypointLookup> {
+) -> Result<Option<EntrypointLookup>, IrrecoverableError> {
     let mut dwarf_manager = DwarfManager::new();
 
-    let dwarf_dir = target.dwarf.as_ref()?;
-    dwarf_manager.set_dwarf_section(dwarf_dir);
+    let Some(dwarf_dir) = target.dwarf.as_ref() else {
+        return Ok(None);
+    };
+    dwarf_manager.set_dwarf_section(dwarf_dir)?;
 
     seer_debug!("Fetching source files");
     let source_files = dwarf_manager.get_all_source_files(&path_resolver);
@@ -24,7 +27,9 @@ pub fn get_entrypoint(
 
     seer_debug!("About to search for {} DWARF source(s)...", sources.len());
     seer_debug!("Building lookup for {}", target.base);
-    let dwarf = dwarf_manager.get_dwarf()?;
+    let Some(dwarf) = dwarf_manager.get_dwarf() else {
+        return Ok(None);
+    };
     let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
 
     let sizes = source_die_trace.sizes();
@@ -45,5 +50,5 @@ pub fn get_entrypoint(
 
     let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
 
-    Some(entrypoint_lookup)
+    Ok(Some(entrypoint_lookup))
 }

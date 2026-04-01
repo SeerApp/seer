@@ -38,6 +38,8 @@ byteorder = "1.5.0"
 hex = "0.4.3"
 bs58 = "0.5.1"
 base64 = "0.22.1"
+thiserror = "2.0.18"
+anchor-lang-idl-spec = "0.1.0"
 
 [lints]
 workspace = true
