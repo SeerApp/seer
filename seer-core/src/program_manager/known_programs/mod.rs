@@ -13,7 +13,8 @@ const KNOWN_PROGRAMS: [(&str, &str); 2] = [
     ("11111111111111111111111111111111", include_str!("system_program.json")),
     ("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", include_str!("token_2022_program.json")),
     ("Stake11111111111111111111111111111111111111", include_str!("stake_program.json")),
-    
+    ("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", include_str!("spl_associated_token_program.json")),
+
 
 ];
 
