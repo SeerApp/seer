@@ -11,6 +11,8 @@ use crate::{idl::IdlLookup, program_manager::program_manager::ProgramInfo};
 const KNOWN_PROGRAMS: [(&str, &str); 2] = [
     ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", include_str!("token_program.json")),
     ("11111111111111111111111111111111", include_str!("system_program.json")),
+    ("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", include_str!("token_2022_program.json")),
+
 ];
 
 pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {
