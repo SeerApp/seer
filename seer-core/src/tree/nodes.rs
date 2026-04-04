@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
-    dwarf::source_die::{SourceDie, SourceDieType}, idl::types::{ParsedAccount, ParsedInstruction}, tree::loc::Loc
+    dwarf::source_die::{SourceDie, SourceDieType},
+    idl::types::{ParsedAccount, ParsedInstruction},
+    tree::loc::Loc,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -87,11 +89,14 @@ pub struct TreeError {
     /// either a string or legacy tagged `InstructionError` JSON (e.g. `{"Custom": 0}`).
     #[serde(deserialize_with = "deserialize_tree_error_message")]
     pub message: String,
+    #[serde(skip_serializing)]
+    pub instruction_error: InstructionError,
 }
 
 impl TreeError {
     pub fn new(message: InstructionError) -> Self {
         Self {
+            instruction_error: message.clone(),
             message: message.to_string(),
         }
     }
@@ -116,6 +121,16 @@ pub struct AccountSharedDataWrapper {
     executable: bool,
     rent_epoch: Epoch,
     parsed: Option<ParsedAccount>,
+}
+
+impl AccountSharedDataWrapper {
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn set_parsed(&mut self, parsed: Option<ParsedAccount>) {
+        self.parsed = parsed;
+    }
 }
 
 impl From<AccountSharedData> for AccountSharedDataWrapper {
@@ -282,9 +297,7 @@ impl TreeRoot<RootChildren> {
                     new_children.push(EntrypointChildren::Account(acc));
                 }
                 EntrypointChildren::Log(l) => new_children.push(EntrypointChildren::Log(l)),
-                EntrypointChildren::Error(e) => {
-                    new_children.push(EntrypointChildren::Error(e))
-                }
+                EntrypointChildren::Error(e) => new_children.push(EntrypointChildren::Error(e)),
             }
         }
 

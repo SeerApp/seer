@@ -8,9 +8,10 @@ use solana_pubkey::Pubkey;
 use crate::{idl::IdlLookup, program_manager::program_manager::ProgramInfo};
 
 
-const KNOWN_PROGRAMS: [(&str, &str); 2] = [
+const KNOWN_PROGRAMS: [(&str, &str); 3] = [
     ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", include_str!("token_program.json")),
     ("11111111111111111111111111111111", include_str!("system_program.json")),
+    ("JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB", include_str!("jupiter_v4.json"))
 ];
 
 pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {

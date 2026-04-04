@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::idl::lookup::parsed_arg::ParsedArg;
+use crate::idl::parsed_arg::ParsedArg;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ParsedInstruction {
