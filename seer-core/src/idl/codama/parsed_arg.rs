@@ -1,6 +1,5 @@
-use core::panic;
-
 use crate::idl::{
+    codama::{ctx::CodamaParseCtx, cursor::CodamaCursor},
     cursor::Cursor,
     parsed_arg::{
         ParsedArgValue, ViewAmountTypeNode, ViewArrayTypeNode, ViewBooleanTypeNode,
@@ -9,6 +8,7 @@ use crate::idl::{
         ViewNumberTypeNode, ViewOptionTypeNode, ViewPublicKeyTypeNode, ViewSetTypeNode,
         ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, ViewTupleTypeNode,
     },
+    IdlIssue,
 };
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -19,124 +19,139 @@ use codama_nodes::{
     NumberFormat, NumberTypeNode, NumberValueNode, OptionTypeNode, SetTypeNode, StringTypeNode,
     StructTypeNode, TupleTypeNode, TypeNode, ValueNode,
 };
-use crate::idl::codama::cursor::CodamaCursor;
 
-pub fn get_parsed_arg_value<'a>(
+pub fn get_parsed_arg_value(
+    ctx: &mut CodamaParseCtx<'_>,
     origin: &TypeNode,
-    cur: &mut Cursor<'a>,
+    cur: &mut Cursor<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
     passed_len: Option<usize>,
 ) -> Option<ParsedArgValue> {
     match origin {
         TypeNode::Link(link) => {
-            let resolved = defined_types
-                .iter()
-                .find(|dt| dt.name == link.name)
-                .unwrap_or_else(|| {
-                    panic!("defined type not found for link {:?}", link.name);
+            let Some(resolved) = defined_types.iter().find(|dt| dt.name == link.name) else {
+                ctx.issues.note(IdlIssue::MissingDefinedTypeLink {
+                    link_name: link.name.to_string(),
+                    at: ctx.current_location(),
                 });
-            get_parsed_arg_value(&resolved.r#type, cur, defined_types, is_last, passed_len)
+                return None;
+            };
+            get_parsed_arg_value(
+                ctx,
+                &resolved.r#type,
+                cur,
+                defined_types,
+                is_last,
+                passed_len,
+            )
         }
-        TypeNode::Amount(a) => Some(ParsedArgValue::Amount(get_view_amount_type_node(a, cur))),
+        TypeNode::Amount(a) => Some(ParsedArgValue::Amount(get_view_amount_type_node(
+            a, cur, ctx,
+        )?)),
         TypeNode::Array(a) => Some(ParsedArgValue::Array(get_view_array_type_node(
-            a,
-            cur,
-            defined_types,
-            is_last,
+            a, cur, ctx, defined_types, is_last,
         ))),
-        TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(b, cur))),
+        TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(
+            b, cur, ctx,
+        )?)),
         TypeNode::Bytes(_) => {
             if !is_last && passed_len.is_none() {
-                panic!("No passed length detected for non-final argument");
+                ctx.issues.note(IdlIssue::InvalidLayoutBytesOrStringWithoutLength {
+                    at: ctx.current_location(),
+                });
+                return None;
             }
             Some(ParsedArgValue::Bytes(get_view_bytes_type_node(
-                cur, passed_len,
-            )))
+                cur, ctx, passed_len,
+            )?))
         }
         TypeNode::DateTime(d) => Some(ParsedArgValue::DateTime(get_view_date_time_type_node(
-            d, cur,
-        ))),
+            d, cur, ctx,
+        )?)),
         TypeNode::Enum(e) => Some(ParsedArgValue::Enum(get_view_enum_type_node(
-            e,
-            cur,
-            defined_types,
-            is_last,
-        ))),
+            e, cur, ctx, defined_types, is_last,
+        )?)),
         TypeNode::HiddenPrefix(h) => Some(ParsedArgValue::HiddenPrefix(
-            get_view_hidden_prefix_type_node(h, cur, defined_types, is_last),
+            get_view_hidden_prefix_type_node(h, cur, ctx, defined_types, is_last)?,
         )),
         TypeNode::HiddenSuffix(h) => Some(ParsedArgValue::HiddenSuffix(
-            get_view_hidden_suffix_type_node(h, cur, defined_types, is_last),
+            get_view_hidden_suffix_type_node(h, cur, ctx, defined_types, is_last)?,
         )),
         TypeNode::Map(m) => Some(ParsedArgValue::Map(get_view_map_type_node(
-            m,
-            cur,
-            defined_types,
-            is_last,
+            m, cur, ctx, defined_types, is_last,
         ))),
-        TypeNode::Number(n) => Some(ParsedArgValue::Number(get_view_number_type_node(n, cur))),
+        TypeNode::Number(n) => Some(ParsedArgValue::Number(get_view_number_type_node(
+            n, cur, ctx,
+        )?)),
         TypeNode::Struct(s) => Some(ParsedArgValue::Struct(get_view_struct_type_node(
-            s,
-            cur,
-            defined_types,
-            is_last,
-        ))),
+            s, cur, ctx, defined_types, is_last,
+        )?)),
         TypeNode::Option(o) => Some(ParsedArgValue::Option(get_view_option_type_node(
-            o,
-            cur,
-            defined_types,
-            is_last,
+            o, cur, ctx, defined_types, is_last,
         ))),
         TypeNode::PublicKey(_) => Some(ParsedArgValue::PublicKey(get_view_public_key_type_node(
-            cur,
-        ))),
+            cur, ctx,
+        )?)),
         TypeNode::Tuple(t) => Some(ParsedArgValue::Tuple(get_view_tuple_type_node(
-            t,
-            cur,
-            defined_types,
-            is_last,
-        ))),
+            t, cur, ctx, defined_types, is_last,
+        )?)),
         TypeNode::String(s) => {
             if !is_last && passed_len.is_none() {
-                panic!("No passed length detected for non-final argument");
+                ctx.issues.note(IdlIssue::InvalidLayoutBytesOrStringWithoutLength {
+                    at: ctx.current_location(),
+                });
+                return None;
             }
             Some(ParsedArgValue::String(get_view_string_type_node(
-                s, cur, passed_len,
-            )))
+                s, cur, ctx, passed_len,
+            )?))
         }
-        TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, defined_types),
-        TypeNode::PostOffset(p) => cur.get_post_offset_value(p, defined_types, is_last),
-        TypeNode::PreOffset(p) => cur.get_pre_offset_value(p, defined_types, is_last),
+        TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, ctx, defined_types),
+        TypeNode::PostOffset(p) => cur.get_post_offset_value(p, ctx, defined_types, is_last),
+        TypeNode::PreOffset(p) => cur.get_pre_offset_value(p, ctx, defined_types, is_last),
         TypeNode::RemainderOption(r) => {
             if !is_last {
-                panic!("Remained option must be last argument");
+                ctx.issues.note(IdlIssue::InvalidLayoutRemainderOptionNotLast {
+                    at: ctx.current_location(),
+                });
+                return None;
             }
             if !cur.is_empty() {
-                get_parsed_arg_value(&r.item, cur, defined_types, is_last, passed_len)
+                get_parsed_arg_value(ctx, &r.item, cur, defined_types, is_last, passed_len)
             } else {
                 None
             }
         }
-        TypeNode::Sentinel(_) => panic!("Debugger not yet equipped for Sentinel IDL layouts"),
+        TypeNode::Sentinel(_) => {
+            ctx.issues.note(IdlIssue::UnsupportedSentinelType {
+                at: ctx.current_location(),
+            });
+            None
+        }
         TypeNode::Set(s) => Some(ParsedArgValue::Set(get_view_set_type_node(
-            s,
-            cur,
-            defined_types,
-            is_last,
+            s, cur, ctx, defined_types, is_last,
         ))),
-        TypeNode::SizePrefix(s) => cur.get_dynamic_value(s, defined_types, is_last),
+        TypeNode::SizePrefix(s) => cur.get_dynamic_value(s, ctx, defined_types, is_last),
         TypeNode::SolAmount(s) => Some(ParsedArgValue::Number(get_view_number_type_node(
             s.number.get_nested_type_node(),
             cur,
-        ))),
+            ctx,
+        )?)),
         TypeNode::ZeroableOption(_) => {
-            panic!("Debugger not yet equipped for ZeroableOption IDL layouts")
+            ctx.issues.note(IdlIssue::UnsupportedZeroableOptionType {
+                at: ctx.current_location(),
+            });
+            None
         }
     }
 }
 
-pub fn eq_value_node(parsed_arg_value: &ParsedArgValue, value: &ValueNode) -> bool {
+pub fn eq_value_node(
+    parsed_arg_value: &ParsedArgValue,
+    value: &ValueNode,
+    ctx: Option<&mut CodamaParseCtx<'_>>,
+) -> bool {
     match (parsed_arg_value, value) {
         (ParsedArgValue::Number(arg), ValueNode::Number(node)) => {
             let node: &NumberValueNode = node;
@@ -144,7 +159,10 @@ pub fn eq_value_node(parsed_arg_value: &ParsedArgValue, value: &ValueNode) -> bo
         }
         (ParsedArgValue::Bytes(arg), ValueNode::Bytes(node)) => {
             let node: &BytesValueNode = node;
-            arg.value == get_view_bytes_type_node_from_value(node).value
+            let Some(expected) = get_view_bytes_type_node_from_value(node, ctx) else {
+                return false;
+            };
+            arg.value == expected.value
         }
         _ => false,
     }
@@ -153,6 +171,7 @@ pub fn eq_value_node(parsed_arg_value: &ParsedArgValue, value: &ValueNode) -> bo
 pub fn eq_instruciton_input_value_node(
     parsed_arg_value: &ParsedArgValue,
     value: &InstructionInputValueNode,
+    ctx: Option<&mut CodamaParseCtx<'_>>,
 ) -> bool {
     match (parsed_arg_value, value) {
         (ParsedArgValue::Number(arg), InstructionInputValueNode::Number(node)) => {
@@ -161,7 +180,10 @@ pub fn eq_instruciton_input_value_node(
         }
         (ParsedArgValue::Bytes(arg), InstructionInputValueNode::Bytes(node)) => {
             let node: &BytesValueNode = node;
-            arg.value == get_view_bytes_type_node_from_value(node).value
+            let Some(expected) = get_view_bytes_type_node_from_value(node, ctx) else {
+                return false;
+            };
+            arg.value == expected.value
         }
         _ => false,
     }
@@ -176,7 +198,7 @@ fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
             | NumberFormat::U64
             | NumberFormat::U128,
             Number::UnsignedInteger(node_number),
-        ) => arg.value.parse::<u64>().unwrap() == node_number,
+        ) => arg.value.parse::<u64>().ok() == Some(node_number),
         (
             NumberFormat::I8
             | NumberFormat::I16
@@ -184,287 +206,267 @@ fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
             | NumberFormat::I64
             | NumberFormat::I128,
             Number::SignedInteger(node_number),
-        ) => arg.value.parse::<i64>().unwrap() == node_number,
+        ) => arg.value.parse::<i64>().ok() == Some(node_number),
         (NumberFormat::F32 | NumberFormat::F64, Number::Float(node_number)) => {
-            arg.value.parse::<f64>().unwrap() == node_number
+            arg.value.parse::<f64>().ok().map(|v| v == node_number) == Some(true)
         }
         _ => false,
     }
 }
 
-// Sentinel-related
-// pub fn from_value(origin: &ValueNode) -> Self {
-//     match origin {
-//         ValueNode::Array(v) => {
-//             let v = v as &ArrayValueNode;
-//         }
-//         ValueNode::Boolean(v) => {
-//             let v = v as &BooleanValueNode;
-//             ParsedArgValue::Boolean(ViewBooleanTypeNode::from_value(v.boolean))
-//         }
-//         ValueNode::Bytes(v) => {
-//             let v = v as &BytesValueNode;
-//             ParsedArgValue::Bytes(ViewBytesTypeNode::from_value(v))
-//         }
-//         ValueNode::Constant(v) => {
-//             let v = v as &ConstantValueNode;
-//             ParsedArgValue::from_value(&v.value)
-//         }
-//         ValueNode::Enum(v) => {
-//             let v = v as &EnumValueNode;
-//             ParsedArgValue::Enum(ViewEnumTypeNode::from_value(v))
-//         }
-//         ValueNode::Map(v) => {
-//             let v = v as MapValueNode;
-//         }
-//         ValueNode::None(v) => {
-//             let v = v as NoneValueNode;
-//         }
-//         ValueNode::Number(v) => {
-//             let v = v as NumberValueNode;
-//         }
-//         ValueNode::PublicKey(v) => {
-//             let v = v as PublicKeyValueNode;
-//         }
-//         ValueNode::Set(v) => {
-//             let v = v as SetValueNode;
-//         }
-//         ValueNode::Some(v) => {
-//             let v = v as SomeValueNode;
-//         }
-//         ValueNode::String(v) => {
-//             let v = v as StringValueNode;
-//         }
-//         ValueNode::Struct(v) => {
-//             let v = v as StructValueNode;
-//         }
-//         ValueNode::Tuple(v) => {
-//             let v = v as TupleValueNode;
-//         }
-//     }
-// }
-
 pub fn get_view_number_type_node<'a>(
     origin: &NumberTypeNode,
     cur: &mut Cursor<'a>,
-) -> ViewNumberTypeNode {
-    ViewNumberTypeNode {
-        value: cur.get_number_value(origin),
+    ctx: &mut CodamaParseCtx<'_>,
+) -> Option<ViewNumberTypeNode> {
+    Some(ViewNumberTypeNode {
+        value: cur.get_number_value(origin, ctx)?,
         format: origin.format.clone(),
-    }
+    })
 }
 
 pub fn get_view_struct_type_node<'a>(
     origin: &StructTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewStructTypeNode {
+) -> Option<ViewStructTypeNode> {
     let mut fields = vec![];
 
     for field in &origin.fields {
-        let view_field: ViewStructFieldTypeNode = ViewStructFieldTypeNode {
+        ctx.push_path(field.name.to_string());
+        let value = get_parsed_arg_value(ctx, &field.r#type, cur, defined_types, is_last, None);
+        let Some(value) = value else {
+            ctx.note_decode_residual(format!("struct field `{}`", field.name.as_ref()));
+            ctx.pop_path();
+            return None;
+        };
+        ctx.pop_path();
+        fields.push(ViewStructFieldTypeNode {
             name: String::from(field.name.clone()),
             docs: field.docs.clone(),
-            value: get_parsed_arg_value(&field.r#type, cur, defined_types, is_last, None)
-                .expect("Struct field cannot be residual"),
-        };
-
-        fields.push(view_field);
+            value,
+        });
     }
 
-    ViewStructTypeNode { fields }
+    Some(ViewStructTypeNode { fields })
 }
 
 pub fn get_view_option_type_node<'a>(
     origin: &OptionTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
 ) -> ViewOptionTypeNode {
     ViewOptionTypeNode {
-        value: Box::new(cur.get_option_value(origin, defined_types, is_last)),
+        value: Box::new(cur.get_option_value(origin, ctx, defined_types, is_last)),
     }
 }
 
-pub fn get_view_public_key_type_node<'a>(cur: &mut Cursor<'a>) -> ViewPublicKeyTypeNode {
-    ViewPublicKeyTypeNode {
-        value: cur.get_pubkey_value(),
-    }
+pub fn get_view_public_key_type_node<'a>(
+    cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
+) -> Option<ViewPublicKeyTypeNode> {
+    Some(ViewPublicKeyTypeNode {
+        value: cur.get_pubkey_value(ctx)?,
+    })
 }
 
 pub fn get_view_string_type_node<'a>(
     origin: &StringTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     passed_len: Option<usize>,
-) -> ViewStringTypeNode {
-    ViewStringTypeNode {
-        value: cur.get_string_value(origin, passed_len),
-    }
+) -> Option<ViewStringTypeNode> {
+    Some(ViewStringTypeNode {
+        value: cur.get_string_value(origin, ctx, passed_len)?,
+    })
 }
 
 pub fn get_view_amount_type_node<'a>(
     origin: &AmountTypeNode,
     cur: &mut Cursor<'a>,
-) -> ViewAmountTypeNode {
-    ViewAmountTypeNode {
+    ctx: &mut CodamaParseCtx<'_>,
+) -> Option<ViewAmountTypeNode> {
+    Some(ViewAmountTypeNode {
         decimals: origin.decimals.clone(),
         unit: origin.unit.clone(),
-        number: get_view_number_type_node(origin.number.get_nested_type_node(), cur),
-    }
+        number: get_view_number_type_node(origin.number.get_nested_type_node(), cur, ctx)?,
+    })
 }
 
 pub fn get_view_boolean_type_node<'a>(
     origin: &BooleanTypeNode,
     cur: &mut Cursor<'a>,
-) -> ViewBooleanTypeNode {
-    let raw = cur.get_number_value(origin.size.get_nested_type_node());
+    ctx: &mut CodamaParseCtx<'_>,
+) -> Option<ViewBooleanTypeNode> {
+    let raw = cur.get_number_value(origin.size.get_nested_type_node(), ctx)?;
     let value = raw.parse::<i128>().map(|v| v != 0).unwrap_or(false);
 
-    ViewBooleanTypeNode { value }
+    Some(ViewBooleanTypeNode { value })
 }
-
-// pub fn get_view_boolean_type_node_from_value(value: bool) -> ViewBooleanTypeNode {
-//     ViewBooleanTypeNode { value }
-// }
 
 pub fn get_view_array_type_node<'a>(
     origin: &ArrayTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
 ) -> ViewArrayTypeNode {
     ViewArrayTypeNode {
-        values: cur.get_array_value(origin, defined_types, is_last),
+        values: cur.get_array_value(origin, ctx, defined_types, is_last),
     }
 }
 
 pub fn get_view_set_type_node<'a>(
     origin: &SetTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
 ) -> ViewSetTypeNode {
     ViewSetTypeNode {
-        values: cur.get_set_value(origin, defined_types, is_last),
+        values: cur.get_set_value(origin, ctx, defined_types, is_last),
     }
 }
 
 pub fn get_view_tuple_type_node<'a>(
     origin: &TupleTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewTupleTypeNode {
-    let items = origin
-        .items
-        .iter()
-        .map(|item| {
-            get_parsed_arg_value(item, cur, defined_types, is_last, None)
-                .expect("Tuple items cannot be residual")
-        })
-        .collect();
-
-    ViewTupleTypeNode { items }
+) -> Option<ViewTupleTypeNode> {
+    let mut items = vec![];
+    for (i, item) in origin.items.iter().enumerate() {
+        let seg = format!("{i}");
+        ctx.push_path(seg);
+        let v = get_parsed_arg_value(ctx, item, cur, defined_types, is_last, None);
+        let Some(v) = v else {
+            ctx.note_decode_residual(format!("tuple item index {i}"));
+            ctx.pop_path();
+            return None;
+        };
+        ctx.pop_path();
+        items.push(v);
+    }
+    Some(ViewTupleTypeNode { items })
 }
 
 pub fn get_view_bytes_type_node<'a>(
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     passed_len: Option<usize>,
-) -> ViewBytesTypeNode {
-    ViewBytesTypeNode {
-        value: cur.get_bytes_value(passed_len),
-    }
+) -> Option<ViewBytesTypeNode> {
+    Some(ViewBytesTypeNode {
+        value: cur.get_bytes_value(ctx, passed_len)?,
+    })
 }
 
-pub fn get_view_bytes_type_node_from_value<'a>(value: &BytesValueNode) -> ViewBytesTypeNode {
+pub fn get_view_bytes_type_node_from_value(
+    value: &BytesValueNode,
+    ctx: Option<&mut CodamaParseCtx<'_>>,
+) -> Option<ViewBytesTypeNode> {
     let final_value = match value.encoding {
         BytesEncoding::Base16 => value.data.clone(),
-        BytesEncoding::Base58 => hex::encode(bs58::decode(&value.data).into_vec().ok().unwrap()),
-        BytesEncoding::Base64 => hex::encode(STANDARD.decode(&value.data).unwrap()),
+        BytesEncoding::Base58 => {
+            let Some(vec) = bs58::decode(&value.data).into_vec().ok() else {
+                if let Some(c) = ctx {
+                    c.issues.note(IdlIssue::BytesLiteralDecodeFailed {
+                        at: c.current_location(),
+                        encoding: "base58".into(),
+                    });
+                }
+                return None;
+            };
+            hex::encode(vec)
+        }
+        BytesEncoding::Base64 => {
+            let Ok(bytes) = STANDARD.decode(&value.data) else {
+                if let Some(c) = ctx {
+                    c.issues.note(IdlIssue::BytesLiteralDecodeFailed {
+                        at: c.current_location(),
+                        encoding: "base64".into(),
+                    });
+                }
+                return None;
+            };
+            hex::encode(bytes)
+        }
         BytesEncoding::Utf8 => hex::encode(value.data.as_bytes()),
     };
-    ViewBytesTypeNode { value: final_value }
+    Some(ViewBytesTypeNode { value: final_value })
 }
 
 pub fn get_view_date_time_type_node<'a>(
     origin: &DateTimeTypeNode,
     cur: &mut Cursor<'a>,
-) -> ViewDateTimeTypeNode {
+    ctx: &mut CodamaParseCtx<'_>,
+) -> Option<ViewDateTimeTypeNode> {
     let number = origin.number.get_nested_type_node();
-    ViewDateTimeTypeNode {
-        value: cur.get_number_value(number),
+    Some(ViewDateTimeTypeNode {
+        value: cur.get_number_value(number, ctx)?,
         format: number.format.clone(),
-    }
+    })
 }
 
 pub fn get_view_hidden_prefix_type_node<'a>(
     origin: &HiddenPrefixTypeNode<TypeNode>,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewHiddenPrefixTypeNode {
+) -> Option<ViewHiddenPrefixTypeNode> {
     let mut prefix = vec![];
     for constant in &origin.prefix {
-        prefix.push(
-            get_parsed_arg_value(&*constant.r#type, cur, defined_types, is_last, None)
-                .expect("Hidden prefixes cannot be residual"),
-        );
+        let v = get_parsed_arg_value(ctx, &*constant.r#type, cur, defined_types, is_last, None)?;
+        prefix.push(v);
     }
-    ViewHiddenPrefixTypeNode {
-        prefix,
-        value: Box::new(
-            get_parsed_arg_value(&*origin.r#type, cur, defined_types, is_last, None)
-                .expect("Hidden prefix values cannot be residual"),
-        ),
-    }
+    let value = Box::new(get_parsed_arg_value(
+        ctx,
+        &*origin.r#type,
+        cur,
+        defined_types,
+        is_last,
+        None,
+    )?);
+    Some(ViewHiddenPrefixTypeNode { prefix, value })
 }
 
 pub fn get_view_hidden_suffix_type_node<'a>(
     origin: &HiddenSuffixTypeNode<TypeNode>,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewHiddenSuffixTypeNode {
-    let value = Box::new(
-        get_parsed_arg_value(&*origin.r#type, cur, defined_types, is_last, None)
-            .expect("Hidden suffix values cannot be residual"),
-    );
+) -> Option<ViewHiddenSuffixTypeNode> {
+    let value = Box::new(get_parsed_arg_value(
+        ctx,
+        &*origin.r#type,
+        cur,
+        defined_types,
+        is_last,
+        None,
+    )?);
     let mut suffix = vec![];
 
     for constant in &origin.suffix {
-        suffix.push(
-            get_parsed_arg_value(&*constant.r#type, cur, defined_types, is_last, None)
-                .expect("Hidden suffixes cannot be residual"),
-        );
+        let v = get_parsed_arg_value(ctx, &*constant.r#type, cur, defined_types, is_last, None)?;
+        suffix.push(v);
     }
-    ViewHiddenSuffixTypeNode { suffix, value }
+    Some(ViewHiddenSuffixTypeNode { suffix, value })
 }
-
-// #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
-// pub struct ViewSentinelTypeNode {
-//     pub value: Box<ParsedArgValue>,
-//     pub sentinel: ConstantValueNode,
-// }
-
-// impl ViewSentinelTypeNode {
-//     pub fn from<'a>(origin: &SentinelTypeNode<TypeNode>, cur: &mut Cursor<'a>) -> Self {
-//         Self {
-//             value: Box::new(
-//                 ParsedArgValue::from(&origin.r#type, cur).expect("Sentinel values cannot be residual"),
-//             ),
-//             sentinel: origin.sentinel.clone(),
-//         }
-//     }
-// }
 
 pub fn get_view_map_type_node<'a>(
     origin: &MapTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
 ) -> ViewMapTypeNode {
-    let pairs = cur.get_map_value(origin, defined_types, is_last);
+    let pairs = cur.get_map_value(origin, ctx, defined_types, is_last);
     let entries = pairs
         .into_iter()
         .map(|(key, value)| ViewMapEntryTypeNode { key, value })
@@ -475,11 +477,12 @@ pub fn get_view_map_type_node<'a>(
 pub fn get_view_enum_type_node<'a>(
     origin: &EnumTypeNode,
     cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewEnumTypeNode {
-    let discriminant = cur.get_number_value(origin.size.get_nested_type_node());
-    let tag = discriminant.parse::<usize>().unwrap_or_default();
+) -> Option<ViewEnumTypeNode> {
+    let discriminant = cur.get_number_value(origin.size.get_nested_type_node(), ctx)?;
+    let tag = discriminant.parse::<usize>().unwrap_or(usize::MAX);
 
     let variant = origin
         .variants
@@ -490,38 +493,53 @@ pub fn get_view_enum_type_node<'a>(
                 EnumVariantTypeNode::Struct(ev) => ev.discriminator == Some(tag),
                 EnumVariantTypeNode::Tuple(ev) => ev.discriminator == Some(tag),
             })
-        })
-        .expect("Enum discriminant out of bounds");
+        });
+
+    let Some(variant) = variant else {
+        ctx.issues.note(IdlIssue::EnumDiscriminantUnresolved {
+            at: ctx.current_location(),
+            raw_discriminant: discriminant.clone(),
+        });
+        return None;
+    };
 
     match variant {
-        EnumVariantTypeNode::Empty(ev) => ViewEnumTypeNode {
+        EnumVariantTypeNode::Empty(ev) => Some(ViewEnumTypeNode {
             discriminant,
             name: ev.name.to_string(),
             value: ViewEnumValue::Empty,
-        },
-        EnumVariantTypeNode::Struct(ev) => ViewEnumTypeNode {
-            discriminant,
-            name: ev.name.to_string(),
-            value: ViewEnumValue::Struct(get_view_struct_type_node(
+        }),
+        EnumVariantTypeNode::Struct(ev) => {
+            ctx.push_path(ev.name.to_string());
+            let inner = get_view_struct_type_node(
                 ev.r#struct.get_nested_type_node(),
                 cur,
+                ctx,
                 defined_types,
                 is_last,
-            )),
-        },
-        EnumVariantTypeNode::Tuple(ev) => ViewEnumTypeNode {
-            discriminant,
-            name: ev.name.to_string(),
-            value: ViewEnumValue::Tuple(get_view_tuple_type_node(
+            );
+            ctx.pop_path();
+            inner.map(|value| ViewEnumTypeNode {
+                discriminant: discriminant.clone(),
+                name: ev.name.to_string(),
+                value: ViewEnumValue::Struct(value),
+            })
+        }
+        EnumVariantTypeNode::Tuple(ev) => {
+            ctx.push_path(ev.name.to_string());
+            let inner = get_view_tuple_type_node(
                 ev.tuple.get_nested_type_node(),
                 cur,
+                ctx,
                 defined_types,
                 is_last,
-            )),
-        },
+            );
+            ctx.pop_path();
+            inner.map(|value| ViewEnumTypeNode {
+                discriminant: discriminant.clone(),
+                name: ev.name.to_string(),
+                value: ViewEnumValue::Tuple(value),
+            })
+        }
     }
 }
-
-// Sentinel-related
-// pub fn from_value(value: &EnumValueNode) -> Self {
-// }

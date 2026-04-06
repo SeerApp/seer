@@ -41,6 +41,22 @@ pub fn save_trace_tree(
     }
 }
 
+/// Writes `<folder>/<signature>_<instruction>.json`, creating `folder` as needed (overwrites).
+pub fn save_trace_tree_to_dir(
+    folder: &PathBuf,
+    signature: &String,
+    instruction: u8,
+    trace_tree: TreeRoot<RootViewChildren>,
+) {
+    let filename = format!("{}_{}.json", signature, instruction);
+    let mut output_path = folder.clone();
+    output_path.push(filename);
+    create_dir_all(folder).expect("create trace tree output dir");
+    let json = serde_json::to_string_pretty(&trace_tree).expect("serialize trace tree");
+    let mut file = File::create(output_path).expect("Failed to write trace tree file");
+    file.write_all(json.as_bytes()).expect("write trace tree bytes");
+}
+
 pub fn load_trace_tree(
     folder: &PathBuf,
     instruction: u8,

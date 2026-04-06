@@ -16,8 +16,11 @@ fn test_relative_paths() {
     println!("SPR: {:?}", source_project_root);
 
     let path_resolver = PathResolver::new(PathBuf::from(dwarf_compile_dir), cwd);
-    
-    let dwarf_manager = DwarfManager::new(&deploy_folder_root);
+
+    let mut dwarf_manager = DwarfManager::new();
+    dwarf_manager
+        .set_dwarf_section(&deploy_folder_root.join("transfer_tokens.debug"))
+        .expect("load transfer_tokens DWARF");
 
     let source_files = dwarf_manager.get_all_source_files(&path_resolver);
 

@@ -1,0 +1,41 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "createAccount",
+    "account_names": [
+      "payer",
+      "newAccount"
+    ],
+    "args": [
+      {
+        "name": "lamports",
+        "value": {
+          "type": "Number",
+          "value": {
+            "value": "2039280",
+            "format": "u64"
+          }
+        }
+      },
+      {
+        "name": "space",
+        "value": {
+          "type": "Number",
+          "value": {
+            "value": "165",
+            "format": "u64"
+          }
+        }
+      },
+      {
+        "name": "programAddress",
+        "value": {
+          "type": "PublicKey",
+          "value": {
+            "value": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          }
+        }
+      }
+    ]
+  }
+}

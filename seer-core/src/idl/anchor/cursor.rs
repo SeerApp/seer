@@ -8,11 +8,13 @@ impl<'a> Cursor<'a> {
         if self.remaining() < discriminator_len {
             return false;
         }
-        let data_discriminator = self.peek(discriminator_len);
+        let Some(data_discriminator) = self.peek(discriminator_len) else {
+            return false;
+        };
         let matched = data_discriminator == discriminator.as_slice();
 
-        if matched {
-            self.take(discriminator_len);
+        if matched && self.take(discriminator_len).is_none() {
+            return false;
         }
 
         matched

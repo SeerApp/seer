@@ -1,0 +1,56 @@
+{
+  "kind": "rootNode",
+  "standard": "codama",
+  "version": "1.5.1",
+  "program": {
+    "kind": "programNode",
+    "name": "twoDiscProgram",
+    "publicKey": "11111111111111111111111111111111",
+    "version": "1.0.0",
+    "origin": "anchor",
+    "docs": [],
+    "pdas": [],
+    "accounts": [],
+    "instructions": [
+      {
+        "kind": "instructionNode",
+        "name": "weirdIx",
+        "idlName": "WeirdIx",
+        "docs": [],
+        "accounts": [],
+        "arguments": [
+          {
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "kind": "numberTypeNode",
+              "format": "u8",
+              "endian": "le"
+            },
+            "docs": [],
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 0
+            },
+            "defaultValueStrategy": "omitted"
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          },
+          {
+            "kind": "sizeDiscriminatorNode",
+            "size": 99
+          }
+        ],
+        "optionalAccountStrategy": "omitted"
+      }
+    ],
+    "definedTypes": [],
+    "errors": []
+  },
+  "additionalPrograms": []
+}

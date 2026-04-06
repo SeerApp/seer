@@ -1,0 +1,141 @@
+{
+  "parsed": {
+    "id": "Default",
+    "data": {
+      "name": "adminState",
+      "value": {
+        "type": "Struct",
+        "value": {
+          "fields": [
+            {
+              "name": "discriminator",
+              "value": {
+                "type": "Bytes",
+                "value": {
+                  "value": "be2a7c60f2348d1c"
+                }
+              }
+            },
+            {
+              "name": "bump",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "255",
+                  "format": "u8"
+                }
+              }
+            },
+            {
+              "name": "adminFee",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "resolverFee",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "admin1",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "E2H2qxBt6AY1Sr21bEPHGgHN4cv9C4kgMsgRt4HZ5Dgx"
+                }
+              }
+            },
+            {
+              "name": "admin2",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "6znGdzS4HzqdFHEgLtxuDVMthAwnh3N1DepBc83CuwNJ"
+                }
+              }
+            },
+            {
+              "name": "resolver",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "CCQyeK9MsiBA5dZjHCfs7TiGwji3pKY7rm9SB3LBF86g"
+                }
+              }
+            },
+            {
+              "name": "totalAmount",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "1500",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "lockedAmount",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "1500",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "activeEscrow",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "1",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "completedEscrow",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "disputedEscrow",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "refundedEscrow",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

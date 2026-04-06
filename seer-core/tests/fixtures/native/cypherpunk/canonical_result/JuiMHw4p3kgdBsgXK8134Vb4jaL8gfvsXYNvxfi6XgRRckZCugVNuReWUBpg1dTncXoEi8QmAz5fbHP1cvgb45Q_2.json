@@ -1,6 +1,8 @@
 {
   "sender": "J6X9c9BNoWFmE7RNa3qJ7kQ3e7JwJN63hjc2X1VdQGS9",
   "receiver": "28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD",
+  "accounts": [],
+  "data": [],
   "children": [
     {
       "Log": {
@@ -206,6 +208,8 @@
                   "Invoke": {
                     "sender": "28pGw7cozqAYyVeZsnGmYHhv7CD3YxQdzTXKS61Do4fD",
                     "receiver": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
+                    "accounts": [],
+                    "data": [],
                     "children": [
                       {
                         "Log": {
@@ -339,6 +343,8 @@
                                     "Invoke": {
                                       "sender": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
                                       "receiver": "11111111111111111111111111111111",
+                                      "accounts": [],
+                                      "data": [],
                                       "children": [
                                         {
                                           "Log": {
@@ -358,14 +364,16 @@
                                               "data": [],
                                               "owner": "11111111111111111111111111111111",
                                               "executable": false,
-                                              "rent_epoch": 0
+                                              "rent_epoch": 0,
+                                              "parsed": null
                                             },
                                             "after": {
                                               "lamports": 9995136120,
                                               "data": [],
                                               "owner": "11111111111111111111111111111111",
                                               "executable": false,
-                                              "rent_epoch": 0
+                                              "rent_epoch": 0,
+                                              "parsed": null
                                             }
                                           }
                                         },
@@ -426,7 +434,8 @@
                                               ],
                                               "owner": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
                                               "executable": false,
-                                              "rent_epoch": 0
+                                              "rent_epoch": 0,
+                                              "parsed": null
                                             },
                                             "after": {
                                               "lamports": 2224960,
@@ -482,11 +491,13 @@
                                               ],
                                               "owner": "317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu",
                                               "executable": false,
-                                              "rent_epoch": 0
+                                              "rent_epoch": 0,
+                                              "parsed": null
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "parsed": null
                                     }
                                   },
                                   {
@@ -565,7 +576,8 @@
                           "message": "Program 317FJDenS4KLdQkbtuquvaYsE2UL5m9ApKvQxwq16NNu failed: Failed to serialize or deserialize account data"
                         }
                       }
-                    ]
+                    ],
+                    "parsed": null
                   }
                 },
                 {
@@ -589,5 +601,6 @@
         ]
       }
     }
-  ]
+  ],
+  "parsed": null
 }

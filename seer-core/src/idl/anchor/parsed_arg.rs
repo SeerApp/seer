@@ -1,4 +1,3 @@
-use core::panic;
 use std::{collections::HashMap, str::FromStr};
 
 use anchor_lang_idl_spec::{
@@ -46,80 +45,120 @@ fn get_parsed_arg_value_from_ty<'a>(
     mut generics_maps: HashMap<String, GenericHolder>,
 ) -> Option<ParsedArgValue> {
     match ty {
-        IdlType::Bool => Some(ParsedArgValue::Boolean(ViewBooleanTypeNode {
-            value: cursor.take(1)[0] != 0,
-        })),
-        IdlType::U8 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: cursor.take(1)[0].to_string(),
-            format: NumberFormat::U8,
-        })),
-        IdlType::U16 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_u16(cursor.take(2)).to_string(),
-            format: NumberFormat::U16,
-        })),
-        IdlType::U32 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_u32(cursor.take(4)).to_string(),
-            format: NumberFormat::U32,
-        })),
-        IdlType::U64 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_u64(cursor.take(8)).to_string(),
-            format: NumberFormat::U64,
-        })),
-        IdlType::U128 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_u128(cursor.take(16)).to_string(),
-            format: NumberFormat::U128,
-        })),
-        IdlType::I8 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: (cursor.take(1)[0] as i8).to_string(),
-            format: NumberFormat::I8,
-        })),
-        IdlType::I16 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_i16(cursor.take(2)).to_string(),
-            format: NumberFormat::I16,
-        })),
-        IdlType::I32 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_i32(cursor.take(4)).to_string(),
-            format: NumberFormat::I32,
-        })),
-        IdlType::I64 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_i64(cursor.take(8)).to_string(),
-            format: NumberFormat::I64,
-        })),
-        IdlType::I128 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_i128(cursor.take(16)).to_string(),
-            format: NumberFormat::I128,
-        })),
-        IdlType::F32 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_f32(cursor.take(4)).to_string(),
-            format: NumberFormat::F32,
-        })),
-        IdlType::F64 => Some(ParsedArgValue::Number(ViewNumberTypeNode {
-            value: LittleEndian::read_f64(cursor.take(8)).to_string(),
-            format: NumberFormat::F64,
-        })),
+        IdlType::Bool => {
+            let s = cursor.take(1)?;
+            Some(ParsedArgValue::Boolean(ViewBooleanTypeNode {
+                value: s[0] != 0,
+            }))
+        }
+        IdlType::U8 => {
+            let s = cursor.take(1)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: s[0].to_string(),
+                format: NumberFormat::U8,
+            }))
+        }
+        IdlType::U16 => {
+            let s = cursor.take(2)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_u16(s).to_string(),
+                format: NumberFormat::U16,
+            }))
+        }
+        IdlType::U32 => {
+            let s = cursor.take(4)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_u32(s).to_string(),
+                format: NumberFormat::U32,
+            }))
+        }
+        IdlType::U64 => {
+            let s = cursor.take(8)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_u64(s).to_string(),
+                format: NumberFormat::U64,
+            }))
+        }
+        IdlType::U128 => {
+            let s = cursor.take(16)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_u128(s).to_string(),
+                format: NumberFormat::U128,
+            }))
+        }
+        IdlType::I8 => {
+            let s = cursor.take(1)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: (s[0] as i8).to_string(),
+                format: NumberFormat::I8,
+            }))
+        }
+        IdlType::I16 => {
+            let s = cursor.take(2)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_i16(s).to_string(),
+                format: NumberFormat::I16,
+            }))
+        }
+        IdlType::I32 => {
+            let s = cursor.take(4)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_i32(s).to_string(),
+                format: NumberFormat::I32,
+            }))
+        }
+        IdlType::I64 => {
+            let s = cursor.take(8)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_i64(s).to_string(),
+                format: NumberFormat::I64,
+            }))
+        }
+        IdlType::I128 => {
+            let s = cursor.take(16)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_i128(s).to_string(),
+                format: NumberFormat::I128,
+            }))
+        }
+        IdlType::F32 => {
+            let s = cursor.take(4)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_f32(s).to_string(),
+                format: NumberFormat::F32,
+            }))
+        }
+        IdlType::F64 => {
+            let s = cursor.take(8)?;
+            Some(ParsedArgValue::Number(ViewNumberTypeNode {
+                value: LittleEndian::read_f64(s).to_string(),
+                format: NumberFormat::F64,
+            }))
+        }
         IdlType::String => {
-            let length_prefix = LittleEndian::read_u32(cursor.take(4)) as usize;
-            let raw_bytes = cursor.take(length_prefix);
+            let len = LittleEndian::read_u32(cursor.take(4)?) as usize;
+            let raw_bytes = cursor.take(len)?;
             Some(ParsedArgValue::String(ViewStringTypeNode {
                 value: String::from_utf8_lossy(raw_bytes).to_string(),
             }))
         }
         IdlType::Bytes => {
-            let length_prefix = LittleEndian::read_u32(cursor.take(4)) as usize;
-            let raw_bytes = cursor.take(length_prefix);
+            let len = LittleEndian::read_u32(cursor.take(4)?) as usize;
+            let raw_bytes = cursor.take(len)?;
             Some(ParsedArgValue::Bytes(ViewBytesTypeNode {
                 value: hex::encode(raw_bytes),
             }))
         }
         IdlType::Pubkey => {
-            let pubkey_bytes = cursor.take(32);
-            let arr: [u8; 32] = pubkey_bytes.try_into().expect("32 bytes");
+            let pubkey_bytes = cursor.take(32)?;
+            let arr: [u8; 32] = pubkey_bytes.try_into().ok()?;
             Some(ParsedArgValue::PublicKey(ViewPublicKeyTypeNode {
                 value: Pubkey::new_from_array(arr),
             }))
         }
         IdlType::Option(o) => {
-            if cursor.take(1)[0] == 0 {
+            let tag = cursor.take(1)?;
+            if tag[0] == 0 {
                 Some(ParsedArgValue::Option(ViewOptionTypeNode {
                     value: Box::new(None),
                 }))
@@ -135,7 +174,7 @@ fn get_parsed_arg_value_from_ty<'a>(
             }
         }
         IdlType::Vec(v) => {
-            let length_prefix = LittleEndian::read_u32(cursor.take(4)) as usize;
+            let length_prefix = LittleEndian::read_u32(cursor.take(4)?) as usize;
             let values =
                 get_listed_values(types, cursor, &generics_maps, v.as_ref(), length_prefix);
             Some(ParsedArgValue::Array(ViewArrayTypeNode { values }))
@@ -144,23 +183,20 @@ fn get_parsed_arg_value_from_ty<'a>(
             let values = match l {
                 IdlArrayLen::Value(v) => get_listed_values(types, cursor, &generics_maps, a.as_ref(), *v),
                 IdlArrayLen::Generic(g) => {
-                    if let Some(len) = resolve_generic(types, cursor, &generics_maps, g) {
-                        match len {
-                            ParsedArgValue::Number(n) => get_listed_values(
-                                types, 
-                                cursor, 
-                                &generics_maps, 
-                                a.as_ref(), 
-                                n.value.parse::<usize>().ok()?,
-                            ),
-                            _ => panic!("Generic array length does not resolve to a number"),
-                        }
-                    } else {
-                        panic!("Generic array length does not resolve to any value");
+                    let len = resolve_generic(types, cursor, &generics_maps, g)?;
+                    match len {
+                        ParsedArgValue::Number(n) => get_listed_values(
+                            types,
+                            cursor,
+                            &generics_maps,
+                            a.as_ref(),
+                            n.value.parse::<usize>().ok()?,
+                        ),
+                        _ => return None,
                     }
                 }
             };
-            Some(ParsedArgValue::Array(ViewArrayTypeNode { values: values }))
+            Some(ParsedArgValue::Array(ViewArrayTypeNode { values }))
         }
         IdlType::Defined { name, generics } => {
             for t in types {

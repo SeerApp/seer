@@ -83,22 +83,33 @@ where
     })
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TreeError {
     /// Human-readable text from [`InstructionError`]; JSON is always a string on write. Reads accept
     /// either a string or legacy tagged `InstructionError` JSON (e.g. `{"Custom": 0}`).
     #[serde(deserialize_with = "deserialize_tree_error_message")]
     pub message: String,
-    #[serde(skip_serializing)]
+    /// Not persisted on disk (covered by `message`). After `Deserialize`, this is a placeholder.
+    #[serde(skip_serializing, skip_deserializing, default = "TreeError::deser_placeholder_error")]
     pub instruction_error: InstructionError,
 }
 
 impl TreeError {
+    fn deser_placeholder_error() -> InstructionError {
+        InstructionError::Custom(0)
+    }
+
     pub fn new(message: InstructionError) -> Self {
         Self {
             instruction_error: message.clone(),
             message: message.to_string(),
         }
+    }
+}
+
+impl PartialEq for TreeError {
+    fn eq(&self, other: &Self) -> bool {
+        self.message == other.message
     }
 }
 

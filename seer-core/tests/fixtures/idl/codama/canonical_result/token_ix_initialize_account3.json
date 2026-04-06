@@ -1,0 +1,21 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "initializeAccount3",
+    "account_names": [
+      "account",
+      "mint"
+    ],
+    "args": [
+      {
+        "name": "owner",
+        "value": {
+          "type": "PublicKey",
+          "value": {
+            "value": "AKfqTU9gGTCXoAjiZEpKt5x9fBwD3ZU4D3wCJ87KZqTu"
+          }
+        }
+      }
+    ]
+  }
+}

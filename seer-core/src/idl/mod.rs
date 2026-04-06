@@ -1,8 +1,11 @@
 pub mod anchor;
 pub mod codama;
 pub mod cursor;
+pub mod issues;
 pub mod parsed_arg;
 pub mod types;
+
+pub use issues::{IdlIssue, IdlIssues, IdlLocation, IdlProgramContext};
 
 use crate::errors::IrrecoverableError;
 use crate::idl::anchor::AnchorIdlLookup;

@@ -25,7 +25,9 @@ use solana_signature::Signature;
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
 use crate::errors::IrrecoverableError;
-pub use crate::logger::{init_seer_logger, seer_logger, SeerLogger, SeerLoggerLevel};
+pub use crate::logger::{
+    init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
+};
 
 pub struct SeerSingleton {
     context: Option<SourcesContext>,

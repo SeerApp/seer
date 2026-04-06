@@ -12,7 +12,7 @@ use crate::{
     program_manager::program_manager::ProgramManager,
     runbook::{generate_runbooks, save_runbooks},
     save::{save_meta, save_trace_tree},
-    seer_debug, seer_trace,
+    seer_debug,
 };
 
 pub struct SeerContext {
@@ -45,13 +45,13 @@ impl SeerContext {
     }
 
     pub fn set_current_tx(&mut self, tx: Signature) {
-        seer_trace!("New tx: {:?}", tx);
+        seer_debug!("New tx: {:?}", tx);
         self.transaction_context = Some(TransactionContext::new(tx));
     }
 
     pub fn unset_current_tx(&mut self) {
         if let Some(txc) = &self.transaction_context.take() {
-            seer_trace!("Tx unset: {:?}", txc.signature);
+            seer_debug!("Tx unset: {:?}", txc.signature);
 
             if *txc.executed() {
                 save_meta(&txc.signature.to_string(), &txc.meta);
@@ -60,7 +60,7 @@ impl SeerContext {
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
-        seer_trace!("New instruction: {:?}", instruction);
+        seer_debug!("New instruction: {:?}", instruction);
         self.transaction_context
             .as_mut()
             .expect("Instruction called before transaction context")
@@ -68,7 +68,7 @@ impl SeerContext {
     }
 
     pub fn end_instruction(&mut self) {
-        seer_trace!("Ending instruction");
+        seer_debug!("Ending instruction");
         let txc = self
             .transaction_context
             .as_mut()
@@ -94,7 +94,7 @@ impl SeerContext {
         program_address: Pubkey,
         step_mirror: &dyn GuestStepMirror,
     ) {
-        seer_trace!("Starting program: {:?}", program_address);
+        seer_debug!("Starting program: {:?}", program_address);
         self.transaction_context
             .as_mut()
             .expect("Starting program before transaction context")
@@ -102,7 +102,7 @@ impl SeerContext {
     }
 
     pub fn end_program(&mut self, program_address: Pubkey, err: Option<InstructionError>) {
-        seer_trace!("Ending program: {:?}", program_address);
+        seer_debug!("Ending program: {:?}", program_address);
         self.transaction_context
             .as_mut()
             .expect("Ending program before transaction context exists")
@@ -117,7 +117,7 @@ impl SeerContext {
     }
 
     pub fn log(&mut self, message: &str) {
-        seer_trace!("Log: {:?}", message);
+        seer_debug!("Log: {:?}", message);
         self.transaction_context
             .as_mut()
             .expect("Logging before transaction context exists")

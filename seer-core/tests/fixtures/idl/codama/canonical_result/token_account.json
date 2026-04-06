@@ -1,0 +1,119 @@
+{
+  "parsed": {
+    "id": "Default",
+    "data": {
+      "name": "token",
+      "value": {
+        "type": "Struct",
+        "value": {
+          "fields": [
+            {
+              "name": "mint",
+              "docs": [
+                "The mint associated with this account."
+              ],
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "HYTLyA85bXocKVYnQuNPFqCtF4xXfFSvC17awsonMfV9"
+                }
+              }
+            },
+            {
+              "name": "owner",
+              "docs": [
+                "The owner of this account."
+              ],
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "AKfqTU9gGTCXoAjiZEpKt5x9fBwD3ZU4D3wCJ87KZqTu"
+                }
+              }
+            },
+            {
+              "name": "amount",
+              "docs": [
+                "The amount of tokens this account holds."
+              ],
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "delegate",
+              "docs": [
+                "If `delegate` is `Some` then `delegated_amount` represents",
+                "the amount authorized by the delegate."
+              ],
+              "value": {
+                "type": "Option",
+                "value": {
+                  "value": null
+                }
+              }
+            },
+            {
+              "name": "state",
+              "docs": [
+                "The account's state."
+              ],
+              "value": {
+                "type": "Enum",
+                "value": {
+                  "discriminant": "0",
+                  "name": "uninitialized",
+                  "value": "Empty"
+                }
+              }
+            },
+            {
+              "name": "isNative",
+              "docs": [
+                "If is_native.is_some, this is a native token, and the value logs the",
+                "rent-exempt reserve. An Account is required to be rent-exempt, so",
+                "the value is used by the Processor to ensure that wrapped SOL",
+                "accounts do not drop below this threshold."
+              ],
+              "value": {
+                "type": "Option",
+                "value": {
+                  "value": null
+                }
+              }
+            },
+            {
+              "name": "delegatedAmount",
+              "docs": [
+                "The amount delegated."
+              ],
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "0",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "closeAuthority",
+              "docs": [
+                "Optional authority to close the account."
+              ],
+              "value": {
+                "type": "Option",
+                "value": {
+                  "value": null
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

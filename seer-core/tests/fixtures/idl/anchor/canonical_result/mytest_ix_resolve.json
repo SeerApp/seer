@@ -1,0 +1,30 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "resolve",
+    "account_names": [
+      "resolver",
+      "taker_token_account",
+      "admin1_token_account",
+      "admin2_token_account",
+      "resolver_token_account",
+      "escrow_state",
+      "admin_state",
+      "vault",
+      "vault_authority",
+      "token_program"
+    ],
+    "args": [
+      {
+        "name": "milestone_idx",
+        "value": {
+          "type": "Number",
+          "value": {
+            "value": "10",
+            "format": "u64"
+          }
+        }
+      }
+    ]
+  }
+}

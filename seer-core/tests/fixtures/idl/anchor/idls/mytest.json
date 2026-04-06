@@ -1,0 +1,971 @@
+{
+    "address": "BKPmYX2xSgis75tMCm5fqpWdQyoJxhEW2EQ7EBnrngDj",
+    "metadata": {
+        "name": "mytest",
+        "version": "0.1.0",
+        "spec": "0.1.0",
+        "description": "Created with Anchor"
+    },
+    "instructions": [
+        {
+            "name": "approve",
+            "discriminator": [
+                69,
+                74,
+                217,
+                36,
+                115,
+                117,
+                97,
+                76
+            ],
+            "accounts": [
+                {
+                    "name": "initializer",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "taker_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin1_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin2_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    118,
+                                    97,
+                                    117,
+                                    108,
+                                    116
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault_authority"
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": [
+                {
+                    "name": "milestone_idx",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "change_admin",
+            "discriminator": [
+                193,
+                151,
+                203,
+                161,
+                200,
+                202,
+                32,
+                146
+            ],
+            "accounts": [
+                {
+                    "name": "admin1",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "new_admin1",
+                    "writable": true
+                },
+                {
+                    "name": "new_admin2",
+                    "writable": true
+                },
+                {
+                    "name": "new_resolver",
+                    "writable": true
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            "args": []
+        },
+        {
+            "name": "dispute",
+            "discriminator": [
+                216,
+                92,
+                128,
+                146,
+                202,
+                85,
+                135,
+                73
+            ],
+            "accounts": [
+                {
+                    "name": "disputor",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "args": []
+        },
+        {
+            "name": "init_admin",
+            "discriminator": [
+                97,
+                65,
+                97,
+                27,
+                200,
+                206,
+                72,
+                219
+            ],
+            "accounts": [
+                {
+                    "name": "admin1",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "admin2",
+                    "writable": true
+                },
+                {
+                    "name": "resolver",
+                    "writable": true
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "system_program",
+                    "address": "11111111111111111111111111111111"
+                },
+                {
+                    "name": "rent",
+                    "address": "SysvarRent111111111111111111111111111111111"
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": []
+        },
+        {
+            "name": "initialize",
+            "discriminator": [
+                175,
+                175,
+                109,
+                31,
+                13,
+                152,
+                155,
+                237
+            ],
+            "accounts": [
+                {
+                    "name": "initializer",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "taker",
+                    "writable": true
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "mint",
+                    "writable": true
+                },
+                {
+                    "name": "vault",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    118,
+                                    97,
+                                    117,
+                                    108,
+                                    116
+                                ]
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "escrow_seed"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "initializer_deposit_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "escrow_seed"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "system_program",
+                    "address": "11111111111111111111111111111111"
+                },
+                {
+                    "name": "rent",
+                    "address": "SysvarRent111111111111111111111111111111111"
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": [
+                {
+                    "name": "random_seed",
+                    "type": "u64"
+                },
+                {
+                    "name": "initializer_amount",
+                    "type": {
+                        "array": [
+                            "u64",
+                            5
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "refund",
+            "discriminator": [
+                2,
+                96,
+                183,
+                251,
+                63,
+                208,
+                46,
+                46
+            ],
+            "accounts": [
+                {
+                    "name": "taker",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "initializer_deposit_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin1_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin2_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    118,
+                                    97,
+                                    117,
+                                    108,
+                                    116
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault_authority"
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": []
+        },
+        {
+            "name": "resolve",
+            "discriminator": [
+                246,
+                150,
+                236,
+                206,
+                108,
+                63,
+                58,
+                10
+            ],
+            "accounts": [
+                {
+                    "name": "resolver",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "taker_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin1_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "admin2_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "resolver_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    118,
+                                    97,
+                                    117,
+                                    108,
+                                    116
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault_authority"
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": [
+                {
+                    "name": "milestone_idx",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "set_fee",
+            "discriminator": [
+                18,
+                154,
+                24,
+                18,
+                237,
+                214,
+                19,
+                80
+            ],
+            "accounts": [
+                {
+                    "name": "admin1",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            "args": [
+                {
+                    "name": "admin_fee",
+                    "type": "u64"
+                },
+                {
+                    "name": "resolver_fee",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "withdraw_for_resolve",
+            "discriminator": [
+                13,
+                69,
+                122,
+                13,
+                122,
+                128,
+                71,
+                24
+            ],
+            "accounts": [
+                {
+                    "name": "resolver",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "vault",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    118,
+                                    97,
+                                    117,
+                                    108,
+                                    116
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "vault_authority"
+                },
+                {
+                    "name": "resolver_token_account",
+                    "writable": true
+                },
+                {
+                    "name": "escrow_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "escrow_state.random_seed",
+                                "account": "EscrowState"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "admin_state",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    115,
+                                    116,
+                                    97,
+                                    116,
+                                    101
+                                ]
+                            },
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    100,
+                                    109,
+                                    105,
+                                    110
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "token_program",
+                    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                }
+            ],
+            "args": []
+        }
+    ],
+    "accounts": [
+        {
+            "name": "AdminState",
+            "discriminator": [
+                190,
+                42,
+                124,
+                96,
+                242,
+                52,
+                141,
+                28
+            ]
+        },
+        {
+            "name": "EscrowState",
+            "discriminator": [
+                19,
+                90,
+                148,
+                111,
+                55,
+                130,
+                229,
+                108
+            ]
+        }
+    ],
+    "types": [
+        {
+            "name": "AdminState",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "bump",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "admin_fee",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "resolver_fee",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "admin1",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "admin2",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "resolver",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "total_amount",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "locked_amount",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "active_escrow",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "completed_escrow",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "disputed_escrow",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "refunded_escrow",
+                        "type": "u64"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "EscrowState",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "random_seed",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "initializer_key",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "taker",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "initializer_amount",
+                        "type": {
+                            "array": [
+                                "u64",
+                                5
+                            ]
+                        }
+                    },
+                    {
+                        "name": "dispute_status",
+                        "type": "bool"
+                    },
+                    {
+                        "name": "refund_status",
+                        "type": "bool"
+                    },
+                    {
+                        "name": "mint",
+                        "type": "pubkey"
+                    },
+                    {
+                        "name": "bump",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "vault_bump",
+                        "type": "u8"
+                    }
+                ]
+            }
+        }
+    ]
+}

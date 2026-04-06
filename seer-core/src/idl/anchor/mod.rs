@@ -1,6 +1,8 @@
 mod cursor;
+mod framework_error;
 mod parsed_arg;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use anchor_lang_idl_spec::{Idl, IdlInstructionAccountItem};
@@ -12,13 +14,16 @@ use crate::{
         cursor::Cursor,
         parsed_arg::ParsedArg,
         types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
-        IdlTreeParser,
+        IdlIssues, IdlTreeParser,
     },
     tree::nodes::{RootChildren, TreeRoot},
 };
 
 pub struct AnchorIdlLookup {
     idl: Idl,
+    /// Reserved for future Anchor-side `IdlIssue` recording (same pattern as Codama).
+    #[allow(dead_code)]
+    idl_issues: RefCell<IdlIssues>,
 }
 
 impl IdlTreeParser for AnchorIdlLookup {
@@ -88,13 +93,17 @@ impl IdlTreeParser for AnchorIdlLookup {
 
     fn get_error(&self, error: InstructionError) -> String {
         match error {
-            InstructionError::Custom(code) => self
-                .idl
-                .errors
-                .iter()
-                .find(|e| e.code == code)
-                .map(|e| format!("{}: {:#?}", &e.name, e.msg))
-                .unwrap_or_else(|| InstructionError::Custom(code).to_string()),
+            InstructionError::Custom(code) => {
+                framework_error::try_format_anchor_framework_error(code)
+                    .or_else(|| {
+                        self.idl
+                            .errors
+                            .iter()
+                            .find(|e| e.code == code)
+                            .map(|e| format!("{}: {:#?}", &e.name, e.msg))
+                    })
+                    .unwrap_or_else(|| InstructionError::Custom(code).to_string())
+            }
             _ => error.to_string(),
         }
     }
@@ -104,10 +113,13 @@ impl AnchorIdlLookup {
     pub fn parse_tree_root(&self, root: &mut TreeRoot<RootChildren>) {
         root.parsed = self.get_instruction(&root.data);
     }
-    
+
     pub fn from_json_str(idl_json: &str) -> Result<Self, serde_json::Error> {
         let idl: Idl = serde_json::from_str(idl_json)?;
-        Ok(Self { idl })
+        Ok(Self {
+            idl,
+            idl_issues: RefCell::new(IdlIssues::placeholder()),
+        })
     }
 
     fn get_account_names(&self, accounts: &Vec<IdlInstructionAccountItem>) -> Vec<String> {

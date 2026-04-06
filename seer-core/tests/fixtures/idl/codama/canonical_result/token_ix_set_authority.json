@@ -1,0 +1,37 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "setAuthority",
+    "account_names": [
+      "owned",
+      "owner"
+    ],
+    "args": [
+      {
+        "name": "authorityType",
+        "value": {
+          "type": "Enum",
+          "value": {
+            "discriminant": "2",
+            "name": "accountOwner",
+            "value": "Empty"
+          }
+        }
+      },
+      {
+        "name": "newAuthority",
+        "value": {
+          "type": "Option",
+          "value": {
+            "value": {
+              "type": "PublicKey",
+              "value": {
+                "value": "34vvxmbDe2jfcFnkVJnK5wS6fTzpQeWETP4nBiyWkbSK"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -49,6 +49,11 @@ pub struct ProgramManager {
 }
 
 impl ProgramManager {
+    /// `runtime_dir` — project (or fixture) root: program artifacts are loaded from
+    /// `runtime_dir/target/deploy` (`*.debug`, keypairs, etc.).
+    ///
+    /// `dwarf_compile_dir` — root of the tree referenced by paths embedded in DWARF (the build
+    /// workspace). Used with `runtime_dir` when resolving sources at runtime.
     pub fn init(
         runtime_dir: &PathBuf,
         dwarf_compile_dir: &PathBuf,
@@ -58,7 +63,8 @@ impl ProgramManager {
 
         add_known_programs(&mut inner);
 
-        let targets = get_targets(runtime_dir)?;
+        let deploy_dir = runtime_dir.join("target/deploy");
+        let targets = get_targets(&deploy_dir)?;
         let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
 
         for (key, target) in &targets {
