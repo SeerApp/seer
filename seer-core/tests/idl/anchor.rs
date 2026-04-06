@@ -3,18 +3,32 @@
 mod common;
 
 use std::fs;
+use std::sync::Once;
 
 use common::{anchor_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
 use seer_core::idl::anchor::AnchorIdlLookup;
 use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
-use seer_core::idl::IdlTreeParser;
+use seer_core::idl::{IdlIssue, IdlTreeParser};
+use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use solana_instruction_error::InstructionError;
 
+static INIT_SEER_LOG: Once = Once::new();
+
+fn ensure_seer_logger() {
+    INIT_SEER_LOG.call_once(|| {
+        init_seer_logger(SeerLogger::from_env());
+    });
+}
+
 fn mytest_lookup() -> AnchorIdlLookup {
+    ensure_seer_logger();
     AnchorIdlLookup::from_json_str(include_tests_fixture!("idl/anchor/idls/mytest.json"))
         .expect("mytest Anchor IDL must parse")
 }
+
+// IdlIssue coverage (Anchor IDL): see `test_truncated_anchor_instruction_records_insufficient_bytes`
+// (`InsufficientBytes`) and `idl::issues` unit tests for dedup / non-unary helpers.
 
 fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
     let dir = anchor_idl_golden_dir();
@@ -61,6 +75,26 @@ struct AccountFixture {
 #[derive(Serialize)]
 struct ErrorFixture {
     message: String,
+}
+
+#[test]
+fn test_truncated_anchor_instruction_records_insufficient_bytes() {
+    ensure_seer_logger();
+    let idl = AnchorIdlLookup::from_json_str(include_tests_fixture!("idl/anchor/idls/mytest.json"))
+        .expect("mytest Anchor IDL must parse");
+    // `approve`: 8-byte discriminator + u64 `milestone_idx`; only 4 bytes of payload after disc.
+    let invoke_data: Vec<u8> = vec![
+        69, 74, 217, 36, 115, 117, 97, 76, //
+        0, 0, 0, 0,
+    ];
+    let _ = idl.get_instruction(&invoke_data);
+    let issues = idl.sorted_idl_issues();
+    assert!(
+        issues
+            .iter()
+            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
+        "expected InsufficientBytes, got {issues:?}"
+    );
 }
 
 #[test]

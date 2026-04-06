@@ -9,6 +9,7 @@ use codama_nodes::NumberFormat;
 use solana_pubkey::Pubkey;
 
 use crate::idl::{
+    anchor::ctx::AnchorParseCtx,
     cursor::Cursor,
     parsed_arg::{
         ParsedArgValue, ViewArrayTypeNode, ViewBooleanTypeNode, ViewBytesTypeNode,
@@ -30,12 +31,22 @@ pub enum GenericHolder {
     Constant(ConstHolder),
 }
 
+fn take_bytes<'a, 'b>(
+    cursor: &'b mut Cursor<'a>,
+    n: usize,
+    ctx: &mut AnchorParseCtx<'_>,
+    operation: &'static str,
+) -> Option<&'b [u8]> {
+    cursor.take_or_else(n, |rem| ctx.note_insufficient_bytes(n, rem, operation))
+}
+
 pub fn get_parsed_arg_value<'a>(
     types: &Vec<IdlTypeDef>,
     arg: &IdlField,
     cursor: &mut Cursor<'a>,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Option<ParsedArgValue> {
-    get_parsed_arg_value_from_ty(types, &arg.ty, cursor, HashMap::new())
+    get_parsed_arg_value_from_ty(types, &arg.ty, cursor, HashMap::new(), ctx)
 }
 
 fn get_parsed_arg_value_from_ty<'a>(
@@ -43,147 +54,163 @@ fn get_parsed_arg_value_from_ty<'a>(
     ty: &IdlType,
     cursor: &mut Cursor<'a>,
     mut generics_maps: HashMap<String, GenericHolder>,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Option<ParsedArgValue> {
     match ty {
         IdlType::Bool => {
-            let s = cursor.take(1)?;
+            let s = take_bytes(cursor, 1, ctx, "bool u8")?;
             Some(ParsedArgValue::Boolean(ViewBooleanTypeNode {
                 value: s[0] != 0,
             }))
         }
         IdlType::U8 => {
-            let s = cursor.take(1)?;
+            let s = take_bytes(cursor, 1, ctx, "u8")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: s[0].to_string(),
                 format: NumberFormat::U8,
             }))
         }
         IdlType::U16 => {
-            let s = cursor.take(2)?;
+            let s = take_bytes(cursor, 2, ctx, "u16")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_u16(s).to_string(),
                 format: NumberFormat::U16,
             }))
         }
         IdlType::U32 => {
-            let s = cursor.take(4)?;
+            let s = take_bytes(cursor, 4, ctx, "u32")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_u32(s).to_string(),
                 format: NumberFormat::U32,
             }))
         }
         IdlType::U64 => {
-            let s = cursor.take(8)?;
+            let s = take_bytes(cursor, 8, ctx, "u64")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_u64(s).to_string(),
                 format: NumberFormat::U64,
             }))
         }
         IdlType::U128 => {
-            let s = cursor.take(16)?;
+            let s = take_bytes(cursor, 16, ctx, "u128")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_u128(s).to_string(),
                 format: NumberFormat::U128,
             }))
         }
         IdlType::I8 => {
-            let s = cursor.take(1)?;
+            let s = take_bytes(cursor, 1, ctx, "i8")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: (s[0] as i8).to_string(),
                 format: NumberFormat::I8,
             }))
         }
         IdlType::I16 => {
-            let s = cursor.take(2)?;
+            let s = take_bytes(cursor, 2, ctx, "i16")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_i16(s).to_string(),
                 format: NumberFormat::I16,
             }))
         }
         IdlType::I32 => {
-            let s = cursor.take(4)?;
+            let s = take_bytes(cursor, 4, ctx, "i32")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_i32(s).to_string(),
                 format: NumberFormat::I32,
             }))
         }
         IdlType::I64 => {
-            let s = cursor.take(8)?;
+            let s = take_bytes(cursor, 8, ctx, "i64")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_i64(s).to_string(),
                 format: NumberFormat::I64,
             }))
         }
         IdlType::I128 => {
-            let s = cursor.take(16)?;
+            let s = take_bytes(cursor, 16, ctx, "i128")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_i128(s).to_string(),
                 format: NumberFormat::I128,
             }))
         }
         IdlType::F32 => {
-            let s = cursor.take(4)?;
+            let s = take_bytes(cursor, 4, ctx, "f32")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_f32(s).to_string(),
                 format: NumberFormat::F32,
             }))
         }
         IdlType::F64 => {
-            let s = cursor.take(8)?;
+            let s = take_bytes(cursor, 8, ctx, "f64")?;
             Some(ParsedArgValue::Number(ViewNumberTypeNode {
                 value: LittleEndian::read_f64(s).to_string(),
                 format: NumberFormat::F64,
             }))
         }
         IdlType::String => {
-            let len = LittleEndian::read_u32(cursor.take(4)?) as usize;
-            let raw_bytes = cursor.take(len)?;
+            let len_bytes = take_bytes(cursor, 4, ctx, "string length u32")?;
+            let len = LittleEndian::read_u32(len_bytes) as usize;
+            let raw_bytes = take_bytes(cursor, len, ctx, "string payload")?;
             Some(ParsedArgValue::String(ViewStringTypeNode {
                 value: String::from_utf8_lossy(raw_bytes).to_string(),
             }))
         }
         IdlType::Bytes => {
-            let len = LittleEndian::read_u32(cursor.take(4)?) as usize;
-            let raw_bytes = cursor.take(len)?;
+            let len_bytes = take_bytes(cursor, 4, ctx, "bytes length u32")?;
+            let len = LittleEndian::read_u32(len_bytes) as usize;
+            let raw_bytes = take_bytes(cursor, len, ctx, "bytes payload")?;
             Some(ParsedArgValue::Bytes(ViewBytesTypeNode {
                 value: hex::encode(raw_bytes),
             }))
         }
         IdlType::Pubkey => {
-            let pubkey_bytes = cursor.take(32)?;
+            let pubkey_bytes = take_bytes(cursor, 32, ctx, "pubkey (32 bytes)")?;
             let arr: [u8; 32] = pubkey_bytes.try_into().ok()?;
             Some(ParsedArgValue::PublicKey(ViewPublicKeyTypeNode {
                 value: Pubkey::new_from_array(arr),
             }))
         }
         IdlType::Option(o) => {
-            let tag = cursor.take(1)?;
+            let tag = take_bytes(cursor, 1, ctx, "option tag u8")?;
             if tag[0] == 0 {
                 Some(ParsedArgValue::Option(ViewOptionTypeNode {
                     value: Box::new(None),
                 }))
             } else {
+                let inner = get_parsed_arg_value_from_ty(
+                    types,
+                    o.as_ref(),
+                    cursor,
+                    generics_maps.clone(),
+                    ctx,
+                );
+                if inner.is_none() {
+                    ctx.note_decode_residual("option some payload".to_string());
+                }
                 Some(ParsedArgValue::Option(ViewOptionTypeNode {
-                    value: Box::new(get_parsed_arg_value_from_ty(
-                        types,
-                        o.as_ref(),
-                        cursor,
-                        generics_maps.clone(),
-                    )),
+                    value: Box::new(inner),
                 }))
             }
         }
         IdlType::Vec(v) => {
-            let length_prefix = LittleEndian::read_u32(cursor.take(4)?) as usize;
+            let len_bytes = take_bytes(cursor, 4, ctx, "vec length u32")?;
+            let length_prefix = LittleEndian::read_u32(len_bytes) as usize;
             let values =
-                get_listed_values(types, cursor, &generics_maps, v.as_ref(), length_prefix);
+                get_listed_values(types, cursor, &generics_maps, v.as_ref(), length_prefix, ctx);
             Some(ParsedArgValue::Array(ViewArrayTypeNode { values }))
         }
         IdlType::Array(a, l) => {
             let values = match l {
-                IdlArrayLen::Value(v) => get_listed_values(types, cursor, &generics_maps, a.as_ref(), *v),
+                IdlArrayLen::Value(v) => get_listed_values(
+                    types,
+                    cursor,
+                    &generics_maps,
+                    a.as_ref(),
+                    *v,
+                    ctx,
+                ),
                 IdlArrayLen::Generic(g) => {
-                    let len = resolve_generic(types, cursor, &generics_maps, g)?;
+                    let len = resolve_generic(types, cursor, &generics_maps, g, ctx)?;
                     match len {
                         ParsedArgValue::Number(n) => get_listed_values(
                             types,
@@ -191,6 +218,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                             &generics_maps,
                             a.as_ref(),
                             n.value.parse::<usize>().ok()?,
+                            ctx,
                         ),
                         _ => return None,
                     }
@@ -223,17 +251,12 @@ fn get_parsed_arg_value_from_ty<'a>(
                         }
                     }
 
-                    return get_idl_type_def_ty(
-                        types,
-                        cursor,
-                        &generics_maps,
-                        &t.ty,
-                    )
+                    return get_idl_type_def_ty(types, cursor, &generics_maps, &t.ty, ctx);
                 }
             }
             panic!("Defined field has no corresponding types entry")
         }
-        IdlType::Generic(g) => resolve_generic(types, cursor, &generics_maps, g),
+        IdlType::Generic(g) => resolve_generic(types, cursor, &generics_maps, g, ctx),
         _ => None,
     }
 }
@@ -243,20 +266,17 @@ pub fn get_idl_type_def_ty<'a>(
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
     ty: &IdlTypeDefTy,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Option<ParsedArgValue> {
     match ty {
-        IdlTypeDefTy::Struct { fields } => {
-            return get_struct(types, fields, cursor, &generics_maps)
-        }
+        IdlTypeDefTy::Struct { fields } => get_struct(types, fields, cursor, &generics_maps, ctx),
         IdlTypeDefTy::Enum { variants } => {
             for v in variants {
                 let value = if let Some(parsed_arg_value) =
-                    get_struct(types, &v.fields, cursor, &generics_maps)
+                    get_struct(types, &v.fields, cursor, &generics_maps, ctx)
                 {
                     match parsed_arg_value {
-                        ParsedArgValue::Struct(value) => {
-                            ViewEnumValue::Struct(value)
-                        }
+                        ParsedArgValue::Struct(value) => ViewEnumValue::Struct(value),
                         ParsedArgValue::Tuple(value) => ViewEnumValue::Tuple(value),
                         _ => panic!("Literally cannot happen"),
                     }
@@ -272,14 +292,13 @@ pub fn get_idl_type_def_ty<'a>(
             }
             panic!("No corresponding enum variant");
         }
-        IdlTypeDefTy::Type { alias } => {
-            return get_parsed_arg_value_from_ty(
-                types,
-                alias,
-                cursor,
-                generics_maps.clone(),
-            )
-        }
+        IdlTypeDefTy::Type { alias } => get_parsed_arg_value_from_ty(
+            types,
+            alias,
+            cursor,
+            generics_maps.clone(),
+            ctx,
+        ),
     }
 }
 
@@ -289,11 +308,12 @@ fn get_listed_values<'a>(
     generics_maps: &HashMap<String, GenericHolder>,
     ty: &IdlType,
     length: usize,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Vec<ParsedArgValue> {
     let mut values = vec![];
     for _ in 0..length {
         if let Some(parsed_arg) =
-            get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone())
+            get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone(), ctx)
         {
             values.push(parsed_arg);
         }
@@ -406,11 +426,12 @@ fn resolve_generic<'a>(
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
     generic: &String,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Option<ParsedArgValue> {
     match generics_maps.get(generic).unwrap() {
         GenericHolder::Constant(c) => get_parsed_arg_value_from_constant(c),
         GenericHolder::Generic(g) => {
-            get_parsed_arg_value_from_ty(types, g, cursor, generics_maps.clone())
+            get_parsed_arg_value_from_ty(types, g, cursor, generics_maps.clone(), ctx)
         }
     }
 }
@@ -420,15 +441,17 @@ fn get_struct<'a>(
     fields: &Option<IdlDefinedFields>,
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
+    ctx: &mut AnchorParseCtx<'_>,
 ) -> Option<ParsedArgValue> {
     if let Some(fields) = fields {
         match fields {
             IdlDefinedFields::Named(named_fields) => {
                 let mut return_struct = ViewStructTypeNode { fields: vec![] };
                 for f in named_fields {
-                    if let Some(value) =
-                        get_parsed_arg_value_from_ty(types, &f.ty, cursor, generics_maps.clone())
-                    {
+                    ctx.push_path(f.name.clone());
+                    let value = get_parsed_arg_value_from_ty(types, &f.ty, cursor, generics_maps.clone(), ctx);
+                    ctx.pop_path();
+                    if let Some(value) = value {
                         return_struct.fields.push(ViewStructFieldTypeNode {
                             name: f.name.clone(),
                             docs: f.docs.clone().into(),
@@ -440,10 +463,11 @@ fn get_struct<'a>(
             }
             IdlDefinedFields::Tuple(tuple_fields) => {
                 let mut return_tuple = ViewTupleTypeNode { items: vec![] };
-                for f in tuple_fields {
-                    if let Some(value) =
-                        get_parsed_arg_value_from_ty(types, &f, cursor, generics_maps.clone())
-                    {
+                for (i, f) in tuple_fields.iter().enumerate() {
+                    ctx.push_path(format!("{i}"));
+                    let value = get_parsed_arg_value_from_ty(types, f, cursor, generics_maps.clone(), ctx);
+                    ctx.pop_path();
+                    if let Some(value) = value {
                         return_tuple.items.push(value);
                     }
                 }
