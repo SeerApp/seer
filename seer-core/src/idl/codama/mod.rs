@@ -238,12 +238,16 @@ impl CodamaIdlLookup {
         let program = &self.root_node.program;
         let skipped = self.skipped_instructions.borrow();
         let mut issues = self.idl_issues.borrow_mut();
+        let single_instruction_program = program.instructions.len() == 1;
 
         for ix in &program.instructions {
             if skipped.contains(ix.name.as_ref()) {
                 continue;
             }
-            if ix.discriminators.len() != 1 {
+            if ix.discriminators.is_empty() {
+                if single_instruction_program {
+                    return Some(ix);
+                }
                 continue;
             }
             let mut ctx = CodamaParseCtx {
@@ -253,19 +257,32 @@ impl CodamaIdlLookup {
                 },
                 path: vec![],
             };
-            if self.discriminator_matches(data, true, &ix.discriminators[0], &mut ctx, |field_name| {
-                let argument = ix
-                    .arguments
-                    .iter()
-                    .find(|arg| arg.name.to_string() == field_name)?;
-                let default_value = argument.default_value.as_ref()?;
-                Some((
-                    &argument.r#type,
-                    Box::new(move |parsed| {
-                        eq_instruciton_input_value_node(parsed, default_value, None)
-                    }),
-                ))
-            }) {
+            let mut all_discriminators_match = true;
+            for discriminator in &ix.discriminators {
+                if !self.discriminator_matches(
+                    data,
+                    true,
+                    discriminator,
+                    &mut ctx,
+                    |field_name| {
+                        let argument = ix
+                            .arguments
+                            .iter()
+                            .find(|arg| arg.name.to_string() == field_name)?;
+                        let default_value = argument.default_value.as_ref()?;
+                        Some((
+                            &argument.r#type,
+                            Box::new(move |parsed| {
+                                eq_instruciton_input_value_node(parsed, default_value, None)
+                            }),
+                        ))
+                    },
+                ) {
+                    all_discriminators_match = false;
+                    break;
+                }
+            }
+            if all_discriminators_match {
                 return Some(ix);
             }
         }
@@ -288,16 +305,21 @@ impl CodamaIdlLookup {
             if skipped_acc.contains(ax.name.as_ref()) {
                 continue;
             }
-            if ax.discriminators.len() == 1 {
-                let mut issues = self.idl_issues.borrow_mut();
-                let mut ctx = CodamaParseCtx {
-                    issues: &mut *issues,
-                    site: ParseSite::DiscriminatorAccount {
-                        name: ax.name.to_string(),
-                    },
-                    path: vec![],
-                };
-                if self.discriminator_matches(data, true, &ax.discriminators[0], &mut ctx, |field_name| {
+            if ax.discriminators.is_empty() {
+                continue;
+            }
+
+            let mut issues = self.idl_issues.borrow_mut();
+            let mut ctx = CodamaParseCtx {
+                issues: &mut *issues,
+                site: ParseSite::DiscriminatorAccount {
+                    name: ax.name.to_string(),
+                },
+                path: vec![],
+            };
+            let mut all_discriminators_match = true;
+            for discriminator in &ax.discriminators {
+                if !self.discriminator_matches(data, true, discriminator, &mut ctx, |field_name| {
                     let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
                     let field = inner_struct
                         .fields
@@ -309,13 +331,12 @@ impl CodamaIdlLookup {
                         Box::new(move |parsed| eq_value_node(parsed, default_value, None)),
                     ))
                 }) {
-                    return Some(i);
+                    all_discriminators_match = false;
+                    break;
                 }
-            } else {
-                self.idl_issues.borrow_mut().note_account_non_unary_discriminator(
-                    ax.name.to_string(),
-                    ax.discriminators.len(),
-                );
+            }
+            if all_discriminators_match {
+                return Some(i);
             }
         }
 

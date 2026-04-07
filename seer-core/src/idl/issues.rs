@@ -123,11 +123,8 @@ impl fmt::Display for IdlLocation {
 /// One logical IDL issue we record at most once (and warn once). Program identity is on [`IdlIssues::context`], not here.
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, PartialOrd, Ord, Error)]
 pub enum IdlIssue {
-    #[error("Skipping account `{account}`: multiple discriminators are not supported")]
-    AccountNonUnaryDiscriminator { account: String },
-
-    #[error("Skipping instruction `{instruction}`: multiple discriminators are not supported")]
-    InstructionNonUnaryDiscriminator { instruction: String },
+    #[error("Skipping instruction `{instruction}`: discriminator layout is invalid")]
+    InstructionInvalidDiscriminatorLayout { instruction: String },
 
     #[error("Defined type link `{link_name}` has no matching `definedTypes` entry ({at})")]
     MissingDefinedTypeLink {
@@ -239,33 +236,17 @@ impl IdlIssues {
         }
     }
 
-    pub fn note_account_non_unary_discriminator(
-        &mut self,
-        account: String,
-        count: usize,
-    ) {
-        let issue = IdlIssue::AccountNonUnaryDiscriminator {
-            account,
-        };
-        if self.seen.insert(issue.clone()) {
-            crate::seer_warn!(
-                "IDL {} ({}): {} (found {count} discriminators)",
-                self.context.program_name,
-                self.context.program_address,
-                issue
-            );
-        }
-    }
-
-    pub fn note_instruction_non_unary_discriminator(
+    pub fn note_instruction_invalid_discriminator_layout(
         &mut self,
         instruction: String,
         count: usize,
     ) {
-        let issue = IdlIssue::InstructionNonUnaryDiscriminator { instruction };
+        let issue = IdlIssue::InstructionInvalidDiscriminatorLayout {
+            instruction,
+        };
         if self.seen.insert(issue.clone()) {
             crate::seer_warn!(
-                "IDL {} ({}): {} (found {count} discriminators)",
+                "IDL {} ({}): {} (found {count} discriminator entries)",
                 self.context.program_name,
                 self.context.program_address,
                 issue
@@ -290,20 +271,11 @@ mod tests {
     }
 
     #[test]
-    fn note_account_non_unary_discriminator_inserts_once() {
+    fn note_instruction_invalid_discriminator_layout_inserts_once() {
         init_seer_logger(SeerLogger::from_env());
         let mut issues = IdlIssues::new(test_ctx());
-        issues.note_account_non_unary_discriminator("myAccount".into(), 2);
-        issues.note_account_non_unary_discriminator("myAccount".into(), 3);
-        assert_eq!(issues.sorted_issues().len(), 1);
-    }
-
-    #[test]
-    fn note_instruction_non_unary_discriminator_inserts_once() {
-        init_seer_logger(SeerLogger::from_env());
-        let mut issues = IdlIssues::new(test_ctx());
-        issues.note_instruction_non_unary_discriminator("myIx".into(), 2);
-        issues.note_instruction_non_unary_discriminator("myIx".into(), 3);
+        issues.note_instruction_invalid_discriminator_layout("myIx".into(), 0);
+        issues.note_instruction_invalid_discriminator_layout("myIx".into(), 3);
         assert_eq!(issues.sorted_issues().len(), 1);
     }
 

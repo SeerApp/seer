@@ -13,6 +13,7 @@ use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
 use seer_core::idl::{IdlIssue, IdlTreeParser};
 use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
+use serde_json::Value;
 
 static INIT_SEER_LOG: Once = Once::new();
 
@@ -28,6 +29,20 @@ fn token_lookup() -> CodamaIdlLookup {
         "../../src/program_manager/known_programs/token_program.json"
     ))
     .expect("token program Codama IDL must parse")
+}
+
+fn token_2022_json() -> Value {
+    serde_json::from_str(include_str!(
+        "../../src/program_manager/known_programs/token_2022_program.json"
+    ))
+    .expect("token-2022 Codama JSON must parse")
+}
+
+fn lookup_from_json_value(v: &Value) -> CodamaIdlLookup {
+    CodamaIdlLookup::from_json_str(
+        &serde_json::to_string(v).expect("serialize mutated Codama JSON"),
+    )
+    .expect("mutated Codama IDL must parse")
 }
 
 fn system_lookup() -> CodamaIdlLookup {
@@ -61,7 +76,6 @@ fn two_discriminators_instruction_lookup() -> CodamaIdlLookup {
 }
 
 // IdlIssue coverage (Codama IDL): integration tests below exercise these variants at least once:
-// - `InstructionNonUnaryDiscriminator` — `test_instruction_non_unary_discriminator_records_and_skips`
 // - `InvalidLayoutBytesOrStringWithoutLength` — `test_bad_layout_instruction_skipped_and_issue_recorded`
 // - `InsufficientBytes` — `test_truncated_instruction_buffer_no_panic`
 // Dedup / non-unary logging — `idl::issues` unit tests (`note_*`, `note_generic_dedupes`).
@@ -190,20 +204,105 @@ fn test_system_program_instruction_parse() {
 }
 
 #[test]
-fn test_instruction_non_unary_discriminator_records_and_skips() {
+fn test_instruction_multiple_discriminators_match_conjunctively() {
     let lookup = two_discriminators_instruction_lookup();
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        issues.iter().any(|i| matches!(
-            i,
-            IdlIssue::InstructionNonUnaryDiscriminator { instruction, .. }
-                if instruction == "weirdIx"
-        )),
-        "expected InstructionNonUnaryDiscriminator for weirdIx, got {issues:?}"
-    );
+
+    // First discriminator matches (`discriminator == 0`), second does not (`size == 99`).
     assert!(
         lookup.get_instruction(&[0u8]).is_none(),
-        "instruction with multiple discriminators must be skipped permanently"
+        "all instruction discriminators must match (AND semantics)"
+    );
+
+    // Both discriminators match: first byte is 0, and length is 99.
+    let data = vec![0u8; 99];
+    let parsed = lookup.get_instruction(&data);
+    assert_eq!(
+        parsed.as_ref().map(|ix| ix.name.as_str()),
+        Some("weirdIx"),
+        "instruction should match when all discriminators pass"
+    );
+
+    // Size matches but field discriminator fails.
+    let mut bad_data = vec![0u8; 99];
+    bad_data[0] = 1;
+    assert!(
+        lookup.get_instruction(&bad_data).is_none(),
+        "any failed discriminator should prevent a match"
+    );
+}
+
+#[test]
+fn test_token_2022_instructions_allow_single_and_multiple_discriminators() {
+    let mut root = token_2022_json();
+    let instructions = root["program"]["instructions"]
+        .as_array_mut()
+        .expect("token-2022 instructions array");
+
+    let single = instructions
+        .iter()
+        .find(|ix| {
+            ix["discriminators"]
+                .as_array()
+                .map_or(false, |d| d.len() == 1)
+        })
+        .and_then(|ix| ix["name"].as_str())
+        .expect("token-2022 must contain at least one single-discriminator instruction")
+        .to_string();
+    let multiple = instructions
+        .iter()
+        .find(|ix| {
+            ix["discriminators"]
+                .as_array()
+                .map_or(false, |d| d.len() > 1)
+        })
+        .and_then(|ix| ix["name"].as_str())
+        .expect("token-2022 must contain at least one multi-discriminator instruction")
+        .to_string();
+
+    let lookup = lookup_from_json_value(&root);
+    let issues = lookup.sorted_idl_issues();
+    assert!(
+        !issues.iter().any(|i| matches!(
+            i,
+            IdlIssue::InstructionInvalidDiscriminatorLayout { instruction }
+                if instruction == &single || instruction == &multiple
+        )),
+        "single/multiple discriminator instructions should be considered valid layouts, got {issues:?}"
+    );
+}
+
+#[test]
+fn test_token_2022_zero_discriminator_allowed_for_single_instruction_program() {
+    let mut root = token_2022_json();
+    let instructions = root["program"]["instructions"]
+        .as_array_mut()
+        .expect("token-2022 instructions array");
+    let mut first = instructions
+        .first()
+        .expect("token-2022 must contain at least one instruction")
+        .clone();
+    let instruction_name = first["name"]
+        .as_str()
+        .expect("instruction name")
+        .to_string();
+    first["discriminators"] = Value::Array(vec![]);
+    first["arguments"] = Value::Array(vec![]);
+    *instructions = vec![first];
+
+    let lookup = lookup_from_json_value(&root);
+    let issues = lookup.sorted_idl_issues();
+    assert!(
+        !issues.iter().any(|i| matches!(
+            i,
+            IdlIssue::InstructionInvalidDiscriminatorLayout { instruction }
+                if instruction == &instruction_name
+        )),
+        "zero discriminators should be valid for single-instruction program, got {issues:?}"
+    );
+    assert_eq!(
+        lookup.get_instruction(&[]).as_ref().map(|ix| ix.name.as_str()),
+        Some(instruction_name.as_str()),
+        "single-instruction/zero-discriminator fallback should select the only instruction"
     );
 }
 

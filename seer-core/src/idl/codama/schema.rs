@@ -24,12 +24,17 @@ pub fn analyze_codama_program(
     skip_instructions: &mut HashSet<String>,
     skip_accounts: &mut HashSet<String>,
 ) {
+    let single_instruction_program = program.instructions.len() == 1;
+
     for ix in &program.instructions {
         let ix_name = ix.name.to_string();
-        if ix.discriminators.len() != 1 {
-            issues.note_instruction_non_unary_discriminator(
+        let discriminator_count = ix.discriminators.len();
+        let has_valid_instruction_discriminator_shape = discriminator_count > 0
+            || (single_instruction_program && discriminator_count == 0);
+        if !has_valid_instruction_discriminator_shape {
+            issues.note_instruction_invalid_discriminator_layout(
                 ix_name.clone(),
-                ix.discriminators.len(),
+                discriminator_count,
             );
             skip_instructions.insert(ix_name);
             continue;
@@ -61,17 +66,8 @@ pub fn analyze_codama_program(
 
     for acc in &program.accounts {
         let acc_name = acc.name.to_string();
-        if acc.discriminators.len() > 1 {
-            issues.note_account_non_unary_discriminator(
-                acc_name.clone(),
-                acc.discriminators.len(),
-            );
-            skip_accounts.insert(acc_name);
-            continue;
-        }
-
         let should_validate =
-            program.accounts.len() == 1 || acc.discriminators.len() == 1;
+            program.accounts.len() == 1 || !acc.discriminators.is_empty();
         if !should_validate {
             continue;
         }
@@ -101,7 +97,6 @@ pub fn analyze_codama_program(
         }
     }
 }
-
 fn validate_type_tree(
     ty: &TypeNode,
     defined_types: &[DefinedTypeNode],
@@ -327,3 +322,4 @@ fn validate_type_tree(
         _ => true,
     }
 }
+
