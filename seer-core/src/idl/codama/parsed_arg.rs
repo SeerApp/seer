@@ -51,7 +51,7 @@ pub fn get_parsed_arg_value(
         )?)),
         TypeNode::Array(a) => Some(ParsedArgValue::Array(get_view_array_type_node(
             a, cur, ctx, defined_types, is_last,
-        ))),
+        )?)),
         TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(
             b, cur, ctx,
         )?)),
@@ -80,7 +80,7 @@ pub fn get_parsed_arg_value(
         )),
         TypeNode::Map(m) => Some(ParsedArgValue::Map(get_view_map_type_node(
             m, cur, ctx, defined_types, is_last,
-        ))),
+        )?)),
         TypeNode::Number(n) => Some(ParsedArgValue::Number(get_view_number_type_node(
             n, cur, ctx,
         )?)),
@@ -89,7 +89,7 @@ pub fn get_parsed_arg_value(
         )?)),
         TypeNode::Option(o) => Some(ParsedArgValue::Option(get_view_option_type_node(
             o, cur, ctx, defined_types, is_last,
-        ))),
+        )?)),
         TypeNode::PublicKey(_) => Some(ParsedArgValue::PublicKey(get_view_public_key_type_node(
             cur, ctx,
         )?)),
@@ -131,7 +131,7 @@ pub fn get_parsed_arg_value(
         }
         TypeNode::Set(s) => Some(ParsedArgValue::Set(get_view_set_type_node(
             s, cur, ctx, defined_types, is_last,
-        ))),
+        )?)),
         TypeNode::SizePrefix(s) => cur.get_dynamic_value(s, ctx, defined_types, is_last),
         TypeNode::SolAmount(s) => Some(ParsedArgValue::Number(get_view_number_type_node(
             s.number.get_nested_type_node(),
@@ -259,10 +259,10 @@ pub fn get_view_option_type_node<'a>(
     ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewOptionTypeNode {
-    ViewOptionTypeNode {
-        value: Box::new(cur.get_option_value(origin, ctx, defined_types, is_last)),
-    }
+) -> Option<ViewOptionTypeNode> {
+    Some(ViewOptionTypeNode {
+        value: Box::new(cur.get_option_value(origin, ctx, defined_types, is_last)?),
+    })
 }
 
 pub fn get_view_public_key_type_node<'a>(
@@ -314,10 +314,10 @@ pub fn get_view_array_type_node<'a>(
     ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewArrayTypeNode {
-    ViewArrayTypeNode {
-        values: cur.get_array_value(origin, ctx, defined_types, is_last),
-    }
+) -> Option<ViewArrayTypeNode> {
+    Some(ViewArrayTypeNode {
+        values: cur.get_array_value(origin, ctx, defined_types, is_last)?,
+    })
 }
 
 pub fn get_view_set_type_node<'a>(
@@ -326,10 +326,10 @@ pub fn get_view_set_type_node<'a>(
     ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewSetTypeNode {
-    ViewSetTypeNode {
-        values: cur.get_set_value(origin, ctx, defined_types, is_last),
-    }
+) -> Option<ViewSetTypeNode> {
+    Some(ViewSetTypeNode {
+        values: cur.get_set_value(origin, ctx, defined_types, is_last)?,
+    })
 }
 
 pub fn get_view_tuple_type_node<'a>(
@@ -465,13 +465,13 @@ pub fn get_view_map_type_node<'a>(
     ctx: &mut CodamaParseCtx<'_>,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-) -> ViewMapTypeNode {
-    let pairs = cur.get_map_value(origin, ctx, defined_types, is_last);
+) -> Option<ViewMapTypeNode> {
+    let pairs = cur.get_map_value(origin, ctx, defined_types, is_last)?;
     let entries = pairs
         .into_iter()
         .map(|(key, value)| ViewMapEntryTypeNode { key, value })
         .collect();
-    ViewMapTypeNode { entries }
+    Some(ViewMapTypeNode { entries })
 }
 
 pub fn get_view_enum_type_node<'a>(

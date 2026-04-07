@@ -79,6 +79,8 @@ impl IdlTreeParser for CodamaIdlLookup {
                     name: argument.name.clone().to_string(),
                     value: parsed_arg_value,
                 });
+            } else {
+                break;
             }
         }
 

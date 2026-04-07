@@ -30,6 +30,29 @@ pub enum IdlLookup {
     Codama(CodamaIdlLookup),
 }
 
+impl IdlTreeParser for IdlLookup {
+    fn get_instruction(&self, data: &[u8]) -> Option<ParsedInstruction> {
+        match self {
+            Self::Anchor(anchor) => anchor.get_instruction(data),
+            Self::Codama(codama) => codama.get_instruction(data),
+        }
+    }
+
+    fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
+        match self {
+            Self::Anchor(anchor) => anchor.get_account(data),
+            Self::Codama(codama) => codama.get_account(data),
+        }
+    }
+
+    fn get_error(&self, error: InstructionError) -> String {
+        match self {
+            Self::Anchor(anchor) => anchor.get_error(error),
+            Self::Codama(codama) => codama.get_error(error),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum IdlLoadError {
     #[error("{0}")]

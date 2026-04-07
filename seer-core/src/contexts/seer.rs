@@ -103,10 +103,11 @@ impl SeerContext {
 
     pub fn end_program(&mut self, program_address: Pubkey, err: Option<InstructionError>) {
         seer_debug!("Ending program: {:?}", program_address);
+        let program_manager = &self.program_manager;
         self.transaction_context
             .as_mut()
             .expect("Ending program before transaction context exists")
-            .end_program(err)
+            .end_program(program_manager, program_address, err)
     }
 
     pub fn step<M: GuestMemory>(&mut self, i: u64, mem: &mut M, reg: &[u64; 12]) {

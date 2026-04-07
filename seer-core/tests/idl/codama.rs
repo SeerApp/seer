@@ -5,8 +5,10 @@ mod common;
 use std::fs;
 use std::sync::Once;
 
+use codama_nodes::NumberFormat;
 use common::{codama_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
 use seer_core::idl::codama::CodamaIdlLookup;
+use seer_core::idl::parsed_arg::ParsedArgValue;
 use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
 use seer_core::idl::{IdlIssue, IdlTreeParser};
 use seer_core::{init_seer_logger, SeerLogger};
@@ -67,8 +69,7 @@ fn two_discriminators_instruction_lookup() -> CodamaIdlLookup {
 fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
     let dir = codama_idl_golden_dir();
     let path = dir.join(name);
-    let pretty =
-        serde_json::to_string_pretty(value).expect("serialize fixture JSON");
+    let pretty = serde_json::to_string_pretty(value).expect("serialize fixture JSON");
 
     if seer_test_save_enabled() {
         fs::create_dir_all(&dir).expect("create fixture dir");
@@ -89,11 +90,7 @@ fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
         serde_json::from_str(&expected_raw).expect("parse expected fixture JSON");
     let actual: serde_json::Value =
         serde_json::from_str(&pretty).expect("parse actual fixture JSON");
-    assert_eq!(
-        expected, actual,
-        "fixture mismatch: {}",
-        path.display()
-    );
+    assert_eq!(expected, actual, "fixture mismatch: {}", path.display());
 }
 
 #[derive(Serialize)]
@@ -154,12 +151,7 @@ fn test_token_program_account_parse() {
     ];
 
     let parsed_ax = token_program_idl.get_account(data);
-    assert_or_update_fixture(
-        "token_account.json",
-        &AccountFixture {
-            parsed: parsed_ax,
-        },
-    );
+    assert_or_update_fixture("token_account.json", &AccountFixture { parsed: parsed_ax });
 }
 
 #[test]
@@ -220,10 +212,9 @@ fn test_bad_layout_instruction_skipped_and_issue_recorded() {
     let lookup = bad_layout_instruction_lookup();
     let issues = lookup.sorted_idl_issues();
     assert!(
-        issues.iter().any(|i| matches!(
-            i,
-            IdlIssue::InvalidLayoutBytesOrStringWithoutLength { .. }
-        )),
+        issues
+            .iter()
+            .any(|i| matches!(i, IdlIssue::InvalidLayoutBytesOrStringWithoutLength { .. })),
         "expected invalid bytes/string layout issue, got {issues:?}"
     );
     // Discriminator u32 = 0 / little-endian — would match `badIx` if it were not skipped.
@@ -239,14 +230,56 @@ fn test_truncated_instruction_buffer_no_panic() {
     let lookup = token_lookup();
     // Prefix of `token_ix_set_authority` fixture: matches instruction, then hits short buffer.
     let full = vec![
-        6u8, 2, 1, 30, 185, 24, 117, 164, 97, 180, 227, 158, 14, 164, 123, 209, 60, 254, 122,
-        218, 196, 232, 100, 78, 46, 201, 109, 241, 146, 1, 242, 62, 118, 123, 76,
+        6u8, 2, 1, 30, 185, 24, 117, 164, 97, 180, 227, 158, 14, 164, 123, 209, 60, 254, 122, 218,
+        196, 232, 100, 78, 46, 201, 109, 241, 146, 1, 242, 62, 118, 123, 76,
     ];
     let _ = lookup.get_instruction(&full[..12]);
     let issues = lookup.sorted_idl_issues();
     assert!(
-        issues.iter().any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
+        issues
+            .iter()
+            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
         "truncated parse should record InsufficientBytes, got {issues:?}"
+    );
+}
+
+#[test]
+fn test_codama_instruction_stops_on_malformed_arg_and_keeps_prefix_args() {
+    let lookup = system_lookup();
+    // `createAccount`: discriminator(u32) + lamports(u64) + space(u64) + programAddress(pubkey).
+    // Truncate pubkey bytes so first 2 args decode and third fails.
+    let invoke_data: Vec<u8> = vec![
+        0, 0, 0, 0, 64, 41, 30, 0, 0, 0, 0, 0, 156, 0, 0, 0, 0, 0, 0, 0, 153, 75, 17, 83, 39,
+        24, 5, 235, 133, 88, 112, 6,
+    ];
+    let parsed_ix = lookup
+        .get_instruction(&invoke_data)
+        .expect("instruction discriminator should match");
+    assert_eq!(parsed_ix.name, "createAccount");
+    assert_eq!(parsed_ix.args.len(), 2, "must keep only decoded prefix args");
+    assert_eq!(parsed_ix.args[0].name, "lamports");
+    assert_eq!(parsed_ix.args[1].name, "space");
+    match &parsed_ix.args[0].value {
+        ParsedArgValue::Number(v) => {
+            assert_eq!(v.value, "1976640");
+            assert_eq!(v.format, NumberFormat::U64);
+        }
+        other => panic!("expected Number for lamports, got {other:?}"),
+    }
+    match &parsed_ix.args[1].value {
+        ParsedArgValue::Number(v) => {
+            assert_eq!(v.value, "156");
+            assert_eq!(v.format, NumberFormat::U64);
+        }
+        other => panic!("expected Number for space, got {other:?}"),
+    }
+
+    let issues = lookup.sorted_idl_issues();
+    assert!(
+        issues
+            .iter()
+            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
+        "expected InsufficientBytes, got {issues:?}"
     );
 }
 
@@ -268,8 +301,6 @@ fn test_mytest_account_parse() {
     let parsed_ax = mytest_idl.get_account(&invoke_data);
     assert_or_update_fixture(
         "mytest_account_admin_state.json",
-        &AccountFixture {
-            parsed: parsed_ax,
-        },
+        &AccountFixture { parsed: parsed_ax },
     );
 }

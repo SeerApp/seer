@@ -16,22 +16,16 @@ pub struct Target {
     pub idl: Option<PathBuf>,
 }
 
-pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, IrrecoverableError> {
-    let mut bases: HashSet<String> = HashSet::new();
-    let mut targets: HashMap<Pubkey, Target> = HashMap::new();
-
-    let entries = match fs::read_dir(target_dir) {
-        Ok(e) => e,
-        Err(_) => return Ok(targets),
+fn collect_target_bases(dir: &PathBuf, bases: &mut HashSet<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
     };
-
     for entry in entries.flatten() {
         let path = entry.path();
         let file_name = match path.file_name().and_then(|s| s.to_str()) {
             Some(s) => s,
             None => continue,
         };
-
         if let Some(base) = file_name.strip_suffix("-keypair.json") {
             bases.insert(base.to_string());
         } else if let Some(base) = file_name.strip_suffix("-pubkey.json") {
@@ -42,12 +36,23 @@ pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, Irre
             bases.insert(base.to_string());
         }
     }
+}
+
+pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, IrrecoverableError> {
+    let mut bases: HashSet<String> = HashSet::new();
+    let mut targets: HashMap<Pubkey, Target> = HashMap::new();
+
+    if !target_dir.is_dir() {
+        return Ok(targets);
+    }
+
+    collect_target_bases(&target_dir.join("deploy"), &mut bases);
 
     for base in bases {
-        let keypair_path = target_dir.join(format!("{base}-keypair.json"));
-        let pubkey_path = target_dir.join(format!("{base}-pubkey.json"));
-        let executable_path = target_dir.join(format!("{base}.so"));
-        let dwarf_path = target_dir.join(format!("{base}.debug"));
+        let keypair_path = target_dir.join("deploy").join(format!("{base}-keypair.json"));
+        let pubkey_path = target_dir.join("deploy").join(format!("{base}-pubkey.json"));
+        let executable_path = target_dir.join("deploy").join(format!("{base}.so"));
+        let dwarf_path = target_dir.join("deploy").join(format!("{base}.debug"));
         let idl_path = target_dir.join("idl").join(format!("{base}.json"));
 
         let pubkey = if keypair_path.exists() {

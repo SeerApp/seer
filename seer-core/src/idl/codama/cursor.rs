@@ -24,7 +24,7 @@ pub trait CodamaCursor {
         defined_types: &[DefinedTypeNode],
         is_last: bool,
         decode_one: F,
-    ) -> Vec<T>
+    ) -> Option<Vec<T>>
     where
         F: FnMut(&mut Self, &mut CodamaParseCtx<'_>) -> Option<T>;
     fn get_number_value(
@@ -39,7 +39,7 @@ pub trait CodamaCursor {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Option<ParsedArgValue>;
+    ) -> Option<Option<ParsedArgValue>>;
     fn get_string_value(
         &mut self,
         origin: &StringTypeNode,
@@ -52,21 +52,21 @@ pub trait CodamaCursor {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<ParsedArgValue>;
+    ) -> Option<Vec<ParsedArgValue>>;
     fn get_set_value(
         &mut self,
         origin: &SetTypeNode,
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<ParsedArgValue>;
+    ) -> Option<Vec<ParsedArgValue>>;
     fn get_map_value(
         &mut self,
         origin: &MapTypeNode,
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<(ParsedArgValue, ParsedArgValue)>;
+    ) -> Option<Vec<(ParsedArgValue, ParsedArgValue)>>;
     fn get_bytes_value(
         &mut self,
         ctx: &mut CodamaParseCtx<'_>,
@@ -109,7 +109,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         _defined_types: &[DefinedTypeNode],
         _is_last: bool,
         mut decode_one: F,
-    ) -> Vec<T>
+    ) -> Option<Vec<T>>
     where
         F: FnMut(&mut Self, &mut CodamaParseCtx<'_>) -> Option<T>,
     {
@@ -118,28 +118,26 @@ impl<'a> CodamaCursor for Cursor<'a> {
         match count {
             CountNode::Fixed(fixed) => {
                 for _ in 0..fixed.value {
-                    if let Some(decoded) = decode_one(self, ctx) {
-                        values.push(decoded);
-                    }
+                    let decoded = decode_one(self, ctx)?;
+                    values.push(decoded);
                 }
             }
             CountNode::Prefixed(prefix) => {
                 let len_raw = match self.get_number_value(prefix.prefix.get_nested_type_node(), ctx)
                 {
                     Some(s) => s,
-                    None => return values,
+                    None => return None,
                 };
                 let Ok(len) = len_raw.parse::<usize>() else {
                     ctx.issues.note(IdlIssue::PrefixedCountInvalid {
                         at: ctx.current_location(),
                     });
-                    return values;
+                    return None;
                 };
 
                 for _ in 0..len {
-                    if let Some(decoded) = decode_one(self, ctx) {
-                        values.push(decoded);
-                    }
+                    let decoded = decode_one(self, ctx)?;
+                    values.push(decoded);
                 }
             }
             CountNode::Remainder(_) => {
@@ -150,21 +148,22 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
                     if after == before {
                         break;
-                    } else if after > before {
+                    } else if after < before {
                         ctx.issues.note(IdlIssue::RemainderDecodeCursorRegression {
                             at: ctx.current_location(),
                         });
                         break;
                     }
 
-                    if let Some(decoded) = value {
-                        values.push(decoded);
-                    }
+                    let Some(decoded) = value else {
+                        return None;
+                    };
+                    values.push(decoded);
                 }
             }
         }
 
-        values
+        Some(values)
     }
 
     fn get_number_value(
@@ -319,7 +318,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Option<ParsedArgValue> {
+    ) -> Option<Option<ParsedArgValue>> {
         let number_value = self.get_number_value(origin.prefix.get_nested_type_node(), ctx)?;
 
         if number_value == "0" {
@@ -334,7 +333,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                 );
             }
 
-            None
+            Some(None)
         } else if number_value == "1" {
             let inner = get_parsed_arg_value(
                 ctx,
@@ -347,7 +346,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             if inner.is_none() {
                 ctx.note_decode_residual("option_some_payload");
             }
-            inner
+            Some(Some(inner?))
         } else {
             ctx.issues.note(IdlIssue::OptionDiscriminantInvalid {
                 at: ctx.current_location(),
@@ -386,7 +385,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<ParsedArgValue> {
+    ) -> Option<Vec<ParsedArgValue>> {
         let item = &origin.item;
         self.decode_with_count_node(&origin.count, ctx, defined_types, is_last, |cursor, c| {
             get_parsed_arg_value(c, item, cursor, defined_types, is_last, None)
@@ -399,7 +398,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<ParsedArgValue> {
+    ) -> Option<Vec<ParsedArgValue>> {
         let item = &origin.item;
         self.decode_with_count_node(&origin.count, ctx, defined_types, is_last, |cursor, c| {
             get_parsed_arg_value(c, item, cursor, defined_types, is_last, None)
@@ -412,7 +411,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
         is_last: bool,
-    ) -> Vec<(ParsedArgValue, ParsedArgValue)> {
+    ) -> Option<Vec<(ParsedArgValue, ParsedArgValue)>> {
         let key = &origin.key;
         let val = &origin.value;
         self.decode_with_count_node(&origin.count, ctx, defined_types, is_last, |cursor, c| {

@@ -78,8 +78,16 @@ impl<'a> TransactionContext {
             .start_program(accounts, data, program_address);
     }
 
-    pub fn end_program(&mut self, err: Option<InstructionError>) {
-        self.meta.set_output(err.clone());
+    pub fn end_program(
+        &mut self,
+        program_manager: &ProgramManager,
+        program_address: Pubkey,
+        err: Option<InstructionError>,
+    ) {
+        let idl = program_manager
+            .get_idl_lookup(&program_address)
+            .map(|l| l as &dyn crate::idl::IdlTreeParser);
+        self.meta.set_output(err.clone(), idl);
         self.instruction_context
             .as_mut()
             .expect("Ending program before instruction context exists")

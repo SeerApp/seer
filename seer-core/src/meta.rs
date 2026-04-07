@@ -1,9 +1,11 @@
 use serde::Serialize;
 use solana_instruction_error::InstructionError;
 
+use crate::idl::IdlTreeParser;
+
 #[derive(Serialize, Clone)]
 struct TxError {
-    /// Human-readable text from [`InstructionError`]; JSON always uses a string (not a tagged enum).
+    /// IDL-resolved description when an IDL is available; otherwise [`InstructionError`] display text.
     message: String,
 }
 
@@ -42,12 +44,17 @@ impl TxMetadata {
         }
     }
 
-    pub fn set_output(&mut self, error_message: Option<InstructionError>) {
-        if let Some(msg) = error_message {
+    pub fn set_output(
+        &mut self,
+        error: Option<InstructionError>,
+        idl: Option<&dyn IdlTreeParser>,
+    ) {
+        if let Some(err) = error {
             self.data.success = false;
-            self.data.output.error = Some(TxError {
-                message: msg.to_string(),
-            });
+            let message = idl
+                .map(|parser| parser.get_error(err.clone()))
+                .unwrap_or_else(|| err.to_string());
+            self.data.output.error = Some(TxError { message });
         } else {
             self.data.success = true;
             self.data.output.error = None;

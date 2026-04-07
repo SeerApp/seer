@@ -53,6 +53,8 @@ impl IdlTreeParser for AnchorIdlLookup {
                             name: arg.name.clone(),
                             value: parsed_arg,
                         });
+                    } else {
+                        break;
                     }
                 }
 
@@ -93,9 +95,13 @@ impl IdlTreeParser for AnchorIdlLookup {
                 path: vec![],
             };
 
-            if let Some(value) =
-                get_idl_type_def_ty(&self.idl.types, &mut c, &HashMap::new(), &ty_def.ty, &mut ctx)
-            {
+            if let Some(value) = get_idl_type_def_ty(
+                &self.idl.types,
+                &mut c,
+                &HashMap::new(),
+                &ty_def.ty,
+                &mut ctx,
+            ) {
                 return Some(ParsedAccount {
                     id: ProgramIdentifier::Default,
                     data: ParsedArg {

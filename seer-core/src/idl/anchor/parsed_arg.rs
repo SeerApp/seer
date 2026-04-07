@@ -17,6 +17,7 @@ use crate::idl::{
         ViewPublicKeyTypeNode, ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode,
         ViewTupleTypeNode,
     },
+    IdlIssue,
 };
 
 #[derive(Clone)]
@@ -195,20 +196,21 @@ fn get_parsed_arg_value_from_ty<'a>(
         IdlType::Vec(v) => {
             let len_bytes = take_bytes(cursor, 4, ctx, "vec length u32")?;
             let length_prefix = LittleEndian::read_u32(len_bytes) as usize;
-            let values =
-                get_listed_values(types, cursor, &generics_maps, v.as_ref(), length_prefix, ctx);
+            let values = get_listed_values(
+                types,
+                cursor,
+                &generics_maps,
+                v.as_ref(),
+                length_prefix,
+                ctx,
+            )?;
             Some(ParsedArgValue::Array(ViewArrayTypeNode { values }))
         }
         IdlType::Array(a, l) => {
             let values = match l {
-                IdlArrayLen::Value(v) => get_listed_values(
-                    types,
-                    cursor,
-                    &generics_maps,
-                    a.as_ref(),
-                    *v,
-                    ctx,
-                ),
+                IdlArrayLen::Value(v) => {
+                    get_listed_values(types, cursor, &generics_maps, a.as_ref(), *v, ctx)?
+                }
                 IdlArrayLen::Generic(g) => {
                     let len = resolve_generic(types, cursor, &generics_maps, g, ctx)?;
                     match len {
@@ -219,7 +221,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                             a.as_ref(),
                             n.value.parse::<usize>().ok()?,
                             ctx,
-                        ),
+                        )?,
                         _ => return None,
                     }
                 }
@@ -247,7 +249,31 @@ fn get_parsed_arg_value_from_ty<'a>(
                                 generics_maps
                                     .insert(name.clone(), GenericHolder::Generic(ty.clone()));
                             }
-                            _ => panic!(),
+                            _ => {
+                                let expected = match tg {
+                                    IdlTypeDefGeneric::Const { name, ty } => {
+                                        format!("const `{name}`: `{ty}`")
+                                    }
+                                    IdlTypeDefGeneric::Type { name } => format!("type `{name}`"),
+                                };
+
+                                let got = match g {
+                                    IdlGenericArg::Const { value } => {
+                                        format!("const value `{value}`")
+                                    }
+                                    IdlGenericArg::Type { ty } => format!("type `{ty:?}`"),
+                                };
+
+                                ctx.issues
+                                    .note(IdlIssue::AnchorDefinedTypeGenericArgMismatch {
+                                        at: ctx.current_location(),
+                                        defined_type: name.to_string(),
+                                        expected,
+                                        got,
+                                    });
+
+                                return None;
+                            }
                         }
                     }
 
@@ -272,16 +298,18 @@ pub fn get_idl_type_def_ty<'a>(
         IdlTypeDefTy::Struct { fields } => get_struct(types, fields, cursor, &generics_maps, ctx),
         IdlTypeDefTy::Enum { variants } => {
             for v in variants {
-                let value = if let Some(parsed_arg_value) =
+                let value = if v.fields.is_none() {
+                    ViewEnumValue::Empty
+                } else if let Some(parsed_arg_value) =
                     get_struct(types, &v.fields, cursor, &generics_maps, ctx)
                 {
                     match parsed_arg_value {
                         ParsedArgValue::Struct(value) => ViewEnumValue::Struct(value),
                         ParsedArgValue::Tuple(value) => ViewEnumValue::Tuple(value),
-                        _ => panic!("Literally cannot happen"),
+                        _ => return None,
                     }
                 } else {
-                    ViewEnumValue::Empty
+                    return None;
                 };
 
                 return Some(ParsedArgValue::Enum(ViewEnumTypeNode {
@@ -290,15 +318,11 @@ pub fn get_idl_type_def_ty<'a>(
                     value,
                 }));
             }
-            panic!("No corresponding enum variant");
+            None
         }
-        IdlTypeDefTy::Type { alias } => get_parsed_arg_value_from_ty(
-            types,
-            alias,
-            cursor,
-            generics_maps.clone(),
-            ctx,
-        ),
+        IdlTypeDefTy::Type { alias } => {
+            get_parsed_arg_value_from_ty(types, alias, cursor, generics_maps.clone(), ctx)
+        }
     }
 }
 
@@ -309,16 +333,14 @@ fn get_listed_values<'a>(
     ty: &IdlType,
     length: usize,
     ctx: &mut AnchorParseCtx<'_>,
-) -> Vec<ParsedArgValue> {
+) -> Option<Vec<ParsedArgValue>> {
     let mut values = vec![];
     for _ in 0..length {
-        if let Some(parsed_arg) =
-            get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone(), ctx)
-        {
-            values.push(parsed_arg);
-        }
+        let parsed_arg =
+            get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone(), ctx)?;
+        values.push(parsed_arg);
     }
-    values
+    Some(values)
 }
 
 fn get_parsed_arg_value_from_constant(constant: &ConstHolder) -> Option<ParsedArgValue> {
@@ -449,15 +471,20 @@ fn get_struct<'a>(
                 let mut return_struct = ViewStructTypeNode { fields: vec![] };
                 for f in named_fields {
                     ctx.push_path(f.name.clone());
-                    let value = get_parsed_arg_value_from_ty(types, &f.ty, cursor, generics_maps.clone(), ctx);
+                    let value = get_parsed_arg_value_from_ty(
+                        types,
+                        &f.ty,
+                        cursor,
+                        generics_maps.clone(),
+                        ctx,
+                    );
                     ctx.pop_path();
-                    if let Some(value) = value {
-                        return_struct.fields.push(ViewStructFieldTypeNode {
-                            name: f.name.clone(),
-                            docs: f.docs.clone().into(),
-                            value,
-                        });
-                    }
+                    let value = value?;
+                    return_struct.fields.push(ViewStructFieldTypeNode {
+                        name: f.name.clone(),
+                        docs: f.docs.clone().into(),
+                        value,
+                    });
                 }
                 Some(ParsedArgValue::Struct(return_struct))
             }
@@ -465,11 +492,10 @@ fn get_struct<'a>(
                 let mut return_tuple = ViewTupleTypeNode { items: vec![] };
                 for (i, f) in tuple_fields.iter().enumerate() {
                     ctx.push_path(format!("{i}"));
-                    let value = get_parsed_arg_value_from_ty(types, f, cursor, generics_maps.clone(), ctx);
+                    let value =
+                        get_parsed_arg_value_from_ty(types, f, cursor, generics_maps.clone(), ctx);
                     ctx.pop_path();
-                    if let Some(value) = value {
-                        return_tuple.items.push(value);
-                    }
+                    return_tuple.items.push(value?);
                 }
                 Some(ParsedArgValue::Tuple(return_tuple))
             }

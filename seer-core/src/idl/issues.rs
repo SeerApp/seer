@@ -193,6 +193,16 @@ pub enum IdlIssue {
         at: IdlLocation,
         encoding: String,
     },
+
+    #[error(
+        "Generic argument mismatch for defined type `{defined_type}` at {at}: expected {expected}, got {got} (IDL may be missing/incorrect generics)"
+    )]
+    AnchorDefinedTypeGenericArgMismatch {
+        at: IdlLocation,
+        defined_type: String,
+        expected: String,
+        got: String,
+    },
 }
 
 #[derive(Debug)]

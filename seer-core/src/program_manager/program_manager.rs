@@ -63,8 +63,8 @@ impl ProgramManager {
 
         add_known_programs(&mut inner);
 
-        let deploy_dir = runtime_dir.join("target/deploy");
-        let targets = get_targets(&deploy_dir)?;
+        let target_dir = runtime_dir.join("target");
+        let targets = get_targets(&target_dir)?;
         let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
 
         for (key, target) in &targets {
