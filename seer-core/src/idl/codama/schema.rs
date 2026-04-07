@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use codama_nodes::{
-    DefinedTypeNode, EnumVariantTypeNode, NestedTypeNodeTrait, ProgramNode, TypeNode,
+    DefaultValueStrategy, DefinedTypeNode, EnumVariantTypeNode, NestedTypeNodeTrait, ProgramNode,
+    TypeNode,
 };
 
 use crate::idl::{IdlIssue, IdlIssues, IdlLocation};
@@ -40,9 +41,16 @@ pub fn analyze_codama_program(
             continue;
         }
 
-        let n = ix.arguments.len();
+        let runtime_args: Vec<_> = ix
+            .arguments
+            .iter()
+            .filter(|arg| {
+                arg.default_value_strategy != Some(DefaultValueStrategy::Omitted)
+            })
+            .collect();
+        let n = runtime_args.len();
         let mut ok = true;
-        for (i, arg) in ix.arguments.iter().enumerate() {
+        for (i, arg) in runtime_args.iter().enumerate() {
             let last = i + 1 == n;
             let loc = IdlLocation::SchemaInstruction {
                 instruction: ix_name.clone(),
@@ -127,14 +135,20 @@ fn validate_type_tree(
             issues.note(IdlIssue::InvalidLayoutRemainderOptionNotLast { at: loc });
             false
         }
-        TypeNode::Sentinel(_) => {
-            issues.note(IdlIssue::UnsupportedSentinelType { at: loc });
-            false
-        }
-        TypeNode::ZeroableOption(_) => {
-            issues.note(IdlIssue::UnsupportedZeroableOptionType { at: loc });
-            false
-        }
+        TypeNode::Sentinel(s) => validate_type_tree(
+            &s.r#type,
+            defined_types,
+            is_last,
+            loc,
+            issues,
+        ),
+        TypeNode::ZeroableOption(z) => validate_type_tree(
+            &z.item,
+            defined_types,
+            is_last,
+            loc,
+            issues,
+        ),
         TypeNode::Struct(s) => {
             let n = s.fields.len();
             for (i, field) in s.fields.iter().enumerate() {

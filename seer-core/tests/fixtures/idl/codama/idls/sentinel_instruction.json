@@ -1,0 +1,83 @@
+{
+  "kind": "rootNode",
+  "standard": "codama",
+  "version": "1.5.1",
+  "program": {
+    "kind": "programNode",
+    "name": "sentinelProgram",
+    "publicKey": "11111111111111111111111111111111",
+    "version": "1.0.0",
+    "origin": "native",
+    "docs": [],
+    "pdas": [],
+    "accounts": [],
+    "instructions": [
+      {
+        "kind": "instructionNode",
+        "name": "setSentinelValue",
+        "idlName": "SetSentinelValue",
+        "docs": [],
+        "accounts": [],
+        "arguments": [
+          {
+            "kind": "instructionArgumentNode",
+            "name": "tag",
+            "type": {
+              "kind": "numberTypeNode",
+              "format": "u8",
+              "endian": "le"
+            },
+            "docs": []
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "maybeValue",
+            "type": {
+              "kind": "sentinelTypeNode",
+              "type": {
+                "kind": "numberTypeNode",
+                "format": "u8",
+                "endian": "le"
+              },
+              "sentinel": {
+                "kind": "constantValueNode",
+                "type": {
+                  "kind": "numberTypeNode",
+                  "format": "u8",
+                  "endian": "le"
+                },
+                "value": {
+                  "kind": "numberValueNode",
+                  "number": 255
+                }
+              }
+            },
+            "docs": []
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "constantDiscriminatorNode",
+            "offset": 0,
+            "constant": {
+              "kind": "constantValueNode",
+              "type": {
+                "kind": "numberTypeNode",
+                "format": "u8",
+                "endian": "le"
+              },
+              "value": {
+                "kind": "numberValueNode",
+                "number": 9
+              }
+            }
+          }
+        ],
+        "optionalAccountStrategy": "omitted"
+      }
+    ],
+    "definedTypes": [],
+    "errors": []
+  },
+  "additionalPrograms": []
+}

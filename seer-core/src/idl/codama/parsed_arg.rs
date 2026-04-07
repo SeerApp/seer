@@ -17,8 +17,10 @@ use codama_nodes::{
     DateTimeTypeNode, DefinedTypeNode, EnumTypeNode, EnumVariantTypeNode, HiddenPrefixTypeNode,
     HiddenSuffixTypeNode, InstructionInputValueNode, MapTypeNode, NestedTypeNodeTrait, Number,
     NumberFormat, NumberTypeNode, NumberValueNode, OptionTypeNode, SetTypeNode, StringTypeNode,
-    StructTypeNode, TupleTypeNode, TypeNode, ValueNode,
+    StructTypeNode, TupleTypeNode, TypeNode, ValueNode, ZeroableOptionTypeNode,
+    SentinelTypeNode,
 };
+use solana_pubkey::Pubkey;
 
 pub fn get_parsed_arg_value(
     ctx: &mut CodamaParseCtx<'_>,
@@ -123,12 +125,9 @@ pub fn get_parsed_arg_value(
                 None
             }
         }
-        TypeNode::Sentinel(_) => {
-            ctx.issues.note(IdlIssue::UnsupportedSentinelType {
-                at: ctx.current_location(),
-            });
-            None
-        }
+        TypeNode::Sentinel(s) => Some(ParsedArgValue::Option(
+            get_view_sentinel_type_node(s, cur, ctx, defined_types, is_last)?,
+        )),
         TypeNode::Set(s) => Some(ParsedArgValue::Set(get_view_set_type_node(
             s, cur, ctx, defined_types, is_last,
         )?)),
@@ -138,12 +137,9 @@ pub fn get_parsed_arg_value(
             cur,
             ctx,
         )?)),
-        TypeNode::ZeroableOption(_) => {
-            ctx.issues.note(IdlIssue::UnsupportedZeroableOptionType {
-                at: ctx.current_location(),
-            });
-            None
-        }
+        TypeNode::ZeroableOption(z) => Some(ParsedArgValue::Option(
+            get_view_zeroable_option_type_node(z, cur, ctx, defined_types, is_last)?,
+        )),
     }
 }
 
@@ -163,6 +159,9 @@ pub fn eq_value_node(
                 return false;
             };
             arg.value == expected.value
+        }
+        (ParsedArgValue::PublicKey(arg), ValueNode::PublicKey(node)) => {
+            node.public_key.parse::<Pubkey>().ok() == Some(arg.value)
         }
         _ => false,
     }
@@ -263,6 +262,58 @@ pub fn get_view_option_type_node<'a>(
     Some(ViewOptionTypeNode {
         value: Box::new(cur.get_option_value(origin, ctx, defined_types, is_last)?),
     })
+}
+
+pub fn get_view_zeroable_option_type_node<'a>(
+    origin: &ZeroableOptionTypeNode,
+    cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
+    defined_types: &[DefinedTypeNode],
+    is_last: bool,
+) -> Option<ViewOptionTypeNode> {
+    let parsed = get_parsed_arg_value(ctx, &origin.item, cur, defined_types, is_last, None)?;
+    let is_none = match origin.zero_value.as_ref() {
+        Some(zero_value) => eq_value_node(&parsed, &zero_value.value, Some(ctx)),
+        None => is_default_zero_value(&parsed),
+    };
+    Some(ViewOptionTypeNode {
+        value: Box::new(if is_none { None } else { Some(parsed) }),
+    })
+}
+
+pub fn get_view_sentinel_type_node<'a>(
+    origin: &SentinelTypeNode<TypeNode>,
+    cur: &mut Cursor<'a>,
+    ctx: &mut CodamaParseCtx<'_>,
+    defined_types: &[DefinedTypeNode],
+    is_last: bool,
+) -> Option<ViewOptionTypeNode> {
+    let parsed = get_parsed_arg_value(ctx, &origin.r#type, cur, defined_types, is_last, None)?;
+    let is_none = eq_value_node(&parsed, &origin.sentinel.value, Some(ctx));
+    Some(ViewOptionTypeNode {
+        value: Box::new(if is_none { None } else { Some(parsed) }),
+    })
+}
+
+fn is_default_zero_value(value: &ParsedArgValue) -> bool {
+    match value {
+        ParsedArgValue::Number(v) => match v.format {
+            NumberFormat::F32 | NumberFormat::F64 => {
+                v.value.parse::<f64>().ok() == Some(0.0)
+            }
+            NumberFormat::I8
+            | NumberFormat::I16
+            | NumberFormat::I32
+            | NumberFormat::I64
+            | NumberFormat::I128 => v.value.parse::<i128>().ok() == Some(0),
+            _ => v.value.parse::<u128>().ok() == Some(0),
+        },
+        ParsedArgValue::PublicKey(v) => v.value == Pubkey::default(),
+        ParsedArgValue::Boolean(v) => !v.value,
+        ParsedArgValue::Bytes(v) => !v.value.is_empty() && v.value.chars().all(|c| c == '0'),
+        ParsedArgValue::String(v) => v.value.is_empty(),
+        _ => false,
+    }
 }
 
 pub fn get_view_public_key_type_node<'a>(

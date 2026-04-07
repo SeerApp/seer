@@ -1,0 +1,69 @@
+{
+  "kind": "rootNode",
+  "standard": "codama",
+  "version": "1.5.1",
+  "program": {
+    "kind": "programNode",
+    "name": "zeroableOptionProgram",
+    "publicKey": "11111111111111111111111111111111",
+    "version": "1.0.0",
+    "origin": "native",
+    "docs": [],
+    "pdas": [],
+    "accounts": [],
+    "instructions": [
+      {
+        "kind": "instructionNode",
+        "name": "setAuthority",
+        "idlName": "SetAuthority",
+        "docs": [],
+        "accounts": [],
+        "arguments": [
+          {
+            "kind": "instructionArgumentNode",
+            "name": "tag",
+            "type": {
+              "kind": "numberTypeNode",
+              "format": "u8",
+              "endian": "le"
+            },
+            "docs": []
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "authority",
+            "type": {
+              "kind": "zeroableOptionTypeNode",
+              "item": {
+                "kind": "publicKeyTypeNode"
+              }
+            },
+            "docs": []
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "constantDiscriminatorNode",
+            "offset": 0,
+            "constant": {
+              "kind": "constantValueNode",
+              "type": {
+                "kind": "numberTypeNode",
+                "format": "u8",
+                "endian": "le"
+              },
+              "value": {
+                "kind": "numberValueNode",
+                "number": 7
+              }
+            }
+          }
+        ],
+        "optionalAccountStrategy": "omitted"
+      }
+    ],
+    "definedTypes": [],
+    "errors": []
+  },
+  "additionalPrograms": []
+}

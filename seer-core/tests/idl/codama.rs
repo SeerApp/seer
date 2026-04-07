@@ -75,6 +75,22 @@ fn two_discriminators_instruction_lookup() -> CodamaIdlLookup {
     .expect("two-discriminator Codama IDL must parse")
 }
 
+fn zeroable_option_lookup() -> CodamaIdlLookup {
+    ensure_seer_logger();
+    CodamaIdlLookup::from_json_str(include_tests_fixture!(
+        "idl/codama/idls/zeroable_option_instruction.json"
+    ))
+    .expect("zeroable-option Codama IDL must parse")
+}
+
+fn sentinel_lookup() -> CodamaIdlLookup {
+    ensure_seer_logger();
+    CodamaIdlLookup::from_json_str(include_tests_fixture!(
+        "idl/codama/idls/sentinel_instruction.json"
+    ))
+    .expect("sentinel Codama IDL must parse")
+}
+
 // IdlIssue coverage (Codama IDL): integration tests below exercise these variants at least once:
 // - `InvalidLayoutBytesOrStringWithoutLength` — `test_bad_layout_instruction_skipped_and_issue_recorded`
 // - `InsufficientBytes` — `test_truncated_instruction_buffer_no_panic`
@@ -304,6 +320,72 @@ fn test_token_2022_zero_discriminator_allowed_for_single_instruction_program() {
         Some(instruction_name.as_str()),
         "single-instruction/zero-discriminator fallback should select the only instruction"
     );
+}
+
+#[test]
+fn test_zeroable_option_decodes_none_and_some() {
+    let lookup = zeroable_option_lookup();
+
+    let none_data = vec![7u8; 1]
+        .into_iter()
+        .chain([0u8; 32])
+        .collect::<Vec<u8>>();
+    let none_ix = lookup
+        .get_instruction(&none_data)
+        .expect("instruction discriminator should match");
+    assert_eq!(none_ix.name, "setAuthority");
+    assert_eq!(none_ix.args.len(), 2);
+    match &none_ix.args[1].value {
+        ParsedArgValue::Option(v) => assert!(
+            v.value.is_none(),
+            "zeroed public key should decode as None for zeroableOption"
+        ),
+        other => panic!("expected option argument, got {other:?}"),
+    }
+
+    let some_data = vec![7u8; 1]
+        .into_iter()
+        .chain([1u8; 32])
+        .collect::<Vec<u8>>();
+    let some_ix = lookup
+        .get_instruction(&some_data)
+        .expect("instruction discriminator should match");
+    match &some_ix.args[1].value {
+        ParsedArgValue::Option(v) => assert!(
+            v.value.is_some(),
+            "non-zero public key should decode as Some for zeroableOption"
+        ),
+        other => panic!("expected option argument, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_sentinel_decodes_none_and_some() {
+    let lookup = sentinel_lookup();
+
+    let none_ix = lookup
+        .get_instruction(&[9u8, 255u8])
+        .expect("instruction discriminator should match");
+    assert_eq!(none_ix.name, "setSentinelValue");
+    assert_eq!(none_ix.args.len(), 2);
+    match &none_ix.args[1].value {
+        ParsedArgValue::Option(v) => assert!(
+            v.value.is_none(),
+            "sentinel value should decode as None"
+        ),
+        other => panic!("expected option argument, got {other:?}"),
+    }
+
+    let some_ix = lookup
+        .get_instruction(&[9u8, 7u8])
+        .expect("instruction discriminator should match");
+    match &some_ix.args[1].value {
+        ParsedArgValue::Option(v) => assert!(
+            v.value.is_some(),
+            "non-sentinel value should decode as Some"
+        ),
+        other => panic!("expected option argument, got {other:?}"),
+    }
 }
 
 #[test]

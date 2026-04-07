@@ -14,8 +14,9 @@
               "name": "unixTimestamp",
               "type": {
                 "item": {
-                  "kind": "definedTypeLinkNode",
-                  "name": "unixTimestamp"
+                  "kind": "numberTypeNode",
+                  "format": "i64",
+                  "endian": "le"
                 },
                 "kind": "optionTypeNode",
                 "prefix": {
@@ -30,8 +31,9 @@
               "name": "epoch",
               "type": {
                 "item": {
-                  "kind": "definedTypeLinkNode",
-                  "name": "epoch"
+                  "kind": "numberTypeNode",
+                  "format": "u64",
+                  "endian": "le"
                 },
                 "kind": "optionTypeNode",
                 "prefix": {
@@ -70,8 +72,9 @@
               "name": "unixTimestamp",
               "type": {
                 "item": {
-                  "kind": "definedTypeLinkNode",
-                  "name": "unixTimestamp"
+                  "kind": "numberTypeNode",
+                  "format": "i64",
+                  "endian": "le"
                 },
                 "kind": "optionTypeNode",
                 "prefix": {
@@ -86,8 +89,9 @@
               "name": "epoch",
               "type": {
                 "item": {
-                  "kind": "definedTypeLinkNode",
-                  "name": "epoch"
+                  "kind": "numberTypeNode",
+                  "format": "u64",
+                  "endian": "le"
                 },
                 "kind": "optionTypeNode",
                 "prefix": {
@@ -345,16 +349,18 @@
               "kind": "structFieldTypeNode",
               "name": "unixTimestamp",
               "type": {
-                "kind": "definedTypeLinkNode",
-                "name": "unixTimestamp"
+                "kind": "numberTypeNode",
+                "format": "i64",
+                "endian": "le"
               }
             },
             {
               "kind": "structFieldTypeNode",
               "name": "epoch",
               "type": {
-                "kind": "definedTypeLinkNode",
-                "name": "epoch"
+                "kind": "numberTypeNode",
+                "format": "u64",
+                "endian": "le"
               }
             },
             {
@@ -450,16 +456,18 @@
               "kind": "structFieldTypeNode",
               "name": "activationEpoch",
               "type": {
-                "kind": "definedTypeLinkNode",
-                "name": "epoch"
+                "kind": "numberTypeNode",
+                "format": "u64",
+                "endian": "le"
               }
             },
             {
               "kind": "structFieldTypeNode",
               "name": "deactivationEpoch",
               "type": {
-                "kind": "definedTypeLinkNode",
-                "name": "epoch"
+                "kind": "numberTypeNode",
+                "format": "u64",
+                "endian": "le"
               }
             },
             {
@@ -1117,7 +1125,7 @@
             "name": "arg0",
             "type": {
               "kind": "definedTypeLinkNode",
-              "name": "lockupArgs"
+              "name": "lockupParams"
             }
           }
         ],
@@ -1277,7 +1285,7 @@
             "name": "arg0",
             "type": {
               "kind": "definedTypeLinkNode",
-              "name": "authorizeWithSeedArgs"
+              "name": "authorizeWithSeedParams"
             }
           }
         ],
@@ -1520,7 +1528,7 @@
             "name": "arg0",
             "type": {
               "kind": "definedTypeLinkNode",
-              "name": "authorizeCheckedWithSeedArgs"
+              "name": "authorizeCheckedWithSeedParams"
             }
           }
         ],
@@ -1585,7 +1593,7 @@
             "name": "arg0",
             "type": {
               "kind": "definedTypeLinkNode",
-              "name": "lockupCheckedArgs"
+              "name": "lockupCheckedParams"
             }
           }
         ],

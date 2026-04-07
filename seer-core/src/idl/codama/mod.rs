@@ -65,13 +65,8 @@ impl IdlTreeParser for CodamaIdlLookup {
                 None,
             );
 
-            if let Some(default_value_strategy) = argument.default_value_strategy {
-                match default_value_strategy {
-                    DefaultValueStrategy::Omitted => {
-                        continue;
-                    }
-                    _ => {}
-                }
+            if argument.default_value_strategy == Some(DefaultValueStrategy::Omitted) {
+                continue;
             }
 
             if let Some(parsed_arg_value) = parsed_arg_value {
