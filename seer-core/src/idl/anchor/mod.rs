@@ -16,6 +16,7 @@ use crate::{
             parsed_arg::{get_idl_type_def_ty, get_parsed_arg_value},
         },
         cursor::Cursor,
+        display_error_name,
         parsed_arg::ParsedArg,
         types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
         IdlIssue, IdlIssues, IdlProgramContext, IdlTreeParser,
@@ -126,7 +127,7 @@ impl IdlTreeParser for AnchorIdlLookup {
                             .errors
                             .iter()
                             .find(|e| e.code == code)
-                            .map(|e| format!("{}: {:#?}", &e.name, e.msg))
+                            .map(|e| format!("{}: {:#?}", display_error_name(&e.name), e.msg))
                     })
                     .unwrap_or_else(|| InstructionError::Custom(code).to_string())
             }

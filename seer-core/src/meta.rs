@@ -50,14 +50,43 @@ impl TxMetadata {
         idl: Option<&dyn IdlTreeParser>,
     ) {
         if let Some(err) = error {
+            // Keep the first observed program error as canonical transaction metadata.
+            // Program exits unwind from inner to outer, so the earliest error we see is innermost.
+            if self.data.output.error.is_none() {
+                let message = idl
+                    .map(|parser| parser.get_error(err.clone()))
+                    .unwrap_or_else(|| err.to_string());
+                self.data.output.error = Some(TxError { message });
+            }
             self.data.success = false;
-            let message = idl
-                .map(|parser| parser.get_error(err.clone()))
-                .unwrap_or_else(|| err.to_string());
-            self.data.output.error = Some(TxError { message });
-        } else {
-            self.data.success = true;
-            self.data.output.error = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TxMetadata;
+    use solana_instruction_error::InstructionError;
+
+    #[test]
+    fn keeps_first_error_as_canonical_output() {
+        let mut meta = TxMetadata::default();
+
+        meta.set_output(Some(InstructionError::Custom(1)), None);
+        meta.set_output(Some(InstructionError::Custom(2)), None);
+
+        assert!(!meta.data.success);
+        assert_eq!(meta.data.output.error.as_ref().unwrap().message, "custom program error: 0x1");
+    }
+
+    #[test]
+    fn successful_programs_do_not_clear_existing_error() {
+        let mut meta = TxMetadata::default();
+
+        meta.set_output(Some(InstructionError::Custom(7)), None);
+        meta.set_output(None, None);
+
+        assert!(!meta.data.success);
+        assert_eq!(meta.data.output.error.as_ref().unwrap().message, "custom program error: 0x7");
     }
 }

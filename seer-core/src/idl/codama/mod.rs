@@ -16,6 +16,7 @@ use crate::idl::{
         schema::analyze_codama_program,
     },
     cursor::Cursor,
+    display_error_name,
     parsed_arg::{ParsedArg, ParsedArgValue},
     types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
     IdlIssue, IdlIssues, IdlProgramContext, IdlTreeParser,
@@ -128,7 +129,7 @@ impl IdlTreeParser for CodamaIdlLookup {
                 .errors
                 .iter()
                 .find(|e| e.code == code as usize)
-                .map(|e| format!("{}: {}", e.name.as_ref(), e.message))
+                .map(|e| format!("{}: {}", display_error_name(e.name.as_ref()), e.message))
                 .unwrap_or_else(|| InstructionError::Custom(code).to_string()),
             _ => error.to_string(),
         }
@@ -336,5 +337,20 @@ impl CodamaIdlLookup {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::idl::display_error_name;
+
+    #[test]
+    fn display_error_name_promotes_camel_case_to_pascal_case() {
+        assert_eq!(display_error_name("camelCaseError"), "CamelCaseError");
+    }
+
+    #[test]
+    fn display_error_name_keeps_pascal_case() {
+        assert_eq!(display_error_name("AlreadyPascal"), "AlreadyPascal");
     }
 }

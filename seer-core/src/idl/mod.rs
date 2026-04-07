@@ -25,6 +25,14 @@ pub trait IdlTreeParser {
     fn get_error(&self, error: InstructionError) -> String;
 }
 
+pub(crate) fn display_error_name(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 pub enum IdlLookup {
     Anchor(AnchorIdlLookup),
     Codama(CodamaIdlLookup),
