@@ -65,8 +65,8 @@
               "value": {
                 "type": "Enum",
                 "value": {
-                  "discriminant": "0",
-                  "name": "uninitialized",
+                  "discriminant": "1",
+                  "name": "initialized",
                   "value": "Empty"
                 }
               }

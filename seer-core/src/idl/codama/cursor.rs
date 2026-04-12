@@ -322,8 +322,8 @@ impl<'a> CodamaCursor for Cursor<'a> {
         let number_value = self.get_number_value(origin.prefix.get_nested_type_node(), ctx)?;
 
         if number_value == "0" {
-            if !origin.fixed {
-                get_parsed_arg_value(
+            if origin.fixed {
+                let _ = get_parsed_arg_value(
                     ctx,
                     &*origin.item,
                     self,
