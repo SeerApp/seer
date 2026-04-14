@@ -101,7 +101,7 @@ impl InvokeContext {
         self.live_trace.pop();
     }
 
-    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, executed: &mut bool) {
+    pub fn step(&mut self, program_manager: &ProgramManager, i: u64) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -128,8 +128,6 @@ impl InvokeContext {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
             }
-
-            *executed = true;
         }
     }
 

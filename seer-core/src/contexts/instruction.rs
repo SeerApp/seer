@@ -7,7 +7,6 @@ use crate::{
     analysis::Analysis,
     contexts::tracer::Tracer,
     program_manager::program_manager::ProgramManager,
-    seer_debug,
     tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
@@ -76,10 +75,6 @@ impl InstructionContext {
         }
     }
 
-    pub fn executed(&self) -> bool {
-        self.tracer.executed()
-    }
-
     pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
         self.tracer.finalize_tree(&program_manager);
     }
@@ -87,7 +82,6 @@ impl InstructionContext {
 
 impl From<InstructionContext> for Option<(u8, TreeRoot<RootViewChildren>)> {
     fn from(value: InstructionContext) -> Self {
-        seer_debug!("Program executed: {:?}", value.tracer.executed());
         Into::<Option<TreeRoot<RootViewChildren>>>::into(value.tracer).map(|tracer| {
             if let Some(analysis) = value.analysis {
                 analysis.save();

@@ -16,7 +16,6 @@ pub struct TransactionContext {
     instruction_context: Option<InstructionContext>,
     pub step_mirror: Option<StepMirror>,
     pub meta: TxMetadata,
-    executed: bool,
 }
 
 impl<'a> TransactionContext {
@@ -26,7 +25,6 @@ impl<'a> TransactionContext {
             instruction_context: None,
             step_mirror: None,
             meta: TxMetadata::default(),
-            executed: false,
         }
     }
 
@@ -47,17 +45,13 @@ impl<'a> TransactionContext {
             .take()
             .expect("Ending instruction before it exists");
 
-        if icx.executed() {
-            self.executed = true;
-            if let Some(step_mirror) = &mut self.step_mirror {
-                for acc in step_mirror.check_diffs() {
-                    icx.account_diff(acc);
-                }
+        if let Some(step_mirror) = &mut self.step_mirror {
+            for acc in step_mirror.check_diffs() {
+                icx.account_diff(acc);
             }
-
-            icx.finalize_tree(program_manager);
         }
 
+        icx.finalize_tree(program_manager);
         icx.into()
     }
 
@@ -101,12 +95,9 @@ impl<'a> TransactionContext {
             .expect("Logging before instruction context exists");
 
         icx.log(message);
-
-        if icx.executed() {
-            if let Some(step_mirror) = &mut self.step_mirror {
-                for acc in step_mirror.check_diffs() {
-                    icx.account_diff(acc);
-                }
+        if let Some(step_mirror) = &mut self.step_mirror {
+            for acc in step_mirror.check_diffs() {
+                icx.account_diff(acc);
             }
         }
     }
@@ -130,9 +121,5 @@ impl<'a> TransactionContext {
         }
 
         icx.step(program_manager, i, mem, reg);
-    }
-
-    pub fn executed(&self) -> &bool {
-        &self.executed
     }
 }

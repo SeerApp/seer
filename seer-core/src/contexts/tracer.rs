@@ -11,7 +11,6 @@ use crate::{
 pub struct Tracer {
     sender: Pubkey,
     invoke_context: Option<InvokeContext>,
-    executed: bool,
 }
 
 impl Tracer {
@@ -19,7 +18,6 @@ impl Tracer {
         Self {
             sender,
             invoke_context: None,
-            executed: false,
         }
     }
 
@@ -49,7 +47,7 @@ impl Tracer {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
-            .step(program_manager, i, &mut self.executed);
+            .step(program_manager, i);
     }
 
     pub fn log(&mut self, message: &str) {
@@ -64,10 +62,6 @@ impl Tracer {
             .as_mut()
             .expect("Account diff before invoke context")
             .account_diff(data);
-    }
-
-    pub fn executed(&self) -> bool {
-        self.executed
     }
 
     pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
@@ -88,14 +82,10 @@ impl Tracer {
 
 impl From<Tracer> for Option<TreeRoot<RootViewChildren>> {
     fn from(value: Tracer) -> Self {
-        if value.executed {
-            let invoke_context = value
-                .invoke_context
-                .expect("Converting tracer with empty invoke context into view tree");
+        let invoke_context = value
+            .invoke_context
+            .expect("Converting tracer with empty invoke context into view tree");
 
-            Some(invoke_context.into())
-        } else {
-            None
-        }
+        Some(invoke_context.into())
     }
 }

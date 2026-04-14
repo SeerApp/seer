@@ -52,10 +52,7 @@ impl SeerContext {
     pub fn unset_current_tx(&mut self) {
         if let Some(txc) = &self.transaction_context.take() {
             seer_debug!("Tx unset: {:?}", txc.signature);
-
-            if *txc.executed() {
-                save_meta(&txc.signature.to_string(), &txc.meta);
-            }
+            save_meta(&txc.signature.to_string(), &txc.meta);
         }
     }
 
