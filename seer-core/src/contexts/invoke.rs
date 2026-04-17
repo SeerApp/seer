@@ -36,12 +36,22 @@ impl InvokeContext {
         }
     }
 
+    pub fn current_tree_uid(&self) -> u64 {
+        let live_trace = self
+            .live_trace
+            .last()
+            .expect("Invoke context lacks live trace");
+        self.trees[live_trace.tree_index].uid
+    }
+
     pub fn start_program(
         &mut self,
         accounts: Vec<Pubkey>,
         data: Vec<u8>,
         sender: Pubkey,
         receiver: Pubkey,
+        tree_uid: u64,
+        step_order: u64,
     ) {
         let tree_len = self.trees.len();
 
@@ -51,22 +61,28 @@ impl InvokeContext {
             if let Some(mut lke) = live_trace.last_known_entrypoint.take() {
                 for p in live_trace.pushables.iter() {
                     match p {
-                        EntrypointChildren::Log(l) => lke.push_log(l.message.clone()),
-                        EntrypointChildren::Account(a) => lke.push_account_diff(a.clone()),
+                        EntrypointChildren::Log(l) => {
+                            lke.push_log(l.message.clone(), l.step_order);
+                        }
+                        EntrypointChildren::Account(a) => {
+                            lke.push_account_diff(a.clone());
+                        }
                         _ => panic!("Unexpected value in pushables!"),
                     }
                 }
 
-                lke.push_invoke(tree_len);
+                lke.push_invoke(tree_len, step_order);
                 root.push_entrypoint(lke);
             } else {
-                root.push_invoke_root(tree_len);
+                root.push_invoke_root(tree_len, step_order);
             }
 
             live_trace.pushables = vec![];
         }
 
         self.trees.push(TreeRoot {
+            uid: tree_uid,
+            step_order,
             sender,
             receiver,
             accounts,
@@ -83,7 +99,7 @@ impl InvokeContext {
         });
     }
 
-    pub fn end_program(&mut self, maybe_err: Option<InstructionError>) {
+    pub fn end_program(&mut self, maybe_err: Option<InstructionError>, step_order: u64) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -91,7 +107,7 @@ impl InvokeContext {
         let root = &mut self.trees[live_trace.tree_index];
 
         if let Some(err) = maybe_err {
-            root.push_err(err);
+            root.push_err(err, step_order);
         }
 
         for p in &live_trace.pushables {
@@ -101,7 +117,7 @@ impl InvokeContext {
         self.live_trace.pop();
     }
 
-    pub fn step(&mut self, program_manager: &ProgramManager, i: u64) {
+    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, step_order: u64) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -111,8 +127,12 @@ impl InvokeContext {
         if let Some(mut lke) = live_trace.last_known_entrypoint.clone() {
             for p in live_trace.pushables.iter() {
                 match p {
-                    EntrypointChildren::Log(l) => lke.push_log(l.message.clone()),
-                    EntrypointChildren::Account(a) => lke.push_account_diff(a.clone()),
+                    EntrypointChildren::Log(l) => {
+                        lke.push_log(l.message.clone(), l.step_order);
+                    }
+                    EntrypointChildren::Account(a) => {
+                        lke.push_account_diff(a.clone());
+                    }
                     _ => panic!("Unexpected value in pushables!"),
                 }
             }
@@ -124,14 +144,14 @@ impl InvokeContext {
         let current_program = &self.trees[live_trace.tree_index].receiver;
 
         if let Some(entrypoint_lookup) = program_manager.get_entrypoint_lookup(current_program) {
-            if let Some(entrypoint) = entrypoint_lookup.get_entrypoint(i) {
+            if let Some(entrypoint) = entrypoint_lookup.get_entrypoint(i, step_order) {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
             }
         }
     }
 
-    pub fn log(&mut self, message: &str) {
+    pub fn log(&mut self, message: &str, step_order: u64) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -143,14 +163,16 @@ impl InvokeContext {
             .log_hook(&mut live_trace.last_known_entrypoint);
 
         if live_trace.last_known_entrypoint.is_some() {
-            live_trace
-                .pushables
-                .push(EntrypointChildren::Log(TreeLog::new(message.to_string())));
+            live_trace.pushables.push(EntrypointChildren::Log(TreeLog::new(
+                message.to_string(),
+                step_order,
+            )));
         } else {
-            root.push_log(message.to_string());
+            root.push_log(message.to_string(), step_order);
         }
     }
 
+    /// `TreeAccount::step_order` must be set by the producer (e.g. `StepMirror::check_diffs`).
     pub fn account_diff(&mut self, data: TreeAccount) {
         let tree_index = self
             .live_trace

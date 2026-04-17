@@ -77,15 +77,31 @@ pub fn _run_tx(
 
     let analysis_trace = Analysis::load(analysis_root, signature.clone(), index);
 
+    let mut next_uid = 0u64;
+    let mut trace_order = 0u64;
+
     for e in analysis_trace.events {
         match e {
             ExecutionEvent::StartProgram(program_address) => {
-                tracer.start_program(Vec::new(), Vec::new(), program_address)
+                tracer.start_program(
+                    Vec::new(),
+                    Vec::new(),
+                    program_address,
+                    next_uid,
+                    trace_order,
+                );
+                next_uid += 1;
             }
-            ExecutionEvent::EndProgram(err) => tracer.end_program(err),
-            ExecutionEvent::AccountDiff(data) => tracer.account_diff(data),
-            ExecutionEvent::Log(log) => tracer.log(&log),
-            ExecutionEvent::Step(step) => tracer.step(program_manager, step),
+            ExecutionEvent::EndProgram(err) => tracer.end_program(err, trace_order),
+            ExecutionEvent::AccountDiff(mut data) => {
+                data.step_order = trace_order;
+                tracer.account_diff(data);
+            }
+            ExecutionEvent::Log(log) => tracer.log(&log, trace_order),
+            ExecutionEvent::Step(step) => {
+                tracer.step(program_manager, step, trace_order);
+                trace_order += 1;
+            }
         }
     }
 

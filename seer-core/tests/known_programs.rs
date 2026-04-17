@@ -24,6 +24,7 @@ fn known_program_idls_can_instantiate_idl_lookup() {
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
         "AddressLookupTab1e1111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
     ]
     .into_iter()
     .map(|id| Pubkey::from_str(id).expect("known program id must be valid pubkey"))

@@ -9,6 +9,7 @@ pub mod logger;
 pub mod meta;
 pub mod path_resolver;
 pub mod program_manager;
+pub mod register_trace;
 pub mod runbook;
 pub mod save;
 pub mod sources;

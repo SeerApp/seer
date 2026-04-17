@@ -17,7 +17,9 @@ impl StepMirror {
         }
     }
 
-    pub fn check_diffs(&mut self) -> Vec<TreeAccount> {
+    /// `step_order` is stamped on each returned [`TreeAccount`] (single source of truth for the
+    /// trace; `InvokeContext::account_diff` forwards it unchanged).
+    pub fn check_diffs(&mut self, step_order: u64) -> Vec<TreeAccount> {
         let mirror_ptr = self.mirror_ptr.expect("StepMirror has been cleared");
         let mirror = unsafe { &*mirror_ptr };
 
@@ -32,6 +34,7 @@ impl StepMirror {
 
             if accounts[index].1 != self.accounts[index].1 {
                 changed_accounts.push(TreeAccount {
+                    step_order,
                     key: accounts[index].0,
                     before: self.accounts[index].1.clone().into(),
                     after: accounts[index].1.clone().into(),

@@ -13,7 +13,11 @@ pub struct EntrypointLookup {
 }
 
 impl EntrypointLookup {
-    pub fn get_entrypoint(&self, instruction: u64) -> Option<TreeEntrypoint<EntrypointChildren>> {
+    pub fn get_entrypoint(
+        &self,
+        instruction: u64,
+        step_order: u64,
+    ) -> Option<TreeEntrypoint<EntrypointChildren>> {
         let mut source_die_trace: VecDeque<SourceDie> = VecDeque::new();
 
         if let Some(deepest_index) = self.lookup.search_deepest(&instruction) {
@@ -37,6 +41,7 @@ impl EntrypointLookup {
                     SourceDieType::Fn => {
                         if let Some(d) = source_die.loc.decl {
                             break 'find_entrypoint Some(TreeEntrypoint {
+                                step_order,
                                 instruction,
                                 signature: source_die.loc.signature,
                                 loc: d,

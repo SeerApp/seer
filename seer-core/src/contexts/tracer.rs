@@ -21,40 +21,68 @@ impl Tracer {
         }
     }
 
-    pub fn start_program(&mut self, accounts: Vec<Pubkey>, data: Vec<u8>, program_address: Pubkey) {
+    pub fn current_tree_uid(&self) -> u64 {
+        self.invoke_context
+            .as_ref()
+            .expect("Tree uid requested before invoke context exists")
+            .current_tree_uid()
+    }
+
+    /// True when a program is already running (next `start_program` is a CPI).
+    pub fn has_invoke_context(&self) -> bool {
+        self.invoke_context.is_some()
+    }
+
+    pub fn start_program(
+        &mut self,
+        accounts: Vec<Pubkey>,
+        data: Vec<u8>,
+        program_address: Pubkey,
+        tree_uid: u64,
+        step_order: u64,
+    ) {
         if let Some(invoke_context) = self.invoke_context.as_mut() {
             invoke_context.start_program(
                 accounts,
                 data,
                 invoke_context.get_last_receiver(),
                 program_address,
+                tree_uid,
+                step_order,
             );
         } else {
             let mut invoke_context = InvokeContext::new();
-            invoke_context.start_program(accounts, data, self.sender, program_address);
+            invoke_context.start_program(
+                accounts,
+                data,
+                self.sender,
+                program_address,
+                tree_uid,
+                step_order,
+            );
             self.invoke_context = Some(invoke_context);
         };
     }
 
-    pub fn end_program(&mut self, err: Option<InstructionError>) {
+    pub fn end_program(&mut self, err: Option<InstructionError>, step_order: u64) {
         self.invoke_context
             .as_mut()
             .expect("Invoke context must exist before end program call")
-            .end_program(err);
+            .end_program(err, step_order);
     }
 
-    pub fn step(&mut self, program_manager: &ProgramManager, i: u64) {
+    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, step_order: u64) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
-            .step(program_manager, i);
+            .step(program_manager, i, step_order);
     }
 
-    pub fn log(&mut self, message: &str) {
+    pub fn log(&mut self, message: &str, step_order: u64) {
         self.invoke_context
             .as_mut()
             .expect("Logging before invoke context")
-            .log(message);
+            .log(message, step_order);
     }
 
     pub fn account_diff(&mut self, data: TreeAccount) {

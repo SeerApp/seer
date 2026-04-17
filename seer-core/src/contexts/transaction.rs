@@ -16,16 +16,28 @@ pub struct TransactionContext {
     instruction_context: Option<InstructionContext>,
     pub step_mirror: Option<StepMirror>,
     pub meta: TxMetadata,
+    step_order: u64,
+    step_executed: bool,
+    next_tree_root_uid: u64,
 }
 
-impl<'a> TransactionContext {
+impl TransactionContext {
     pub fn new(signature: Signature) -> Self {
         Self {
             signature,
             instruction_context: None,
             step_mirror: None,
             meta: TxMetadata::default(),
+            step_order: 0,
+            step_executed: false,
+            next_tree_root_uid: 0,
         }
+    }
+
+    pub fn allocate_tree_root_uid(&mut self) -> u64 {
+        let uid = self.next_tree_root_uid;
+        self.next_tree_root_uid += 1;
+        uid
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
@@ -46,7 +58,7 @@ impl<'a> TransactionContext {
             .expect("Ending instruction before it exists");
 
         if let Some(step_mirror) = &mut self.step_mirror {
-            for acc in step_mirror.check_diffs() {
+            for acc in step_mirror.check_diffs(self.step_order) {
                 icx.account_diff(acc);
             }
         }
@@ -66,10 +78,13 @@ impl<'a> TransactionContext {
             self.step_mirror = Some(StepMirror::new(mirror));
         }
 
+        let tree_uid = self.allocate_tree_root_uid();
+        let order = self.step_order;
+
         self.instruction_context
             .as_mut()
             .expect("Starting program before instruction context exists")
-            .start_program(accounts, data, program_address);
+            .start_program(accounts, data, program_address, tree_uid, order);
     }
 
     pub fn end_program(
@@ -82,21 +97,23 @@ impl<'a> TransactionContext {
             .get_idl_lookup(&program_address)
             .map(|l| l as &dyn crate::idl::IdlTreeParser);
         self.meta.set_output(err.clone(), idl);
+        let order = self.step_order;
         self.instruction_context
             .as_mut()
             .expect("Ending program before instruction context exists")
-            .end_program(err);
+            .end_program(err, order);
     }
 
     pub fn log(&mut self, message: &str) {
+        let order = self.step_order;
         let icx = self
             .instruction_context
             .as_mut()
-            .expect("Logging before instruction context exists");
+            .expect("Logging before transaction context exists");
 
-        icx.log(message);
+        icx.log(message, order);
         if let Some(step_mirror) = &mut self.step_mirror {
-            for acc in step_mirror.check_diffs() {
+            for acc in step_mirror.check_diffs(order) {
                 icx.account_diff(acc);
             }
         }
@@ -109,17 +126,26 @@ impl<'a> TransactionContext {
         mem: &mut M,
         reg: &[u64; 12],
     ) {
+        if self.step_executed {
+            self.step_order += 1;
+        }
+        let order = self.step_order;
+
         let icx = self
             .instruction_context
             .as_mut()
             .expect("Stepping before instruction context exists");
 
         if let Some(step_mirror) = &mut self.step_mirror {
-            for acc in step_mirror.check_diffs() {
+            for acc in step_mirror.check_diffs(order) {
                 icx.account_diff(acc);
             }
         }
 
-        icx.step(program_manager, i, mem, reg);
+        icx.step(program_manager, order, i, mem, reg);
+        
+        if !self.step_executed {
+            self.step_executed = true;
+        }
     }
 }
