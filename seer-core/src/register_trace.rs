@@ -122,9 +122,45 @@ impl RegisterTraceCollector {
         }
     }
 
-    /// Drop any in-progress chunk (e.g. CPI exit / enter). Returns serialized chunk if one existed.
-    pub fn flush_on_invocation_boundary(&mut self) -> Option<PersistedRegisterTraceChunk> {
+    /// Emit the deferred final trace row (PC = [`Self::last_hook_pc`], `reg: None`) when the VM
+    /// stops before the next hook would have done so — e.g. root `EXIT` does not change traced
+    /// registers, so the delta is always absent.
+    ///
+    /// Skipped when [`Self::last_hook_pc`] already matches the last row's PC (first row after
+    /// [`Self::open_chunk_eager`] uses the current hook's PC, so there is nothing left to defer).
+    fn drain_final_deferred_row(&mut self) {
+        let Some(pc) = self.last_hook_pc else {
+            return;
+        };
+        let Some(active) = self.active.as_mut() else {
+            self.last_hook_pc = None;
+            return;
+        };
+        if active.trace.last().is_some_and(|e| e.pc == pc) {
+            self.last_hook_pc = None;
+            return;
+        }
+        let order = active.max_order.saturating_add(1);
+        let prev = active.previous;
+        active.push(order, pc, &prev);
+        self.records_this_chunk = self.records_this_chunk.saturating_add(1);
         self.last_hook_pc = None;
+    }
+
+    /// Drop any in-progress chunk (e.g. CPI exit / enter). Returns serialized chunk if one existed.
+    ///
+    /// When `emit_final_deferred_row` is true (normal program end), append the pending row for
+    /// [`Self::last_hook_pc`] with a null register delta before persisting. When false (CPI
+    /// entry), omit — the caller's next instruction after CPI is not necessarily register-neutral.
+    pub fn flush_on_invocation_boundary(
+        &mut self,
+        emit_final_deferred_row: bool,
+    ) -> Option<PersistedRegisterTraceChunk> {
+        if emit_final_deferred_row {
+            self.drain_final_deferred_row();
+        } else {
+            self.last_hook_pc = None;
+        }
         self.records_this_chunk = 0;
         self.active.take().map(ActiveRegisterTraceChunk::into_persisted)
     }
@@ -200,6 +236,7 @@ impl RegisterTraceCollector {
     }
 
     pub fn finalize(&mut self) -> Option<PersistedRegisterTraceChunk> {
+        self.drain_final_deferred_row();
         self.last_hook_pc = None;
         self.records_this_chunk = 0;
         self.active.take().map(ActiveRegisterTraceChunk::into_persisted)
@@ -266,12 +303,14 @@ mod tests {
         let chunk = collector.finalize().expect("final chunk");
         assert_eq!(chunk.tree_uid, UID);
         assert_eq!(chunk.min_order, 0);
-        assert_eq!(chunk.max_order, 0);
+        assert_eq!(chunk.max_order, 1);
         assert_eq!(chunk.chunk.snapshot.reg.len(), TRACE_REGISTER_COUNT);
         assert_eq!(chunk.chunk.snapshot.reg[&0], 10);
         assert_eq!(chunk.chunk.snapshot.reg[&10], 20);
         assert!(!chunk.chunk.snapshot.reg.contains_key(&11));
-        assert_eq!(chunk.chunk.trace.len(), 0);
+        assert_eq!(chunk.chunk.trace.len(), 1);
+        assert_eq!(chunk.chunk.trace[0].pc, 36);
+        assert!(chunk.chunk.trace[0].reg.is_none());
     }
 
     #[test]
@@ -287,13 +326,16 @@ mod tests {
         collector.record(6, 44, &changed, UID);
 
         let chunk = collector.finalize().expect("final chunk");
-        assert_eq!(chunk.chunk.trace.len(), 1);
+        assert_eq!(chunk.chunk.trace.len(), 2);
         let delta = chunk.chunk.trace[0].reg.as_ref().expect("delta");
         assert_eq!(delta.get(&3), Some(&999));
         assert_eq!(delta.get(&8), Some(&1234));
         assert_eq!(delta.len(), 2);
         assert!(!delta.contains_key(&11));
         assert_eq!(chunk.chunk.trace[0].pc, 40);
+        assert_eq!(chunk.chunk.trace[1].pc, 44);
+        assert!(chunk.chunk.trace[1].reg.is_none());
+        assert_eq!(chunk.max_order, 7);
     }
 
     #[test]
@@ -324,11 +366,14 @@ mod tests {
         let tail = collector.finalize().expect("tail chunk");
         assert_eq!(tail.tree_uid, UID);
         assert_eq!(tail.min_order, REGISTER_TRACE_CHUNK_SIZE as u64);
-        assert_eq!(tail.max_order, REGISTER_TRACE_CHUNK_SIZE as u64);
+        assert_eq!(tail.max_order, REGISTER_TRACE_CHUNK_SIZE as u64 + 1);
         assert_eq!(tail.chunk.snapshot.reg[&2], reg[2]);
         assert!(!tail.chunk.snapshot.reg.contains_key(&11));
+        assert_eq!(tail.chunk.trace.len(), 2);
         let d0 = tail.chunk.trace[0].reg.as_ref().expect("rollover carries prior regs");
         assert_eq!(d0.get(&2), Some(&(reg[2])));
+        assert_eq!(tail.chunk.trace[1].pc, 9000);
+        assert!(tail.chunk.trace[1].reg.is_none());
     }
 
     #[test]

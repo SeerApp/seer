@@ -1,0 +1,22 @@
+[package]
+name = "disasm"
+version = { workspace = true }
+edition = { workspace = true }
+# Agave pulls `solana-*` crates that require a recent toolchain (see `cargo build` errors).
+rust-version = "1.89"
+
+[[bin]]
+name = "disasm"
+path = "src/main.rs"
+
+[dependencies]
+# Same release line as each other (crates.io); avoids path + fork SBPF mismatch.
+agave-syscalls = { version = "4.0.0-beta.7", default-features = false, features = ["agave-unstable-api"] }
+anyhow = "1.0"
+object = "0.38.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+solana-program-runtime = { version = "4.0.0-beta.7", default-features = false, features = ["agave-unstable-api"] }
+solana-svm-feature-set = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
+
+[lints]
+workspace = true

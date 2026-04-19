@@ -57,7 +57,7 @@ impl InstructionContext {
     ) {
         let is_cpi = self.tracer.has_invoke_context();
         let flushed_chunk = if let Some(rt) = self.register_trace.as_mut() {
-            let flushed = rt.flush_on_invocation_boundary();
+            let flushed = rt.flush_on_invocation_boundary(false);
             if is_cpi {
                 if let Some(regs) = self.last_regs {
                     rt.open_chunk_eager(tree_uid, order, &regs);
@@ -80,7 +80,7 @@ impl InstructionContext {
 
     pub fn end_program(&mut self, err: Option<InstructionError>, order: u64) {
         if let Some(rt) = self.register_trace.as_mut() {
-            if let Some(chunk) = rt.flush_on_invocation_boundary() {
+            if let Some(chunk) = rt.flush_on_invocation_boundary(true) {
                 self.save_register_trace_chunk(chunk);
             }
         }
