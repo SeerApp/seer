@@ -68,10 +68,10 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init(authority: Pubkey) -> Result<(), IrrecoverableError> {
+pub async fn init(authority: Pubkey, network_rpc_url: Option<String>) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(authority).await?;
+    let ctx = SourcesContext::new(authority, network_rpc_url).await?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();

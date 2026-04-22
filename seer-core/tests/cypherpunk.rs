@@ -28,8 +28,8 @@ fn test_instruction_context() {
         .ok()
         .unwrap();
 
-    let (program_manager, _warnings) =
-        ProgramManager::init(&cwd, &source_project_root).expect("ProgramManager::init");
+    let (program_manager, _warnings) = ProgramManager::init(&cwd, &source_project_root, None)
+        .expect("ProgramManager::init");
 
     let sig =
         "JuiMHw4p3kgdBsgXK8134Vb4jaL8gfvsXYNvxfi6XgRRckZCugVNuReWUBpg1dTncXoEi8QmAz5fbHP1cvgb45Q"

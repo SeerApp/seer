@@ -13,14 +13,18 @@ pub const REGISTER_TRACE_CHUNK_SIZE: usize = 1000;
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct RegisterSnapshot {
-    pub reg: BTreeMap<usize, u64>,
+    pub reg: BTreeMap<usize, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call_depth: Option<u32>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct RegisterTraceEntry {
     pub pc: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reg: Option<BTreeMap<usize, u64>>,
+    pub reg: Option<BTreeMap<usize, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call_depth: Option<u32>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -44,12 +48,15 @@ struct ActiveRegisterTraceChunk {
     max_order: u64,
     snapshot: [u64; REGISTER_COUNT],
     previous: [u64; REGISTER_COUNT],
+    frame_stack: Vec<u64>,
+    current_call_depth: u32,
+    saw_call_depth_change: bool,
     trace: Vec<RegisterTraceEntry>,
 }
 
 impl ActiveRegisterTraceChunk {
     fn new(tree_uid: u64, order: u64, reg: &[u64; REGISTER_COUNT]) -> Self {
-        Self::new_carry(tree_uid, order, reg, reg)
+        Self::new_carry(tree_uid, order, reg, reg, vec![reg[10]], 0)
     }
 
     /// `reg` seeds the chunk snapshot (first observation in this file); `previous_for_delta` is
@@ -60,6 +67,8 @@ impl ActiveRegisterTraceChunk {
         order: u64,
         reg: &[u64; REGISTER_COUNT],
         previous_for_delta: &[u64; REGISTER_COUNT],
+        frame_stack: Vec<u64>,
+        current_call_depth: u32,
     ) -> Self {
         Self {
             tree_uid,
@@ -67,15 +76,27 @@ impl ActiveRegisterTraceChunk {
             max_order: order,
             snapshot: *reg,
             previous: *previous_for_delta,
+            frame_stack,
+            current_call_depth,
+            saw_call_depth_change: false,
             trace: Vec::with_capacity(REGISTER_TRACE_CHUNK_SIZE),
         }
     }
 
     fn push(&mut self, order: u64, pc: u64, reg: &[u64; REGISTER_COUNT]) {
         self.max_order = order;
+        let next_call_depth = update_call_depth(&mut self.frame_stack, reg[10]);
+        let call_depth_delta = if next_call_depth != self.current_call_depth {
+            self.current_call_depth = next_call_depth;
+            self.saw_call_depth_change = true;
+            Some(next_call_depth)
+        } else {
+            None
+        };
         self.trace.push(RegisterTraceEntry {
             pc,
             reg: changed_registers(&self.previous, reg),
+            call_depth: call_depth_delta,
         });
         self.previous = *reg;
     }
@@ -88,6 +109,7 @@ impl ActiveRegisterTraceChunk {
             chunk: RegisterTraceChunk {
                 snapshot: RegisterSnapshot {
                     reg: serialize_registers(&self.snapshot),
+                    call_depth: self.saw_call_depth_change.then_some(0),
                 },
                 trace: self.trace,
             },
@@ -194,6 +216,8 @@ impl RegisterTraceCollector {
         let mut completed = None;
 
         let carried_previous = self.active.as_ref().map(|a| a.previous);
+        let carried_frame_stack = self.active.as_ref().map(|a| a.frame_stack.clone());
+        let carried_call_depth = self.active.as_ref().map(|a| a.current_call_depth);
 
         if let Some(active) = self.active.as_ref() {
             let uid_mismatch = active.tree_uid != tree_uid;
@@ -210,7 +234,14 @@ impl RegisterTraceCollector {
 
         self.active.get_or_insert_with(|| {
             let previous_for_delta = carried_previous.unwrap_or(*reg);
-            ActiveRegisterTraceChunk::new_carry(tree_uid, order, reg, &previous_for_delta)
+            ActiveRegisterTraceChunk::new_carry(
+                tree_uid,
+                order,
+                reg,
+                &previous_for_delta,
+                carried_frame_stack.unwrap_or_else(|| vec![reg[10]]),
+                carried_call_depth.unwrap_or(0),
+            )
         });
         let chunk = self.active.as_mut().expect("active chunk");
         debug_assert_eq!(chunk.tree_uid, tree_uid);
@@ -243,6 +274,15 @@ impl RegisterTraceCollector {
     }
 }
 
+fn update_call_depth(frame_stack: &mut Vec<u64>, frame_ptr: u64) -> u32 {
+    if let Some(pos) = frame_stack.iter().rposition(|fp| *fp == frame_ptr) {
+        frame_stack.truncate(pos + 1);
+    } else {
+        frame_stack.push(frame_ptr);
+    }
+    frame_stack.len().saturating_sub(1) as u32
+}
+
 impl Default for RegisterTraceCollector {
     fn default() -> Self {
         Self::new()
@@ -252,13 +292,13 @@ impl Default for RegisterTraceCollector {
 fn changed_registers(
     previous: &[u64; REGISTER_COUNT],
     current: &[u64; REGISTER_COUNT],
-) -> Option<BTreeMap<usize, u64>> {
+) -> Option<BTreeMap<usize, String>> {
     let mut changed = BTreeMap::new();
     let mut has_change = false;
 
     for index in 0..TRACE_REGISTER_COUNT {
         if previous[index] != current[index] {
-            changed.insert(index, current[index]);
+            changed.insert(index, current[index].to_string());
             has_change = true;
         }
     }
@@ -266,11 +306,11 @@ fn changed_registers(
     has_change.then_some(changed)
 }
 
-fn serialize_registers(registers: &[u64; REGISTER_COUNT]) -> BTreeMap<usize, u64> {
+fn serialize_registers(registers: &[u64; REGISTER_COUNT]) -> BTreeMap<usize, String> {
     let mut reg = BTreeMap::new();
 
     for (index, value) in registers.iter().copied().enumerate().take(TRACE_REGISTER_COUNT) {
-        reg.insert(index, value);
+        reg.insert(index, value.to_string());
     }
 
     reg
@@ -305,8 +345,8 @@ mod tests {
         assert_eq!(chunk.min_order, 0);
         assert_eq!(chunk.max_order, 1);
         assert_eq!(chunk.chunk.snapshot.reg.len(), TRACE_REGISTER_COUNT);
-        assert_eq!(chunk.chunk.snapshot.reg[&0], 10);
-        assert_eq!(chunk.chunk.snapshot.reg[&10], 20);
+        assert_eq!(chunk.chunk.snapshot.reg[&0], "10");
+        assert_eq!(chunk.chunk.snapshot.reg[&10], "20");
         assert!(!chunk.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(chunk.chunk.trace.len(), 1);
         assert_eq!(chunk.chunk.trace[0].pc, 36);
@@ -328,8 +368,8 @@ mod tests {
         let chunk = collector.finalize().expect("final chunk");
         assert_eq!(chunk.chunk.trace.len(), 2);
         let delta = chunk.chunk.trace[0].reg.as_ref().expect("delta");
-        assert_eq!(delta.get(&3), Some(&999));
-        assert_eq!(delta.get(&8), Some(&1234));
+        assert_eq!(delta.get(&3).map(String::as_str), Some("999"));
+        assert_eq!(delta.get(&8).map(String::as_str), Some("1234"));
         assert_eq!(delta.len(), 2);
         assert!(!delta.contains_key(&11));
         assert_eq!(chunk.chunk.trace[0].pc, 40);
@@ -360,18 +400,18 @@ mod tests {
         assert_eq!(completed.min_order, 0);
         assert_eq!(completed.max_order, REGISTER_TRACE_CHUNK_SIZE as u64 - 1);
         assert_eq!(completed.chunk.trace.len(), REGISTER_TRACE_CHUNK_SIZE - 1);
-        assert_eq!(completed.chunk.snapshot.reg[&0], 100);
+        assert_eq!(completed.chunk.snapshot.reg[&0], "100");
         assert!(!completed.chunk.snapshot.reg.contains_key(&11));
 
         let tail = collector.finalize().expect("tail chunk");
         assert_eq!(tail.tree_uid, UID);
         assert_eq!(tail.min_order, REGISTER_TRACE_CHUNK_SIZE as u64);
         assert_eq!(tail.max_order, REGISTER_TRACE_CHUNK_SIZE as u64 + 1);
-        assert_eq!(tail.chunk.snapshot.reg[&2], reg[2]);
+        assert_eq!(tail.chunk.snapshot.reg[&2], reg[2].to_string());
         assert!(!tail.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(tail.chunk.trace.len(), 2);
         let d0 = tail.chunk.trace[0].reg.as_ref().expect("rollover carries prior regs");
-        assert_eq!(d0.get(&2), Some(&(reg[2])));
+        assert_eq!(d0.get(&2), Some(&reg[2].to_string()));
         assert_eq!(tail.chunk.trace[1].pc, 9000);
         assert!(tail.chunk.trace[1].reg.is_none());
     }
@@ -401,7 +441,7 @@ mod tests {
         assert_eq!(tail.min_order, 3);
         assert_eq!(tail.max_order, 3);
         assert_eq!(tail.chunk.trace.len(), 0);
-        assert_eq!(tail.chunk.snapshot.reg[&0], 7);
+        assert_eq!(tail.chunk.snapshot.reg[&0], "7");
     }
 
     #[test]
@@ -419,7 +459,37 @@ mod tests {
         assert_eq!(tail.chunk.trace.len(), 1);
         assert_eq!(tail.chunk.trace[0].pc, 99);
         let delta = tail.chunk.trace[0].reg.as_ref().expect("delta");
-        assert_eq!(delta.get(&2), Some(&42));
+        assert_eq!(delta.get(&2).map(String::as_str), Some("42"));
         assert_eq!(tail.max_order, 11);
+    }
+
+    #[test]
+    fn call_depth_is_sparse_and_snapshot_is_omitted_without_changes() {
+        let mut collector = RegisterTraceCollector::new();
+        let mut reg = regs(0);
+        reg[10] = 1000;
+        collector.record(0, 10, &reg, UID);
+
+        // Simulate nested call frame.
+        let mut reg_call = reg;
+        reg_call[10] = 2000;
+        collector.record(1, 11, &reg_call, UID);
+
+        // Return to the previous frame.
+        collector.record(2, 12, &reg, UID);
+
+        let chunk = collector.finalize().expect("final chunk");
+        assert_eq!(chunk.chunk.snapshot.call_depth, Some(0));
+        assert_eq!(chunk.chunk.trace[0].call_depth, Some(1));
+        assert_eq!(chunk.chunk.trace[1].call_depth, Some(0));
+        assert!(chunk.chunk.trace[2].call_depth.is_none());
+
+        let mut collector_no_depth = RegisterTraceCollector::new();
+        let reg_static = regs(50);
+        collector_no_depth.record(0, 20, &reg_static, UID);
+        collector_no_depth.record(1, 21, &reg_static, UID);
+        let chunk_no_depth = collector_no_depth.finalize().expect("final chunk");
+        assert_eq!(chunk_no_depth.chunk.snapshot.call_depth, None);
+        assert!(chunk_no_depth.chunk.trace.iter().all(|row| row.call_depth.is_none()));
     }
 }

@@ -123,6 +123,14 @@ fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
     assert_eq!(expected, actual, "fixture mismatch: {}", path.display());
 }
 
+fn decode_hex(hex: &str) -> Vec<u8> {
+    assert_eq!(hex.len() % 2, 0, "hex input must have even length");
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex byte"))
+        .collect()
+}
+
 #[derive(Serialize)]
 struct InstructionFixture {
     instruction: Option<ParsedInstruction>,
@@ -182,6 +190,21 @@ fn test_token_program_account_parse() {
 
     let parsed_ax = token_program_idl.get_account(data);
     assert_or_update_fixture("token_account.json", &AccountFixture { parsed: parsed_ax });
+}
+
+#[test]
+fn test_token_2022_account_parse_with_extensions_len_170() {
+    ensure_seer_logger();
+    let token_2022_idl = lookup_from_json_value(&token_2022_json());
+    let account_hex = "ad6bdee6c348bdc0414f11196709a78dcdc502c9d7a9c9d266aac90187c5c5cf987e93e36c955a0bd514f619fdce4a145c673a696141f274f79b10f77a8c559600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000207000000";
+    let data = decode_hex(account_hex);
+    assert_eq!(data.len(), 170, "expected extension-sized account payload");
+
+    let parsed_ax = token_2022_idl.get_account(&data);
+    assert!(
+        parsed_ax.is_some(),
+        "Token-2022 account parser should accept 165-byte base layout plus extension bytes",
+    );
 }
 
 #[test]

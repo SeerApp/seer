@@ -184,10 +184,13 @@ mod tests {
         init_test_logger();
         let folder = temp_output_dir();
         let mut reg = BTreeMap::new();
-        reg.insert(0, 7);
-        reg.insert(2, 9);
+        reg.insert(0, "7".to_string());
+        reg.insert(2, "9".to_string());
         let chunk = RegisterTraceChunk {
-            snapshot: RegisterSnapshot { reg },
+            snapshot: RegisterSnapshot {
+                reg,
+                call_depth: None,
+            },
             trace: vec![],
         };
 
@@ -199,7 +202,7 @@ mod tests {
         let content = fs::read_to_string(&output_path).expect("read register trace");
         assert!(content.contains("\"snapshot\""));
         assert!(content.contains("\"trace\""));
-        assert!(content.contains("\"0\": 7"));
+        assert!(content.contains("\"0\": \"7\""));
         assert!(!content.contains("\"11\""));
 
         fs::remove_dir_all(folder).expect("remove temp dir");

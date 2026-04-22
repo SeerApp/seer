@@ -31,8 +31,8 @@ fn test_instruction_context() {
         "5jVZw9AHxDMW346wjG1XeBu4gcvazLcQWJEVoiVNi1efhJXUF8Rmb7H8BE3PwXSBWaMMehdefMTVq8pkcnKNX6ZQ"
             .to_string();
 
-    let (program_manager, _warnings) =
-        ProgramManager::init(&cwd, &source_project_root).expect("ProgramManager::init");
+    let (program_manager, _warnings) = ProgramManager::init(&cwd, &source_project_root, None)
+        .expect("ProgramManager::init");
 
     let result = _run_tx(&analysis_root, fee_payer, 0, &sig, &program_manager);
     if seer_test_save_enabled() {

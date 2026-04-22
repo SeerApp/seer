@@ -8,7 +8,10 @@ pub struct SourcesContext {
 }
 
 impl SourcesContext {
-    pub async fn new(authority: Pubkey) -> Result<Self, IrrecoverableError> {
+    pub async fn new(
+        authority: Pubkey,
+        network_rpc_url: Option<String>,
+    ) -> Result<Self, IrrecoverableError> {
         // let eps = match Config::from_env().ok().expect("Error in parsing config") {
         //     Some(config) => Some(ExternalProgramService::new(config).await),
         //     None => {
@@ -17,7 +20,7 @@ impl SourcesContext {
         // };
 
         Ok(Self {
-            seer: SeerContext::new(authority)?,
+            seer: SeerContext::new(authority, network_rpc_url)?,
             // eps,
         })
     }

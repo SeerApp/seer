@@ -120,9 +120,15 @@ pub fn get_parsed_arg_value(
                 return None;
             }
             if !cur.is_empty() {
-                get_parsed_arg_value(ctx, &r.item, cur, defined_types, is_last, passed_len)
+                let value =
+                    get_parsed_arg_value(ctx, &r.item, cur, defined_types, is_last, passed_len)?;
+                Some(ParsedArgValue::Option(ViewOptionTypeNode {
+                    value: Box::new(Some(value)),
+                }))
             } else {
-                None
+                Some(ParsedArgValue::Option(ViewOptionTypeNode {
+                    value: Box::new(None),
+                }))
             }
         }
         TypeNode::Sentinel(s) => Some(ParsedArgValue::Option(
@@ -232,10 +238,19 @@ pub fn get_view_struct_type_node<'a>(
     is_last: bool,
 ) -> Option<ViewStructTypeNode> {
     let mut fields = vec![];
+    let field_count = origin.fields.len();
 
-    for field in &origin.fields {
+    for (idx, field) in origin.fields.iter().enumerate() {
         ctx.push_path(field.name.to_string());
-        let value = get_parsed_arg_value(ctx, &field.r#type, cur, defined_types, is_last, None);
+        let field_is_last = is_last && idx + 1 == field_count;
+        let value = get_parsed_arg_value(
+            ctx,
+            &field.r#type,
+            cur,
+            defined_types,
+            field_is_last,
+            None,
+        );
         let Some(value) = value else {
             ctx.note_decode_residual(format!("struct field `{}`", field.name.as_ref()));
             ctx.pop_path();

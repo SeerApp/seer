@@ -22,7 +22,7 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new(authority: Pubkey) -> Result<Self, IrrecoverableError> {
+    pub fn new(authority: Pubkey, network_rpc_url: Option<String>) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -33,9 +33,14 @@ impl SeerContext {
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
 
-        let (txtx, main) = generate_runbooks(authority, &runtime_dir);
-        save_runbooks(&runtime_dir, txtx, main);
-        let (program_manager, warnings) = ProgramManager::init(&runtime_dir, &dwarf_compile_dir)?;
+        if let Some((txtx, main)) = generate_runbooks(authority, &runtime_dir) {
+            save_runbooks(&runtime_dir, txtx, main);
+        } else {
+            seer_debug!("Starting without target.");
+        };
+
+        let (program_manager, warnings) =
+            ProgramManager::init(&runtime_dir, &dwarf_compile_dir, network_rpc_url)?;
 
         Ok(Self {
             program_manager,
@@ -92,6 +97,7 @@ impl SeerContext {
         step_mirror: &dyn GuestStepMirror,
     ) {
         seer_debug!("Starting program: {:?}", program_address);
+        self.program_manager.queue_disasm_if_needed(program_address);
         self.transaction_context
             .as_mut()
             .expect("Starting program before transaction context")

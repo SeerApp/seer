@@ -1,3 +1,4 @@
+use seer_core::idl::IdlTreeParser;
 use seer_core::program_manager::known_programs::get_known_programs;
 use seer_core::{init_seer_logger, SeerLogger};
 use solana_pubkey::Pubkey;
@@ -35,5 +36,45 @@ fn known_program_idls_can_instantiate_idl_lookup() {
     assert_eq!(
         actual_program_ids, expected_program_ids,
         "known programs and embedded IDLs should stay in sync",
+    );
+}
+
+fn decode_hex(hex: &str) -> Vec<u8> {
+    assert_eq!(hex.len() % 2, 0, "hex input must have even length");
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex byte"))
+        .collect()
+}
+
+#[test]
+fn token_2022_account_parse_supports_extended_account_size() {
+    ensure_seer_logger();
+    let known_programs = get_known_programs();
+    let token_2022_program_id = Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+        .expect("valid pubkey");
+    let token_2022_idl = known_programs
+        .into_iter()
+        .find(|(id, _)| *id == token_2022_program_id)
+        .map(|(_, idl)| idl)
+        .expect("Token-2022 IDL should exist in known programs");
+
+    let account_hex = "ad6bdee6c348bdc0414f11196709a78dcdc502c9d7a9c9d266aac90187c5c5cf987e93e36c955a0bd514f619fdce4a145c673a696141f274f79b10f77a8c559600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000207000000";
+    let account_data = decode_hex(account_hex);
+    assert_eq!(account_data.len(), 170);
+
+    // Token-2022 accounts can include extension bytes beyond the base 165-byte
+    // token-account layout. The parser should still match the account kind.
+    let parsed_full = token_2022_idl.get_account(&account_data);
+    assert!(
+        parsed_full.is_some(),
+        "Expected parse to succeed for 170-byte Token-2022 account payload"
+    );
+
+    // Control: legacy base-size token account should continue parsing too.
+    let parsed_base = token_2022_idl.get_account(&account_data[..165]);
+    assert!(
+        parsed_base.is_some(),
+        "Expected 165-byte base payload to match token account discriminator"
     );
 }

@@ -5,6 +5,9 @@ edition = { workspace = true }
 # Agave pulls `solana-*` crates that require a recent toolchain (see `cargo build` errors).
 rust-version = "1.89"
 
+[lib]
+path = "src/main.rs"
+
 [[bin]]
 name = "disasm"
 path = "src/main.rs"

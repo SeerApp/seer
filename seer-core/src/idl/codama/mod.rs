@@ -89,36 +89,46 @@ impl IdlTreeParser for CodamaIdlLookup {
     }
 
     fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
-        let idx = self.find_matching_account_index(data)?;
         let program = &self.root_node.program;
-        let ax = &program.accounts[idx];
-        let mut issues = self.idl_issues.borrow_mut();
-        let mut ctx = CodamaParseCtx {
-            issues: &mut *issues,
-            site: ParseSite::RuntimeAccount {
-                name: ax.name.to_string(),
-            },
-            path: vec![],
-        };
-        let mut cur = Cursor::new(data);
-        let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
-        let defined_types = &program.defined_types;
 
-        let parsed_arg = ParsedArg {
-            name: String::from(ax.name.clone()),
-            value: ParsedArgValue::Struct(get_view_struct_type_node(
+        for ax in &program.accounts {
+            if !self.account_discriminators_match(ax, data) {
+                continue;
+            }
+
+            let mut issues = self.idl_issues.borrow_mut();
+            let mut ctx = CodamaParseCtx {
+                issues: &mut *issues,
+                site: ParseSite::RuntimeAccount {
+                    name: ax.name.to_string(),
+                },
+                path: vec![],
+            };
+            let mut cur = Cursor::new(data);
+            let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
+            let defined_types = &program.defined_types;
+
+            let parsed_struct = get_view_struct_type_node(
                 inner_struct,
                 &mut cur,
                 &mut ctx,
                 defined_types,
-                false,
-            )?),
-        };
+                true,
+            );
 
-        Some(ParsedAccount {
-            id: ProgramIdentifier::Default,
-            data: parsed_arg,
-        })
+            if let Some(parsed_struct) = parsed_struct {
+                let parsed_arg = ParsedArg {
+                    name: String::from(ax.name.clone()),
+                    value: ParsedArgValue::Struct(parsed_struct),
+                };
+                return Some(ParsedAccount {
+                    id: ProgramIdentifier::Default,
+                    data: parsed_arg,
+                });
+            }
+        }
+
+        None
     }
 
     fn get_error(&self, error: InstructionError) -> String {
@@ -137,6 +147,42 @@ impl IdlTreeParser for CodamaIdlLookup {
 }
 
 impl CodamaIdlLookup {
+    fn type_supports_remainder(ty: &TypeNode) -> bool {
+        match ty {
+            TypeNode::RemainderOption(_) => true,
+            TypeNode::Struct(s) => s
+                .fields
+                .last()
+                .is_some_and(|field| Self::type_supports_remainder(&field.r#type)),
+            TypeNode::Tuple(t) => t
+                .items
+                .last()
+                .is_some_and(Self::type_supports_remainder),
+            TypeNode::Array(a) => Self::type_supports_remainder(&a.item),
+            TypeNode::Set(s) => Self::type_supports_remainder(&s.item),
+            TypeNode::Map(m) => Self::type_supports_remainder(&m.value),
+            TypeNode::Option(o) => Self::type_supports_remainder(&o.item),
+            TypeNode::Sentinel(s) => Self::type_supports_remainder(&s.r#type),
+            TypeNode::ZeroableOption(z) => Self::type_supports_remainder(&z.item),
+            TypeNode::HiddenPrefix(h) => Self::type_supports_remainder(&h.r#type),
+            TypeNode::HiddenSuffix(h) => Self::type_supports_remainder(&h.r#type),
+            TypeNode::FixedSize(f) => Self::type_supports_remainder(&f.r#type),
+            TypeNode::SizePrefix(s) => Self::type_supports_remainder(&s.r#type),
+            TypeNode::PostOffset(p) => Self::type_supports_remainder(&p.r#type),
+            TypeNode::PreOffset(p) => Self::type_supports_remainder(&p.r#type),
+            TypeNode::Link(_) => false,
+            _ => false,
+        }
+    }
+
+    fn account_supports_size_extensions(&self, account: &codama_nodes::AccountNode) -> bool {
+        let inner_struct: &StructTypeNode = account.data.get_nested_type_node();
+        inner_struct
+            .fields
+            .last()
+            .is_some_and(|field| Self::type_supports_remainder(&field.r#type))
+    }
+
     pub fn from_json_str(idl_json: &str) -> Result<Self, serde_json::Error> {
         let root_node: RootNode = serde_json::from_str(idl_json)?;
         let ctx = IdlProgramContext::new(
@@ -194,6 +240,7 @@ impl CodamaIdlLookup {
         data: &[u8],
         is_last: bool,
         discriminator: &DiscriminatorNode,
+        allow_size_extensions: bool,
         ctx: &mut CodamaParseCtx<'_>,
         resolve_field: F,
     ) -> bool
@@ -226,7 +273,9 @@ impl CodamaIdlLookup {
                 ctx.path = old_path;
                 out
             }
-            DiscriminatorNode::Size(node) => data.len() == node.size,
+            DiscriminatorNode::Size(node) => {
+                data.len() == node.size || (allow_size_extensions && data.len() > node.size)
+            }
         }
     }
 
@@ -259,6 +308,7 @@ impl CodamaIdlLookup {
                     data,
                     true,
                     discriminator,
+                    false,
                     &mut ctx,
                     |field_name| {
                         let argument = ix
@@ -285,37 +335,36 @@ impl CodamaIdlLookup {
         None
     }
 
-    fn find_matching_account_index(&self, data: &[u8]) -> Option<usize> {
-        let accounts = &self.root_node.program.accounts;
-
-        if accounts.len() == 1 {
-            let ax = &accounts[0];
-            if ax.discriminators.is_empty() && ax.size == Some(data.len()) {
-                return Some(0);
-            }
+    fn account_discriminators_match(
+        &self,
+        ax: &codama_nodes::AccountNode,
+        data: &[u8],
+    ) -> bool {
+        if self.skipped_accounts.borrow().contains(ax.name.as_ref()) {
+            return false;
+        }
+        if ax.discriminators.is_empty() {
+            return false;
         }
 
-        let skipped_acc = self.skipped_accounts.borrow();
+        let mut issues = self.idl_issues.borrow_mut();
+        let mut ctx = CodamaParseCtx {
+            issues: &mut *issues,
+            site: ParseSite::DiscriminatorAccount {
+                name: ax.name.to_string(),
+            },
+            path: vec![],
+        };
+        let allow_size_extensions = self.account_supports_size_extensions(ax);
 
-        for (i, ax) in accounts.iter().enumerate() {
-            if skipped_acc.contains(ax.name.as_ref()) {
-                continue;
-            }
-            if ax.discriminators.is_empty() {
-                continue;
-            }
-
-            let mut issues = self.idl_issues.borrow_mut();
-            let mut ctx = CodamaParseCtx {
-                issues: &mut *issues,
-                site: ParseSite::DiscriminatorAccount {
-                    name: ax.name.to_string(),
-                },
-                path: vec![],
-            };
-            let mut all_discriminators_match = true;
-            for discriminator in &ax.discriminators {
-                if !self.discriminator_matches(data, true, discriminator, &mut ctx, |field_name| {
+        for discriminator in &ax.discriminators {
+            let matches = self.discriminator_matches(
+                data,
+                true,
+                discriminator,
+                allow_size_extensions,
+                &mut ctx,
+                |field_name| {
                     let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
                     let field = inner_struct
                         .fields
@@ -326,17 +375,14 @@ impl CodamaIdlLookup {
                         &field.r#type,
                         Box::new(move |parsed| eq_value_node(parsed, default_value, None)),
                     ))
-                }) {
-                    all_discriminators_match = false;
-                    break;
-                }
-            }
-            if all_discriminators_match {
-                return Some(i);
+                },
+            );
+            if !matches {
+                return false;
             }
         }
 
-        None
+        true
     }
 }
 

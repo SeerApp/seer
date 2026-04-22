@@ -437,20 +437,224 @@ fn embellish_instruction_line<C: ContextObject>(
     }
 }
 
+#[derive(Clone)]
+struct LiftRow {
+    pc: u64,
+    rust_line: String,
+    jump_target: Option<u64>,
+    is_cond_jump: bool,
+    is_uncond_jump: bool,
+    is_exit: bool,
+}
+
+fn is_unconditional_jump(opc: u8) -> bool {
+    opc == ebpf::JA
+}
+
+fn is_any_jump(opc: u8) -> bool {
+    jmp_destination_byte_offset(0, &ebpf::Insn { ptr: 0, opc, dst: 0, src: 0, off: 0, imm: 0 })
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+fn jump_cmp(op: &str) -> Option<&'static str> {
+    match op {
+        "jeq" | "jeq32" | "jeq64" => Some("=="),
+        "jne" | "jne32" | "jne64" => Some("!="),
+        "jgt" | "jgt32" | "jgt64" => Some(">"),
+        "jge" | "jge32" | "jge64" => Some(">="),
+        "jlt" | "jlt32" | "jlt64" => Some("<"),
+        "jle" | "jle32" | "jle64" => Some("<="),
+        "jset" | "jset32" | "jset64" => Some("&"),
+        "jsgt" | "jsgt32" | "jsgt64" => Some(">"),
+        "jsge" | "jsge32" | "jsge64" => Some(">="),
+        "jslt" | "jslt32" | "jslt64" => Some("<"),
+        "jsle" | "jsle32" | "jsle64" => Some("<="),
+        _ => None,
+    }
+}
+
+fn split_op_and_args(line: &str) -> (&str, &str) {
+    let trimmed = line.trim();
+    match trimmed.split_once(' ') {
+        Some((op, rest)) => (op.trim(), rest.trim()),
+        None => (trimmed, ""),
+    }
+}
+
+fn split_two_args(args: &str) -> Option<(&str, &str)> {
+    let (a, b) = args.split_once(',')?;
+    Some((a.trim(), b.trim()))
+}
+
+fn parse_mem_operand(operand: &str) -> Option<(String, String)> {
+    let inner = operand.strip_prefix('[')?.strip_suffix(']')?.trim();
+    if let Some((base, off)) = inner.split_once('+') {
+        return Some((base.trim().to_string(), off.trim().to_string()));
+    }
+    if let Some((base, off)) = inner.rsplit_once('-') {
+        return Some((base.trim().to_string(), format!("-{}", off.trim())));
+    }
+    Some((inner.to_string(), "0".to_string()))
+}
+
+fn width_suffix_to_c_type(sfx: &str) -> Option<&'static str> {
+    match sfx {
+        "b" => Some("u8"),
+        "h" => Some("u16"),
+        "w" => Some("u32"),
+        "dw" => Some("u64"),
+        _ => None,
+    }
+}
+
+fn lift_rust_like_line(line: &str) -> String {
+    let (op, args) = split_op_and_args(line);
+    if op.is_empty() {
+        return "// <empty>".to_string();
+    }
+
+    if op == "exit" {
+        return "return;".to_string();
+    }
+    if op == "callx" {
+        return format!("call_indirect({args});");
+    }
+    if op == "call" {
+        return format!("call(/* {args} */);");
+    }
+    if op == "syscall" {
+        return format!("syscall(/* {args} */);");
+    }
+    if op == "ja" {
+        return format!("goto {args};");
+    }
+
+    if let Some(sfx) = op.strip_prefix("ldx") {
+        if let Some((dst, src_mem)) = split_two_args(args) {
+            if let Some((base, off)) = parse_mem_operand(src_mem) {
+                if let Some(c_ty) = width_suffix_to_c_type(sfx) {
+                    return format!("{dst} = *({c_ty}*)({base} + {off}) as u64;");
+                }
+            }
+        }
+    }
+    if let Some(sfx) = op.strip_prefix("stx") {
+        if let Some((dst_mem, src)) = split_two_args(args) {
+            if let Some((base, off)) = parse_mem_operand(dst_mem) {
+                if let Some(c_ty) = width_suffix_to_c_type(sfx) {
+                    return format!("*({c_ty}*)({base} + {off}) = {src} as {c_ty};");
+                }
+            }
+        }
+    }
+    if let Some(sfx) = op.strip_prefix("st") {
+        if let Some((dst_mem, imm)) = split_two_args(args) {
+            if let Some((base, off)) = parse_mem_operand(dst_mem) {
+                if let Some(c_ty) = width_suffix_to_c_type(sfx) {
+                    return format!("*({c_ty}*)({base} + {off}) = {imm} as {c_ty};");
+                }
+            }
+        }
+    }
+
+    if op.starts_with('j') && op != "ja" {
+        let parts: Vec<&str> = args.split(',').map(|s| s.trim()).collect();
+        if parts.len() >= 3 {
+            let lhs = parts[0];
+            let rhs = parts[1];
+            let target = parts[2];
+            if let Some(cmp) = jump_cmp(op) {
+                if cmp == "&" {
+                    return format!("if (({lhs} & {rhs}) != 0) {{ goto {target}; }}");
+                }
+                return format!("if ({lhs} {cmp} {rhs}) {{ goto {target}; }}");
+            }
+        }
+    }
+
+    if let Some((dst, rhs)) = split_two_args(args) {
+        // Covers mov/add/sub/mul/div/mod/or/and/xor/lsh/rsh/arsh/neg with width suffixes.
+        if op.starts_with("mov") {
+            return format!("{dst} = {rhs};");
+        }
+        if op.starts_with("add") {
+            return format!("{dst} = {dst}.wrapping_add({rhs});");
+        }
+        if op.starts_with("sub") {
+            return format!("{dst} = {dst}.wrapping_sub({rhs});");
+        }
+        if op.starts_with("mul") {
+            return format!("{dst} = {dst}.wrapping_mul({rhs});");
+        }
+        if op.starts_with("div") {
+            return format!("{dst} = {dst} / {rhs};");
+        }
+        if op.starts_with("mod") {
+            return format!("{dst} = {dst} % {rhs};");
+        }
+        if op.starts_with("and") {
+            return format!("{dst} &= {rhs};");
+        }
+        if op.starts_with("or") {
+            return format!("{dst} |= {rhs};");
+        }
+        if op.starts_with("xor") {
+            return format!("{dst} ^= {rhs};");
+        }
+        if op.starts_with("lsh") {
+            return format!("{dst} <<= {rhs};");
+        }
+        if op.starts_with("rsh") {
+            return format!("{dst} >>= {rhs};");
+        }
+        if op.starts_with("arsh") {
+            return format!("{dst} = (({dst} as i64) >> {rhs}) as u64;");
+        }
+    }
+
+    format!("/* {line} */")
+}
+
+fn build_block_starts(rows: &[LiftRow]) -> Vec<u64> {
+    let mut leaders = std::collections::BTreeSet::new();
+    if let Some(first) = rows.first() {
+        leaders.insert(first.pc);
+    }
+    for (i, row) in rows.iter().enumerate() {
+        if let Some(t) = row.jump_target {
+            leaders.insert(t);
+        }
+        if (row.is_cond_jump || row.is_uncond_jump || row.is_exit) && i + 1 < rows.len() {
+            leaders.insert(rows[i + 1].pc);
+        }
+    }
+    leaders.into_iter().collect()
+}
+
 const CHUNK_INSTRUCTIONS: usize = 1000;
 
-fn main() {
-    if let Err(e) = run() {
+pub fn main() {
+    if let Err(e) = run_cli() {
         eprintln!("{e:#}");
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
+pub fn run_cli() -> Result<()> {
     let path = std::env::args_os()
         .nth(1)
         .context("usage: disasm <path-to-program.so>")?;
     let path = Path::new(&path);
+    let out_dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    disassemble_to_json_chunks(path, out_dir)
+}
+
+pub fn disassemble_to_json_chunks(path: &Path, out_dir: &Path) -> Result<()> {
     let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
     let text_vma = text_section_vma_from_elf(&bytes)?;
     let text_syms = TextFnSymbols::build(&bytes)?;
@@ -469,10 +673,6 @@ fn run() -> Result<()> {
     let analysis = Analysis::from_executable(&executable)
         .map_err(|e| anyhow::anyhow!("analysis failed: {e:?}"))?;
 
-    let out_dir = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -483,11 +683,23 @@ fn run() -> Result<()> {
         let end_byte = instruction_objdump_byte_offset(text_vma, chunk.last().unwrap())?;
 
         let mut map = Map::new();
+        let mut lift_rows: Vec<LiftRow> = Vec::with_capacity(chunk.len());
         for insn in chunk {
             let byte_offset = instruction_objdump_byte_offset(text_vma, insn)?;
             let line = analysis.disassemble_instruction(insn, insn.ptr);
             let line = embellish_instruction_line(&executable, insn, text_vma, &text_syms, &line)?;
+            let rust_line = lift_rust_like_line(&line);
             map.insert(byte_offset.to_string(), Value::String(line));
+            let jump_target = jmp_destination_byte_offset(text_vma, insn)?;
+            let is_jump = is_any_jump(insn.opc);
+            lift_rows.push(LiftRow {
+                pc: byte_offset,
+                rust_line,
+                jump_target,
+                is_cond_jump: is_jump && !is_unconditional_jump(insn.opc),
+                is_uncond_jump: is_unconditional_jump(insn.opc),
+                is_exit: insn.opc == ebpf::EXIT,
+            });
         }
 
         let out_name = format!("{stem}_{start_byte}_{end_byte}.json");
@@ -498,6 +710,57 @@ fn run() -> Result<()> {
         serde_json::to_writer(&mut w, &Value::Object(map))
             .with_context(|| format!("write {}", out_path.display()))?;
         w.flush().with_context(|| format!("flush {}", out_path.display()))?;
+
+        let mut blocks_json = Map::<String, Value>::new();
+        let leaders = build_block_starts(&lift_rows);
+        for (i, start) in leaders.iter().enumerate() {
+            let end_exclusive = leaders.get(i + 1).copied().unwrap_or(u64::MAX);
+            let block_rows: Vec<&LiftRow> = lift_rows
+                .iter()
+                .filter(|r| r.pc >= *start && r.pc < end_exclusive)
+                .collect();
+            if block_rows.is_empty() {
+                continue;
+            }
+            let mut succ: Vec<String> = Vec::new();
+            if let Some(last) = block_rows.last() {
+                if let Some(t) = last.jump_target {
+                    succ.push(format!("bb_0x{t:x}"));
+                }
+                if (last.is_cond_jump || (!last.is_uncond_jump && !last.is_exit))
+                    && lift_rows.iter().any(|r| r.pc > last.pc)
+                {
+                    let f = lift_rows
+                        .iter()
+                        .find(|r| r.pc > last.pc)
+                        .map(|r| r.pc)
+                        .unwrap_or(last.pc);
+                    succ.push(format!("bb_0x{f:x}"));
+                }
+            }
+            blocks_json.insert(start.to_string(), serde_json::json!({
+                "label": format!("bb_0x{start:x}"),
+                "start": start,
+                "end": block_rows.last().map(|r| r.pc).unwrap_or(*start),
+                "succ": succ,
+                "lines": block_rows.iter().map(|r| r.rust_line.clone()).collect::<Vec<_>>(),
+                "line_pcs": block_rows.iter().map(|r| r.pc).collect::<Vec<_>>(),
+            }));
+        }
+        let struct_out_name = format!("{stem}_rust_struct_{start_byte}_{end_byte}.json");
+        let struct_out_path = out_dir.join(struct_out_name);
+        let struct_file = File::create(&struct_out_path)
+            .with_context(|| format!("create {}", struct_out_path.display()))?;
+        let mut sw = BufWriter::new(struct_file);
+        serde_json::to_writer(
+            &mut sw,
+            &serde_json::json!({
+                "blocks": Value::Object(blocks_json),
+            }),
+        )
+        .with_context(|| format!("write {}", struct_out_path.display()))?;
+        sw.flush()
+            .with_context(|| format!("flush {}", struct_out_path.display()))?;
     }
 
     Ok(())
