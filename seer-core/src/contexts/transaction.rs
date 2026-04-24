@@ -93,8 +93,9 @@ impl TransactionContext {
         program_address: Pubkey,
         err: Option<InstructionError>,
     ) {
-        let idl = program_manager
-            .get_idl_lookup(&program_address)
+        let idl_lookup = program_manager.get_idl_lookup(&program_address);
+        let idl = idl_lookup
+            .as_deref()
             .map(|l| l as &dyn crate::idl::IdlTreeParser);
         self.meta.set_output(err.clone(), idl);
         let order = self.step_order;

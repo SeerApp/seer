@@ -90,15 +90,20 @@ impl IdlTreeParser for CodamaIdlLookup {
 
     fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
         let program = &self.root_node.program;
+        let data_len = data.len();
+        let program_ctx = self.idl_issues.borrow().context.clone();
+        let mut best_match: Option<(bool, usize, ParsedAccount, Vec<IdlIssue>)> = None;
 
         for ax in &program.accounts {
             if !self.account_discriminators_match(ax, data) {
                 continue;
             }
 
-            let mut issues = self.idl_issues.borrow_mut();
+            // Speculative decode: many account types can match by size; only the selected
+            // struct parse should report issues to the user (see merge after the loop).
+            let mut silent = IdlIssues::new_suppressed(program_ctx.clone());
             let mut ctx = CodamaParseCtx {
-                issues: &mut *issues,
+                issues: &mut silent,
                 site: ParseSite::RuntimeAccount {
                     name: ax.name.to_string(),
                 },
@@ -117,18 +122,53 @@ impl IdlTreeParser for CodamaIdlLookup {
             );
 
             if let Some(parsed_struct) = parsed_struct {
+                let issues_for_candidate = silent.sorted_issues();
                 let parsed_arg = ParsedArg {
                     name: String::from(ax.name.clone()),
                     value: ParsedArgValue::Struct(parsed_struct),
                 };
-                return Some(ParsedAccount {
+                let parsed = ParsedAccount {
                     id: ProgramIdentifier::Default,
                     data: parsed_arg,
-                });
+                };
+                let size_hint = self.account_size_discriminator_hint(ax);
+                let exact_size_match = size_hint == data_len;
+                match &mut best_match {
+                    Some((best_exact, best_size, best_parsed, best_issues)) => {
+                        let should_replace = (exact_size_match && !*best_exact)
+                            || (exact_size_match == *best_exact && size_hint > *best_size);
+                        if should_replace {
+                            *best_exact = exact_size_match;
+                            *best_size = size_hint;
+                            *best_parsed = parsed;
+                            *best_issues = issues_for_candidate;
+                        }
+                    }
+                    None => {
+                        best_match = Some((
+                            exact_size_match,
+                            size_hint,
+                            parsed,
+                            issues_for_candidate,
+                        ));
+                    }
+                }
             }
         }
 
-        None
+        match best_match {
+            Some((_, _, parsed, win_issues)) => {
+                let mut issues = self.idl_issues.borrow_mut();
+                for issue in win_issues {
+                    issues.note(issue);
+                }
+                Some(parsed)
+            }
+            None => {
+                self.idl_issues.borrow_mut().note(IdlIssue::NoAccountTypeMatched { byte_len: data_len });
+                None
+            }
+        }
     }
 
     fn get_error(&self, error: InstructionError) -> String {
@@ -181,6 +221,20 @@ impl CodamaIdlLookup {
             .fields
             .last()
             .is_some_and(|field| Self::type_supports_remainder(&field.r#type))
+    }
+
+    /// Best-effort size hint from codama account discriminators.
+    /// When multiple accounts match by size extension, prefer exact size, then largest base size.
+    fn account_size_discriminator_hint(&self, account: &codama_nodes::AccountNode) -> usize {
+        account
+            .discriminators
+            .iter()
+            .filter_map(|d| match d {
+                DiscriminatorNode::Size(node) => Some(node.size),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn from_json_str(idl_json: &str) -> Result<Self, serde_json::Error> {

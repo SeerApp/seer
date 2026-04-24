@@ -18,12 +18,10 @@ pub fn save_meta(signature: &String, meta: &TxMetadata) {
     let filename = format!("{}_meta.json", signature);
 
     let output_path = get_output_path(&filename);
-    if !output_path.exists() {
-        seer_debug!("Creating meta file: {}", output_path.to_string_lossy());
-        let json = serde_json::to_string_pretty(&meta).unwrap();
-        let mut file = File::create(output_path).expect("Failed to write file");
-        file.write_all(json.as_bytes()).ok().unwrap();
-    }
+    seer_debug!("Creating meta file: {}", output_path.to_string_lossy());
+    let json = serde_json::to_string_pretty(&meta).unwrap();
+    let mut file = File::create(output_path).expect("Failed to write file");
+    file.write_all(json.as_bytes()).ok().unwrap();
 }
 
 pub fn save_trace_tree(
@@ -34,12 +32,10 @@ pub fn save_trace_tree(
     let filename = format!("{}_{}.json", signature, instruction);
 
     let output_path = get_output_path(&filename);
-    if !output_path.exists() {
-        seer_debug!("Creating new file: {}", output_path.to_string_lossy());
-        let json = serde_json::to_string_pretty(&trace_tree).unwrap();
-        let mut file = File::create(output_path).expect("Failed to write file");
-        file.write_all(json.as_bytes()).ok().unwrap();
-    }
+    seer_debug!("Creating new file: {}", output_path.to_string_lossy());
+    let json = serde_json::to_string_pretty(&trace_tree).unwrap();
+    let mut file = File::create(output_path).expect("Failed to write file");
+    file.write_all(json.as_bytes()).ok().unwrap();
 }
 
 pub fn save_register_trace_chunk(
@@ -191,7 +187,7 @@ mod tests {
                 reg,
                 call_depth: None,
             },
-            trace: vec![],
+            trace: BTreeMap::new(),
         };
 
         save_register_trace_chunk_to_dir(&folder, "sig", 3, 7, 10, 42, &chunk);

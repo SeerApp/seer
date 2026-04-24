@@ -66,6 +66,7 @@ fn token_2022_account_parse_supports_extended_account_size() {
     // Token-2022 accounts can include extension bytes beyond the base 165-byte
     // token-account layout. The parser should still match the account kind.
     let parsed_full = token_2022_idl.get_account(&account_data);
+    println!("{:?}", parsed_full);
     assert!(
         parsed_full.is_some(),
         "Expected parse to succeed for 170-byte Token-2022 account payload"
@@ -73,8 +74,34 @@ fn token_2022_account_parse_supports_extended_account_size() {
 
     // Control: legacy base-size token account should continue parsing too.
     let parsed_base = token_2022_idl.get_account(&account_data[..165]);
+    println!("{:?}", parsed_base);
     assert!(
         parsed_base.is_some(),
         "Expected 165-byte base payload to match token account discriminator"
+    );
+}
+
+#[test]
+fn token_program_rejects_zeroed_170_bytes_payload() {
+    ensure_seer_logger();
+    let known_programs = get_known_programs();
+    let token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        .expect("valid pubkey");
+    let token_idl = known_programs
+        .into_iter()
+        .find(|(id, _)| *id == token_program_id)
+        .map(|(_, idl)| idl)
+        .expect("Token program IDL should exist in known programs");
+
+    // 170-byte account buffer with a trailing little-endian u32 marker (= 7).
+    let mut account_data = vec![0u8; 170];
+    account_data[166..170].copy_from_slice(&7u32.to_le_bytes());
+    assert_eq!(account_data.len(), 170);
+
+    let parsed = token_idl.get_account(&account_data);
+    println!();
+    assert!(
+        parsed.is_none(),
+        "legacy token program IDL should reject 170-byte payloads (base token size is 165)",
     );
 }

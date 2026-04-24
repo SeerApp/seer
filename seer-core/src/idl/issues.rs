@@ -200,12 +200,18 @@ pub enum IdlIssue {
         expected: String,
         got: String,
     },
+
+    #[error("Account data did not match any account definition ({byte_len} byte(s))")]
+    NoAccountTypeMatched { byte_len: usize },
 }
 
 #[derive(Debug)]
 pub struct IdlIssues {
     pub context: IdlProgramContext,
     seen: HashSet<IdlIssue>,
+    /// When set, issues are still recorded (and deduplicated) but not logged; used for
+    /// speculative account parses that may be discarded in favor of another candidate.
+    suppress_logging: bool,
 }
 
 impl IdlIssues {
@@ -213,6 +219,16 @@ impl IdlIssues {
         Self {
             context,
             seen: HashSet::new(),
+            suppress_logging: false,
+        }
+    }
+
+    /// Same as [`Self::new`], but [`Self::note`] does not emit `seer_warn!`.
+    pub fn new_suppressed(context: IdlProgramContext) -> Self {
+        Self {
+            context,
+            seen: HashSet::new(),
+            suppress_logging: true,
         }
     }
 
@@ -226,7 +242,7 @@ impl IdlIssues {
     }
 
     pub fn note(&mut self, issue: IdlIssue) {
-        if self.seen.insert(issue.clone()) {
+        if self.seen.insert(issue.clone()) && !self.suppress_logging {
             crate::seer_warn!(
                 "IDL {} ({}): {}",
                 self.context.program_name,
@@ -244,7 +260,7 @@ impl IdlIssues {
         let issue = IdlIssue::InstructionInvalidDiscriminatorLayout {
             instruction,
         };
-        if self.seen.insert(issue.clone()) {
+        if self.seen.insert(issue.clone()) && !self.suppress_logging {
             crate::seer_warn!(
                 "IDL {} ({}): {} (found {count} discriminator entries)",
                 self.context.program_name,

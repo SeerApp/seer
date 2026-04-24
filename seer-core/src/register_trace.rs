@@ -30,7 +30,8 @@ pub struct RegisterTraceEntry {
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct RegisterTraceChunk {
     pub snapshot: RegisterSnapshot,
-    pub trace: Vec<RegisterTraceEntry>,
+    /// Sparse map keyed by global VM step (`order`) for deterministic disasm correlation.
+    pub trace: BTreeMap<u64, RegisterTraceEntry>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +52,7 @@ struct ActiveRegisterTraceChunk {
     frame_stack: Vec<u64>,
     current_call_depth: u32,
     saw_call_depth_change: bool,
-    trace: Vec<RegisterTraceEntry>,
+    trace: BTreeMap<u64, RegisterTraceEntry>,
 }
 
 impl ActiveRegisterTraceChunk {
@@ -79,7 +80,7 @@ impl ActiveRegisterTraceChunk {
             frame_stack,
             current_call_depth,
             saw_call_depth_change: false,
-            trace: Vec::with_capacity(REGISTER_TRACE_CHUNK_SIZE),
+            trace: BTreeMap::new(),
         }
     }
 
@@ -93,11 +94,14 @@ impl ActiveRegisterTraceChunk {
         } else {
             None
         };
-        self.trace.push(RegisterTraceEntry {
-            pc,
-            reg: changed_registers(&self.previous, reg),
-            call_depth: call_depth_delta,
-        });
+        self.trace.insert(
+            order,
+            RegisterTraceEntry {
+                pc,
+                reg: changed_registers(&self.previous, reg),
+                call_depth: call_depth_delta,
+            },
+        );
         self.previous = *reg;
     }
 
@@ -158,7 +162,7 @@ impl RegisterTraceCollector {
             self.last_hook_pc = None;
             return;
         };
-        if active.trace.last().is_some_and(|e| e.pc == pc) {
+        if active.trace.last_key_value().is_some_and(|(_, e)| e.pc == pc) {
             self.last_hook_pc = None;
             return;
         }
@@ -349,8 +353,9 @@ mod tests {
         assert_eq!(chunk.chunk.snapshot.reg[&10], "20");
         assert!(!chunk.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(chunk.chunk.trace.len(), 1);
-        assert_eq!(chunk.chunk.trace[0].pc, 36);
-        assert!(chunk.chunk.trace[0].reg.is_none());
+        let row = chunk.chunk.trace.get(&1).expect("row at step 1");
+        assert_eq!(row.pc, 36);
+        assert!(row.reg.is_none());
     }
 
     #[test]
@@ -367,14 +372,19 @@ mod tests {
 
         let chunk = collector.finalize().expect("final chunk");
         assert_eq!(chunk.chunk.trace.len(), 2);
-        let delta = chunk.chunk.trace[0].reg.as_ref().expect("delta");
+        let delta = chunk
+            .chunk
+            .trace
+            .get(&6)
+            .and_then(|row| row.reg.as_ref())
+            .expect("delta at step 6");
         assert_eq!(delta.get(&3).map(String::as_str), Some("999"));
         assert_eq!(delta.get(&8).map(String::as_str), Some("1234"));
         assert_eq!(delta.len(), 2);
         assert!(!delta.contains_key(&11));
-        assert_eq!(chunk.chunk.trace[0].pc, 40);
-        assert_eq!(chunk.chunk.trace[1].pc, 44);
-        assert!(chunk.chunk.trace[1].reg.is_none());
+        assert_eq!(chunk.chunk.trace.get(&6).map(|r| r.pc), Some(40));
+        assert_eq!(chunk.chunk.trace.get(&7).map(|r| r.pc), Some(44));
+        assert!(chunk.chunk.trace.get(&7).is_some_and(|r| r.reg.is_none()));
         assert_eq!(chunk.max_order, 7);
     }
 
@@ -410,10 +420,26 @@ mod tests {
         assert_eq!(tail.chunk.snapshot.reg[&2], reg[2].to_string());
         assert!(!tail.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(tail.chunk.trace.len(), 2);
-        let d0 = tail.chunk.trace[0].reg.as_ref().expect("rollover carries prior regs");
+        let d0 = tail
+            .chunk
+            .trace
+            .get(&(REGISTER_TRACE_CHUNK_SIZE as u64))
+            .and_then(|row| row.reg.as_ref())
+            .expect("rollover carries prior regs");
         assert_eq!(d0.get(&2), Some(&reg[2].to_string()));
-        assert_eq!(tail.chunk.trace[1].pc, 9000);
-        assert!(tail.chunk.trace[1].reg.is_none());
+        assert_eq!(
+            tail.chunk
+                .trace
+                .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
+                .map(|r| r.pc),
+            Some(9000)
+        );
+        assert!(
+            tail.chunk
+                .trace
+                .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
+                .is_some_and(|r| r.reg.is_none())
+        );
     }
 
     #[test]
@@ -457,8 +483,13 @@ mod tests {
         let tail = collector.finalize().expect("chunk");
         assert_eq!(tail.tree_uid, 5);
         assert_eq!(tail.chunk.trace.len(), 1);
-        assert_eq!(tail.chunk.trace[0].pc, 99);
-        let delta = tail.chunk.trace[0].reg.as_ref().expect("delta");
+        assert_eq!(tail.chunk.trace.get(&11).map(|r| r.pc), Some(99));
+        let delta = tail
+            .chunk
+            .trace
+            .get(&11)
+            .and_then(|row| row.reg.as_ref())
+            .expect("delta");
         assert_eq!(delta.get(&2).map(String::as_str), Some("42"));
         assert_eq!(tail.max_order, 11);
     }
@@ -480,9 +511,9 @@ mod tests {
 
         let chunk = collector.finalize().expect("final chunk");
         assert_eq!(chunk.chunk.snapshot.call_depth, Some(0));
-        assert_eq!(chunk.chunk.trace[0].call_depth, Some(1));
-        assert_eq!(chunk.chunk.trace[1].call_depth, Some(0));
-        assert!(chunk.chunk.trace[2].call_depth.is_none());
+        assert_eq!(chunk.chunk.trace.get(&1).and_then(|r| r.call_depth), Some(1));
+        assert_eq!(chunk.chunk.trace.get(&2).and_then(|r| r.call_depth), Some(0));
+        assert!(chunk.chunk.trace.get(&3).is_some_and(|r| r.call_depth.is_none()));
 
         let mut collector_no_depth = RegisterTraceCollector::new();
         let reg_static = regs(50);
@@ -490,6 +521,10 @@ mod tests {
         collector_no_depth.record(1, 21, &reg_static, UID);
         let chunk_no_depth = collector_no_depth.finalize().expect("final chunk");
         assert_eq!(chunk_no_depth.chunk.snapshot.call_depth, None);
-        assert!(chunk_no_depth.chunk.trace.iter().all(|row| row.call_depth.is_none()));
+        assert!(chunk_no_depth
+            .chunk
+            .trace
+            .values()
+            .all(|row| row.call_depth.is_none()));
     }
 }
