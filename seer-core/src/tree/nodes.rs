@@ -234,8 +234,12 @@ impl PartialEq for TreeAccount {
 }
 
 /// Classified read of serialized account state in the SBPF VM (interpreter).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+///
+/// JSON is **internally tagged** on `kind` (camelCase), for example:
+/// `{ "kind": "lamports", "lamports": 4000845221 }`, `{ "kind": "key", "bytes": [...] }`.
+/// Deserialization still accepts legacy externally tagged shapes (e.g. `{ "lamports": { "lamports": … } }`).
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TreeAccountLoadKind {
     Key {
         bytes: Vec<u8>,
@@ -264,6 +268,250 @@ pub enum TreeAccountLoadKind {
     },
 }
 
+impl<'de> Deserialize<'de> for TreeAccountLoadKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(TreeAccountLoadKindVisitor)
+    }
+}
+
+struct TreeAccountLoadKindVisitor;
+
+impl<'de> Visitor<'de> for TreeAccountLoadKindVisitor {
+    type Value = TreeAccountLoadKind;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("raw account read_kind")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut collected: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+        while let Some(key) = map.next_key::<String>()? {
+            let value: serde_json::Value = map.next_value()?;
+            collected.insert(key, value);
+        }
+        tree_account_load_kind_from_map(collected)
+    }
+}
+
+fn json_byte_array<E: de::Error>(v: &serde_json::Value) -> Result<Vec<u8>, E> {
+    let arr = v
+        .as_array()
+        .ok_or_else(|| E::custom("read_kind: expected byte array"))?;
+    let mut out = Vec::with_capacity(arr.len());
+    for n in arr {
+        let x = n
+            .as_u64()
+            .ok_or_else(|| E::custom("read_kind: non-integer byte"))?;
+        let b = u8::try_from(x).map_err(|_| E::custom("read_kind: byte out of range"))?;
+        out.push(b);
+    }
+    Ok(out)
+}
+
+fn json_usize<E: de::Error>(v: &serde_json::Value, ctx: &str) -> Result<usize, E> {
+    let n = v
+        .as_u64()
+        .ok_or_else(|| E::custom(format!("{ctx}: expected non-negative integer")))?;
+    usize::try_from(n).map_err(|_| E::custom(format!("{ctx}: value too large")))
+}
+
+fn tree_account_load_kind_from_map<E: de::Error>(
+    map: BTreeMap<String, serde_json::Value>,
+) -> Result<TreeAccountLoadKind, E> {
+    if let Some(kind_val) = map.get("kind") {
+        let kind = kind_val
+            .as_str()
+            .ok_or_else(|| E::custom("read_kind: \"kind\" must be a string"))?;
+        return match kind {
+            "key" => {
+                let bytes = map
+                    .get("bytes")
+                    .map(json_byte_array)
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(TreeAccountLoadKind::Key { bytes })
+            }
+            "owner" => {
+                let bytes = map
+                    .get("bytes")
+                    .map(json_byte_array)
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(TreeAccountLoadKind::Owner { bytes })
+            }
+            "lamports" => {
+                let lamports = map
+                    .get("lamports")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| E::custom("read_kind lamports: missing \"lamports\""))?;
+                Ok(TreeAccountLoadKind::Lamports { lamports })
+            }
+            "dataLen" => {
+                let len = map
+                    .get("len")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| E::custom("read_kind dataLen: missing \"len\""))?;
+                Ok(TreeAccountLoadKind::DataLen { len })
+            }
+            "rentEpoch" => {
+                let rent_epoch = map
+                    .get("rentEpoch")
+                    .or_else(|| map.get("rent_epoch"))
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| E::custom("read_kind rentEpoch: missing \"rentEpoch\""))?;
+                Ok(TreeAccountLoadKind::RentEpoch { rent_epoch })
+            }
+            "executable" => {
+                let byte = map
+                    .get("byte")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| u8::try_from(n).ok())
+                    .ok_or_else(|| E::custom("read_kind executable: missing \"byte\""))?;
+                Ok(TreeAccountLoadKind::Executable { byte })
+            }
+            "data" => {
+                let offset = map
+                    .get("offset")
+                    .map(|v| json_usize(v, "read_kind data.offset"))
+                    .transpose()?
+                    .ok_or_else(|| E::custom("read_kind data: missing \"offset\""))?;
+                let bytes_width = map
+                    .get("bytesWidth")
+                    .or_else(|| map.get("bytes_width"))
+                    .map(|v| json_usize(v, "read_kind data.bytesWidth"))
+                    .transpose()?
+                    .unwrap_or(0);
+                let bytes = map
+                    .get("bytes")
+                    .map(json_byte_array)
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(TreeAccountLoadKind::Data {
+                    offset,
+                    bytes_width,
+                    bytes,
+                })
+            }
+            other => Err(E::unknown_variant(
+                other,
+                &[
+                    "key",
+                    "owner",
+                    "lamports",
+                    "dataLen",
+                    "rentEpoch",
+                    "executable",
+                    "data",
+                ],
+            )),
+        };
+    }
+
+    // Legacy externally tagged JSON, e.g. `{ "lamports": { "lamports": … } }`.
+    if let Some(v) = map.get("key") {
+        let inner = v
+            .as_object()
+            .ok_or_else(|| E::custom("read_kind key: expected object"))?;
+        let bytes = inner
+            .get("bytes")
+            .map(json_byte_array)
+            .transpose()?
+            .unwrap_or_default();
+        return Ok(TreeAccountLoadKind::Key { bytes });
+    }
+    if let Some(v) = map.get("owner") {
+        let inner = v
+            .as_object()
+            .ok_or_else(|| E::custom("read_kind owner: expected object"))?;
+        let bytes = inner
+            .get("bytes")
+            .map(json_byte_array)
+            .transpose()?
+            .unwrap_or_default();
+        return Ok(TreeAccountLoadKind::Owner { bytes });
+    }
+    if let Some(v) = map.get("lamports") {
+        let lamports = if let Some(obj) = v.as_object() {
+            obj.get("lamports")
+                .and_then(|x| x.as_u64())
+                .ok_or_else(|| E::custom("read_kind lamports: missing inner lamports"))?
+        } else {
+            v.as_u64()
+                .ok_or_else(|| E::custom("read_kind lamports: expected number or object"))?
+        };
+        return Ok(TreeAccountLoadKind::Lamports { lamports });
+    }
+    if let Some(v) = map.get("dataLen").or_else(|| map.get("data_len")) {
+        let inner = v
+            .as_object()
+            .ok_or_else(|| E::custom("read_kind dataLen: expected object"))?;
+        let len = inner
+            .get("len")
+            .and_then(|x| x.as_u64())
+            .ok_or_else(|| E::custom("read_kind dataLen: missing len"))?;
+        return Ok(TreeAccountLoadKind::DataLen { len });
+    }
+    if let Some(v) = map.get("rentEpoch").or_else(|| map.get("rent_epoch")) {
+        let rent_epoch = if let Some(obj) = v.as_object() {
+            obj.get("rentEpoch")
+                .or_else(|| obj.get("rent_epoch"))
+                .and_then(|x| x.as_u64())
+                .ok_or_else(|| E::custom("read_kind rentEpoch: missing inner field"))?
+        } else {
+            v.as_u64()
+                .ok_or_else(|| E::custom("read_kind rentEpoch: expected number or object"))?
+        };
+        return Ok(TreeAccountLoadKind::RentEpoch { rent_epoch });
+    }
+    if let Some(v) = map.get("executable") {
+        let inner = v
+            .as_object()
+            .ok_or_else(|| E::custom("read_kind executable: expected object"))?;
+        let byte = inner
+            .get("byte")
+            .and_then(|x| x.as_u64())
+            .and_then(|n| u8::try_from(n).ok())
+            .ok_or_else(|| E::custom("read_kind executable: missing byte"))?;
+        return Ok(TreeAccountLoadKind::Executable { byte });
+    }
+    if let Some(v) = map.get("data") {
+        let inner = v
+            .as_object()
+            .ok_or_else(|| E::custom("read_kind data: expected object"))?;
+        let offset = inner
+            .get("offset")
+            .map(|x| json_usize(x, "read_kind data.offset"))
+            .transpose()?
+            .ok_or_else(|| E::custom("read_kind data: missing offset"))?;
+        let bytes_width = inner
+            .get("bytesWidth")
+            .or_else(|| inner.get("bytes_width"))
+            .map(|x| json_usize(x, "read_kind data.bytesWidth"))
+            .transpose()?
+            .unwrap_or(0);
+        let bytes = inner
+            .get("bytes")
+            .map(json_byte_array)
+            .transpose()?
+            .unwrap_or_default();
+        return Ok(TreeAccountLoadKind::Data {
+            offset,
+            bytes_width,
+            bytes,
+        });
+    }
+
+    Err(E::custom(
+        "read_kind: expected {\"kind\": ...} or legacy key/owner/lamports/... tagged object",
+    ))
+}
+
 /// One guest load attributed to an account pubkey and classified field/data offset.
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -289,7 +537,9 @@ impl PartialEq for TreeAccountLoad {
 ///
 /// JSON is **internally tagged** on `kind` (camelCase), for example:
 /// `{ "kind": "readOwner", "owner": "…", "stepOrder": 1, "stepOrderEnd": 2 }`,
-/// `{ "kind": "readData", "bytes": [...], "reads": [ ... ] }`, `{ "kind": "readKey", ... }`.
+/// `{ "kind": "readData", "bytes": [...], "reads": [ ... ] }`, `{ "kind": "readKey", ... }`,
+/// `{ "kind": "readLamports", "lamports": …, "stepOrder": … }`,
+/// `{ "kind": "readDataLen", "len": …, "stepOrder": … }` (no `stepOrderEnd`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AggregatedReadSpan {
@@ -318,6 +568,15 @@ pub enum AggregatedAccountLoadKind {
         owner: Pubkey,
         step_order: u64,
         step_order_end: u64,
+    },
+    ReadLamports {
+        lamports: u64,
+        step_order: u64,
+        step_order_end: u64,
+    },
+    ReadDataLen {
+        len: u64,
+        step_order: u64,
     },
     ReadData {
         /// Full serialized account `data` for `key` (latest `TreeAccount.after` in this subtree when present).
@@ -412,9 +671,35 @@ fn aggregated_account_load_kind_from_map<E: de::Error>(
                     reads,
                 })
             }
+            "readLamports" => {
+                let lamports = map
+                    .get("lamports")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| E::custom("aggregated read_kind readLamports: missing \"lamports\""))?;
+                let (step_order, step_order_end) = decode_step_range_from_map(&map);
+                Ok(AggregatedAccountLoadKind::ReadLamports {
+                    lamports,
+                    step_order,
+                    step_order_end,
+                })
+            }
+            "readDataLen" => {
+                let len = map
+                    .get("len")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| E::custom("aggregated read_kind readDataLen: missing \"len\""))?;
+                let step_order = decode_step_order_only_from_map(&map);
+                Ok(AggregatedAccountLoadKind::ReadDataLen { len, step_order })
+            }
             other => Err(E::unknown_variant(
                 other,
-                &["readKey", "readOwner", "readData"],
+                &[
+                    "readKey",
+                    "readOwner",
+                    "readData",
+                    "readLamports",
+                    "readDataLen",
+                ],
             )),
         };
     }
@@ -477,6 +762,13 @@ fn decode_step_range_from_map(map: &BTreeMap<String, serde_json::Value>) -> (u64
     } else {
         (end, start)
     }
+}
+
+fn decode_step_order_only_from_map(map: &BTreeMap<String, serde_json::Value>) -> u64 {
+    map.get("stepOrder")
+        .or_else(|| map.get("step_order"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
 }
 
 fn decode_read_data_fields_from_map<E: de::Error>(
@@ -619,6 +911,31 @@ impl From<TreeAccountLoadAggregatedWire> for TreeAccountLoadAggregated {
                     owner,
                     step_order: start,
                     step_order_end: end,
+                }
+            }
+            AggregatedAccountLoadKind::ReadLamports {
+                lamports,
+                step_order,
+                step_order_end,
+            } => {
+                let (start, end) = normalize_step_range(
+                    w.step_order.unwrap_or(step_order),
+                    if w.step_order.is_some() {
+                        w.step_order_end
+                    } else {
+                        step_order_end
+                    },
+                );
+                AggregatedAccountLoadKind::ReadLamports {
+                    lamports,
+                    step_order: start,
+                    step_order_end: end,
+                }
+            }
+            AggregatedAccountLoadKind::ReadDataLen { len, step_order } => {
+                AggregatedAccountLoadKind::ReadDataLen {
+                    len,
+                    step_order: w.step_order.unwrap_or(step_order),
                 }
             }
             AggregatedAccountLoadKind::ReadData { bytes, mut reads } => {
@@ -957,7 +1274,12 @@ impl TreeRoot<RootChildren> {
                     let run = &old[i..i + run_len];
                     let aggs = aggregate_data_run_root(run, key, &account_snapshots);
                     if !aggs.is_empty() {
-                        out.extend(aggs.into_iter().map(RootChildren::AccountLoad));
+                        for agg in aggs {
+                            Self::push_root_child_with_account_load_merge(
+                                &mut out,
+                                RootChildren::AccountLoad(agg),
+                            );
+                        }
                         i += run_len;
                         continue;
                     }
@@ -966,7 +1288,10 @@ impl TreeRoot<RootChildren> {
             if i + 4 <= old.len() {
                 if let Some(four) = Self::root_children_four_raw_refs(&old[i..i + 4]) {
                     if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        out.push(RootChildren::AccountLoad(agg));
+                        Self::push_root_child_with_account_load_merge(
+                            &mut out,
+                            RootChildren::AccountLoad(agg),
+                        );
                         i += 4;
                         continue;
                     }
@@ -977,8 +1302,16 @@ impl TreeRoot<RootChildren> {
                     i += 1;
                     continue;
                 }
+                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
+                    Self::push_root_child_with_account_load_merge(
+                        &mut out,
+                        RootChildren::AccountLoad(agg),
+                    );
+                    i += 1;
+                    continue;
+                }
             }
-            out.push(old[i].clone());
+            Self::push_root_child_with_account_load_merge(&mut out, old[i].clone());
             i += 1;
         }
         *children = out;
@@ -1031,7 +1364,12 @@ impl TreeRoot<RootChildren> {
                     let run = &old[i..i + run_len];
                     let aggs = aggregate_data_run_ep(run, key, &account_snapshots);
                     if !aggs.is_empty() {
-                        out.extend(aggs.into_iter().map(EntrypointChildren::AccountLoad));
+                        for agg in aggs {
+                            Self::push_ep_child_with_account_load_merge(
+                                &mut out,
+                                EntrypointChildren::AccountLoad(agg),
+                            );
+                        }
                         i += run_len;
                         continue;
                     }
@@ -1040,7 +1378,10 @@ impl TreeRoot<RootChildren> {
             if i + 4 <= old.len() {
                 if let Some(four) = Self::ep_children_four_raw_refs(&old[i..i + 4]) {
                     if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        out.push(EntrypointChildren::AccountLoad(agg));
+                        Self::push_ep_child_with_account_load_merge(
+                            &mut out,
+                            EntrypointChildren::AccountLoad(agg),
+                        );
                         i += 4;
                         continue;
                     }
@@ -1051,8 +1392,16 @@ impl TreeRoot<RootChildren> {
                     i += 1;
                     continue;
                 }
+                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
+                    Self::push_ep_child_with_account_load_merge(
+                        &mut out,
+                        EntrypointChildren::AccountLoad(agg),
+                    );
+                    i += 1;
+                    continue;
+                }
             }
-            out.push(old[i].clone());
+            Self::push_ep_child_with_account_load_merge(&mut out, old[i].clone());
             i += 1;
         }
         *children = out;
@@ -1105,7 +1454,12 @@ impl TreeRoot<RootChildren> {
                     let run = &old[i..i + run_len];
                     let aggs = aggregate_data_run_fn(run, key, &account_snapshots);
                     if !aggs.is_empty() {
-                        out.extend(aggs.into_iter().map(FnCallChildren::AccountLoad));
+                        for agg in aggs {
+                            Self::push_fn_child_with_account_load_merge(
+                                &mut out,
+                                FnCallChildren::AccountLoad(agg),
+                            );
+                        }
                         i += run_len;
                         continue;
                     }
@@ -1114,7 +1468,10 @@ impl TreeRoot<RootChildren> {
             if i + 4 <= old.len() {
                 if let Some(four) = Self::fn_children_four_raw_refs(&old[i..i + 4]) {
                     if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        out.push(FnCallChildren::AccountLoad(agg));
+                        Self::push_fn_child_with_account_load_merge(
+                            &mut out,
+                            FnCallChildren::AccountLoad(agg),
+                        );
                         i += 4;
                         continue;
                     }
@@ -1125,8 +1482,16 @@ impl TreeRoot<RootChildren> {
                     i += 1;
                     continue;
                 }
+                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
+                    Self::push_fn_child_with_account_load_merge(
+                        &mut out,
+                        FnCallChildren::AccountLoad(agg),
+                    );
+                    i += 1;
+                    continue;
+                }
             }
-            out.push(old[i].clone());
+            Self::push_fn_child_with_account_load_merge(&mut out, old[i].clone());
             i += 1;
         }
         *children = out;
@@ -1165,6 +1530,155 @@ impl TreeRoot<RootChildren> {
             ) => Some([a0, a1, a2, a3]),
             _ => None,
         }
+    }
+
+    fn push_root_child_with_account_load_merge(out: &mut Vec<RootChildren>, child: RootChildren) {
+        if let RootChildren::AccountLoad(next_load) = child {
+            if let Some(RootChildren::AccountLoad(prev_load)) = out.last_mut() {
+                if prev_load.key == next_load.key
+                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
+                {
+                    return;
+                }
+            }
+            out.push(RootChildren::AccountLoad(next_load));
+            return;
+        }
+        out.push(child);
+    }
+
+    fn push_ep_child_with_account_load_merge(
+        out: &mut Vec<EntrypointChildren>,
+        child: EntrypointChildren,
+    ) {
+        if let EntrypointChildren::AccountLoad(next_load) = child {
+            if let Some(EntrypointChildren::AccountLoad(prev_load)) = out.last_mut() {
+                if prev_load.key == next_load.key
+                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
+                {
+                    return;
+                }
+            }
+            out.push(EntrypointChildren::AccountLoad(next_load));
+            return;
+        }
+        out.push(child);
+    }
+
+    fn push_fn_child_with_account_load_merge(out: &mut Vec<FnCallChildren>, child: FnCallChildren) {
+        if let FnCallChildren::AccountLoad(next_load) = child {
+            if let Some(FnCallChildren::AccountLoad(prev_load)) = out.last_mut() {
+                if prev_load.key == next_load.key
+                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
+                {
+                    return;
+                }
+            }
+            out.push(FnCallChildren::AccountLoad(next_load));
+            return;
+        }
+        out.push(child);
+    }
+}
+
+fn merge_step_ranges(
+    left_start: u64,
+    left_end: u64,
+    right_start: u64,
+    right_end: u64,
+) -> (u64, u64) {
+    let (l0, l1) = normalize_step_range(left_start, left_end);
+    let (r0, r1) = normalize_step_range(right_start, right_end);
+    (l0.min(r0), l1.max(r1))
+}
+
+fn try_merge_aggregated_read_kind(
+    left: &mut AggregatedAccountLoadKind,
+    right: &AggregatedAccountLoadKind,
+) -> bool {
+    match (left, right) {
+        (
+            AggregatedAccountLoadKind::ReadKey {
+                step_order: l_start,
+                step_order_end: l_end,
+            },
+            AggregatedAccountLoadKind::ReadKey {
+                step_order: r_start,
+                step_order_end: r_end,
+            },
+        ) => {
+            (*l_start, *l_end) = merge_step_ranges(*l_start, *l_end, *r_start, *r_end);
+            true
+        }
+        (
+            AggregatedAccountLoadKind::ReadOwner {
+                owner: l_owner,
+                step_order: l_start,
+                step_order_end: l_end,
+            },
+            AggregatedAccountLoadKind::ReadOwner {
+                owner: r_owner,
+                step_order: r_start,
+                step_order_end: r_end,
+            },
+        ) if l_owner == r_owner => {
+            (*l_start, *l_end) = merge_step_ranges(*l_start, *l_end, *r_start, *r_end);
+            true
+        }
+        (
+            AggregatedAccountLoadKind::ReadLamports {
+                lamports: l_lamports,
+                step_order: l_start,
+                step_order_end: l_end,
+            },
+            AggregatedAccountLoadKind::ReadLamports {
+                lamports: r_lamports,
+                step_order: r_start,
+                step_order_end: r_end,
+            },
+        ) if l_lamports == r_lamports => {
+            (*l_start, *l_end) = merge_step_ranges(*l_start, *l_end, *r_start, *r_end);
+            true
+        }
+        (
+            AggregatedAccountLoadKind::ReadDataLen {
+                len: l_len,
+                step_order: l_step,
+            },
+            AggregatedAccountLoadKind::ReadDataLen {
+                len: r_len,
+                step_order: r_step,
+            },
+        ) if l_len == r_len => {
+            *l_step = (*l_step).min(*r_step);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Single-step raw loads of lamports or data length become one [`TreeAccountLoadAggregated`] row.
+fn try_scalar_raw_load_as_aggregated(load: &TreeAccountLoad) -> Option<TreeAccountLoadAggregated> {
+    let step_order = load.step_order;
+    let step_order_end = load.step_order;
+    let key = load.key;
+    match &load.read_kind {
+        TreeAccountLoadKind::Lamports { lamports } => Some(TreeAccountLoadAggregated {
+            key,
+            read_kind: AggregatedAccountLoadKind::ReadLamports {
+                lamports: *lamports,
+                step_order,
+                step_order_end,
+            },
+        }),
+        TreeAccountLoadKind::DataLen { len } => Some(TreeAccountLoadAggregated {
+            key,
+            read_kind: AggregatedAccountLoadKind::ReadDataLen {
+                len: *len,
+                step_order,
+            },
+        }),
+        _ => None,
     }
 }
 

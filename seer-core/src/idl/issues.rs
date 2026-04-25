@@ -208,10 +208,48 @@ pub enum IdlIssue {
 #[derive(Debug)]
 pub struct IdlIssues {
     pub context: IdlProgramContext,
+    /// Committed issues: user-facing dedupe set and what [`Self::sorted_issues`] returns.
     seen: HashSet<IdlIssue>,
-    /// When set, issues are still recorded (and deduplicated) but not logged; used for
-    /// speculative account parses that may be discarded in favor of another candidate.
-    suppress_logging: bool,
+    /// While resolving one speculative account-layout candidate (Codama `get_account`), issues
+    /// are collected here instead of [`seen`] and are not logged until a winner is chosen.
+    speculative: HashSet<IdlIssue>,
+    in_speculative: bool,
+}
+
+/// RAII: if a speculative account candidate parse panics or is abandoned without
+/// [`Self::finish`], [`IdlIssues::cancel_speculative_candidate`] runs on drop.
+pub struct SpeculativeCandidateGuard<'a> {
+    issues: &'a mut IdlIssues,
+    finished: bool,
+}
+
+impl<'a> SpeculativeCandidateGuard<'a> {
+    pub fn new(issues: &'a mut IdlIssues) -> Self {
+        issues.begin_speculative_candidate();
+        Self {
+            issues,
+            finished: false,
+        }
+    }
+
+    pub fn issues_mut(&mut self) -> &mut IdlIssues {
+        self.issues
+    }
+
+    /// End the speculative session and take deduped issues for this candidate (not logged,
+    /// not merged into [`IdlIssues::seen`]).
+    pub fn finish(mut self) -> Vec<IdlIssue> {
+        self.finished = true;
+        self.issues.finish_speculative_candidate()
+    }
+}
+
+impl Drop for SpeculativeCandidateGuard<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.issues.cancel_speculative_candidate();
+        }
+    }
 }
 
 impl IdlIssues {
@@ -219,16 +257,8 @@ impl IdlIssues {
         Self {
             context,
             seen: HashSet::new(),
-            suppress_logging: false,
-        }
-    }
-
-    /// Same as [`Self::new`], but [`Self::note`] does not emit `seer_warn!`.
-    pub fn new_suppressed(context: IdlProgramContext) -> Self {
-        Self {
-            context,
-            seen: HashSet::new(),
-            suppress_logging: true,
+            speculative: HashSet::new(),
+            in_speculative: false,
         }
     }
 
@@ -241,8 +271,41 @@ impl IdlIssues {
         self.seen.contains(issue)
     }
 
+    fn begin_speculative_candidate(&mut self) {
+        if self.in_speculative {
+            // Heal: release builds have no `debug_assert!`; an abandoned session would leave
+            // `in_speculative` true and break later parses on the same [`IdlIssues`].
+            self.cancel_speculative_candidate();
+        }
+        self.in_speculative = true;
+        self.speculative.clear();
+    }
+
+    fn finish_speculative_candidate(&mut self) -> Vec<IdlIssue> {
+        debug_assert!(
+            self.in_speculative,
+            "finish_speculative_candidate without begin"
+        );
+        self.in_speculative = false;
+        let mut v: Vec<_> = self.speculative.drain().collect();
+        v.sort();
+        v
+    }
+
+    fn cancel_speculative_candidate(&mut self) {
+        if !self.in_speculative {
+            return;
+        }
+        self.in_speculative = false;
+        self.speculative.clear();
+    }
+
     pub fn note(&mut self, issue: IdlIssue) {
-        if self.seen.insert(issue.clone()) && !self.suppress_logging {
+        if self.in_speculative {
+            self.speculative.insert(issue);
+            return;
+        }
+        if self.seen.insert(issue.clone()) {
             crate::seer_warn!(
                 "IDL {} ({}): {}",
                 self.context.program_name,
@@ -260,7 +323,11 @@ impl IdlIssues {
         let issue = IdlIssue::InstructionInvalidDiscriminatorLayout {
             instruction,
         };
-        if self.seen.insert(issue.clone()) && !self.suppress_logging {
+        if self.in_speculative {
+            self.speculative.insert(issue);
+            return;
+        }
+        if self.seen.insert(issue.clone()) {
             crate::seer_warn!(
                 "IDL {} ({}): {} (found {count} discriminator entries)",
                 self.context.program_name,
@@ -305,6 +372,40 @@ mod tests {
         };
         issues.note(IdlIssue::PrefixedCountInvalid { at: at.clone() });
         issues.note(IdlIssue::PrefixedCountInvalid { at });
+        assert_eq!(issues.sorted_issues().len(), 1);
+    }
+
+    #[test]
+    fn speculative_guard_drop_abandons_issues() {
+        let mut issues = IdlIssues::new(test_ctx());
+        {
+            let mut g = SpeculativeCandidateGuard::new(&mut issues);
+            let at = IdlLocation::SchemaInstruction {
+                instruction: "x".into(),
+                path: vec![],
+            };
+            g.issues_mut()
+                .note(IdlIssue::PrefixedCountInvalid { at });
+        }
+        assert_eq!(issues.sorted_issues().len(), 0);
+    }
+
+    #[test]
+    fn speculative_guard_finish_returns_issues_without_committing() {
+        let mut issues = IdlIssues::new(test_ctx());
+        let v = {
+            let mut g = SpeculativeCandidateGuard::new(&mut issues);
+            let at = IdlLocation::SchemaInstruction {
+                instruction: "x".into(),
+                path: vec![],
+            };
+            g.issues_mut()
+                .note(IdlIssue::PrefixedCountInvalid { at });
+            g.finish()
+        };
+        assert_eq!(v.len(), 1);
+        assert_eq!(issues.sorted_issues().len(), 0);
+        issues.note(v[0].clone());
         assert_eq!(issues.sorted_issues().len(), 1);
     }
 }

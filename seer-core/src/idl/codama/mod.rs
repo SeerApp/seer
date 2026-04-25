@@ -19,7 +19,7 @@ use crate::idl::{
     display_error_name,
     parsed_arg::{ParsedArg, ParsedArgValue},
     types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
-    IdlIssue, IdlIssues, IdlProgramContext, IdlTreeParser,
+    issues::SpeculativeCandidateGuard, IdlIssue, IdlIssues, IdlProgramContext, IdlTreeParser,
 };
 use codama_nodes::{
     DefaultValueStrategy, DiscriminatorNode, InstructionNode, NestedTypeNodeTrait, RootNode,
@@ -91,7 +91,6 @@ impl IdlTreeParser for CodamaIdlLookup {
     fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
         let program = &self.root_node.program;
         let data_len = data.len();
-        let program_ctx = self.idl_issues.borrow().context.clone();
         let mut best_match: Option<(bool, usize, ParsedAccount, Vec<IdlIssue>)> = None;
 
         for ax in &program.accounts {
@@ -99,30 +98,36 @@ impl IdlTreeParser for CodamaIdlLookup {
                 continue;
             }
 
-            // Speculative decode: many account types can match by size; only the selected
-            // struct parse should report issues to the user (see merge after the loop).
-            let mut silent = IdlIssues::new_suppressed(program_ctx.clone());
-            let mut ctx = CodamaParseCtx {
-                issues: &mut silent,
-                site: ParseSite::RuntimeAccount {
-                    name: ax.name.to_string(),
-                },
-                path: vec![],
-            };
-            let mut cur = Cursor::new(data);
-            let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
-            let defined_types = &program.defined_types;
+            // Speculative decode: many account types can match by size; decode issues go into
+            // the same [`IdlIssues`] scratch buffer until we pick a winner (see merge below).
+            let (parsed_struct, issues_for_candidate) = {
+                let mut issues = self.idl_issues.borrow_mut();
+                let mut guard = SpeculativeCandidateGuard::new(&mut *issues);
+                let parsed_struct = {
+                    let mut ctx = CodamaParseCtx {
+                        issues: guard.issues_mut(),
+                        site: ParseSite::RuntimeAccount {
+                            name: ax.name.to_string(),
+                        },
+                        path: vec![],
+                    };
+                    let mut cur = Cursor::new(data);
+                    let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
+                    let defined_types = &program.defined_types;
 
-            let parsed_struct = get_view_struct_type_node(
-                inner_struct,
-                &mut cur,
-                &mut ctx,
-                defined_types,
-                true,
-            );
+                    get_view_struct_type_node(
+                        inner_struct,
+                        &mut cur,
+                        &mut ctx,
+                        defined_types,
+                        true,
+                    )
+                };
+                let issues_for_candidate = guard.finish();
+                (parsed_struct, issues_for_candidate)
+            };
 
             if let Some(parsed_struct) = parsed_struct {
-                let issues_for_candidate = silent.sorted_issues();
                 let parsed_arg = ParsedArg {
                     name: String::from(ax.name.clone()),
                     value: ParsedArgValue::Struct(parsed_struct),
@@ -156,16 +161,16 @@ impl IdlTreeParser for CodamaIdlLookup {
             }
         }
 
+        let mut issues = self.idl_issues.borrow_mut();
         match best_match {
             Some((_, _, parsed, win_issues)) => {
-                let mut issues = self.idl_issues.borrow_mut();
                 for issue in win_issues {
                     issues.note(issue);
                 }
                 Some(parsed)
             }
             None => {
-                self.idl_issues.borrow_mut().note(IdlIssue::NoAccountTypeMatched { byte_len: data_len });
+                issues.note(IdlIssue::NoAccountTypeMatched { byte_len: data_len });
                 None
             }
         }

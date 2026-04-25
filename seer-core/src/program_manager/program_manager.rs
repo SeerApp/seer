@@ -354,6 +354,9 @@ fn maybe_download_and_disassemble(
     let so_path = temp_dir.path().join(format!("{program_id}.so"));
     let elf_bytes = fetch_program_elf_from_rpc(rpc_url, program_id)
         .map_err(|e| format!("fetch ELF for {}: {}", program_id, e))?;
+    if elf_bytes.is_empty() {
+        return Ok(());
+    }
     fs::write(&so_path, &elf_bytes)
         .map_err(|e| format!("write {}: {}", so_path.display(), e))?;
 
@@ -364,6 +367,11 @@ fn maybe_download_and_disassemble(
 fn fetch_program_elf_from_rpc(rpc_url: &str, program_id: &Pubkey) -> Result<Vec<u8>, String> {
     const UPGRADEABLE_LOADER_V3_OWNER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
     const ELF_MAGIC: &[u8; 4] = b"\x7FELF";
+
+    // Native loader / system program (11111111111111111111111111111111) has no BPF ELF on-chain.
+    if program_id == &Pubkey::default() {
+        return Ok(Vec::new());
+    }
 
     let program_account = fetch_account_info(rpc_url, program_id)?;
     if !program_account.executable {
@@ -513,6 +521,15 @@ mod tests {
             elf_bytes.len() > 4,
             "expected non-trivial ELF payload from mainnet"
         );
+    }
+
+    #[test]
+    fn skips_system_program_elf_fetch_without_rpc() {
+        let rpc_url = "https://api.mainnet-beta.solana.com";
+        let system = Pubkey::default();
+        let elf_bytes = fetch_program_elf_from_rpc(rpc_url, &system)
+            .expect("system program should short-circuit, not error");
+        assert!(elf_bytes.is_empty());
     }
 
     #[test]
