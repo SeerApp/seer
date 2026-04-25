@@ -131,6 +131,7 @@ impl TransactionContext {
             self.step_order += 1;
         }
         let order = self.step_order;
+        crate::account_read_trace::set_current_trace_order(order);
 
         let icx = self
             .instruction_context
@@ -144,9 +145,17 @@ impl TransactionContext {
         }
 
         icx.step(program_manager, order, i, mem, reg);
-        
+
         if !self.step_executed {
             self.step_executed = true;
         }
+    }
+
+    pub fn raw_account_load(&mut self, data: crate::tree::nodes::TreeAccountLoad) {
+        let icx = self
+            .instruction_context
+            .as_mut()
+            .expect("Account load before instruction context exists");
+        icx.raw_account_load(data);
     }
 }

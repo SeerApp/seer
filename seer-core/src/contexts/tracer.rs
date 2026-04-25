@@ -4,7 +4,7 @@ use solana_pubkey::Pubkey;
 use crate::{
     contexts::invoke::InvokeContext,
     program_manager::program_manager::ProgramManager,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
+    tree::nodes::{RootViewChildren, TreeAccount, TreeAccountLoad, TreeRoot},
 };
 
 /// Sender-preserving layer
@@ -92,6 +92,13 @@ impl Tracer {
             .account_diff(data);
     }
 
+    pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
+        self.invoke_context
+            .as_mut()
+            .expect("Account load before invoke context")
+            .raw_account_load(data);
+    }
+
     pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
         let invoke_context = self
             .invoke_context
@@ -99,6 +106,7 @@ impl Tracer {
             .expect("Finalizing tree on empty invoke context");
 
         invoke_context.flatten_account_diffs();
+        invoke_context.flatten_account_loads();
 
         for tree in invoke_context.trees_iter_mut() {
             if let Some(idl_lookup) = program_manager.get_idl_lookup(&tree.receiver) {

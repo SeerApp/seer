@@ -1,3 +1,4 @@
+pub mod account_read_trace;
 pub mod analysis;
 pub mod binary_lookup_tree;
 pub mod contexts;

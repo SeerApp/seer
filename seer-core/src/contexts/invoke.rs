@@ -8,8 +8,8 @@ use crate::{
     tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
         nodes::{
-            EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint,
-            TreeLog, TreeRoot,
+            EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeAccountLoad,
+            TreeEntrypoint, TreeLog, TreeRoot,
         },
     },
 };
@@ -66,6 +66,9 @@ impl InvokeContext {
                         }
                         EntrypointChildren::Account(a) => {
                             lke.push_account_diff(a.clone());
+                        }
+                        EntrypointChildren::RawAccountLoad(a) => {
+                            lke.push_raw_account_load(a.clone());
                         }
                         _ => panic!("Unexpected value in pushables!"),
                     }
@@ -133,6 +136,9 @@ impl InvokeContext {
                     EntrypointChildren::Account(a) => {
                         lke.push_account_diff(a.clone());
                     }
+                    EntrypointChildren::RawAccountLoad(a) => {
+                        lke.push_raw_account_load(a.clone());
+                    }
                     _ => panic!("Unexpected value in pushables!"),
                 }
             }
@@ -192,6 +198,27 @@ impl InvokeContext {
         root.push_account_diff(data);
     }
 
+    pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
+        let tree_index = self
+            .live_trace
+            .last()
+            .map(|trace| trace.tree_index)
+            .unwrap_or(0);
+
+        let root = &mut self.trees[tree_index];
+
+        if let Some(live_trace) = self.live_trace.last_mut() {
+            if live_trace.last_known_entrypoint.is_some() {
+                live_trace
+                    .pushables
+                    .push(EntrypointChildren::RawAccountLoad(data));
+                return;
+            }
+        }
+
+        root.push_raw_account_load(data);
+    }
+
     pub fn get_last_receiver(&self) -> Pubkey {
         self.trees[self
             .live_trace
@@ -208,6 +235,12 @@ impl InvokeContext {
     pub fn flatten_account_diffs(&mut self) {
         for tree in self.trees.iter_mut() {
             tree.flatten_account_diffs();
+        }
+    }
+
+    pub fn flatten_account_loads(&mut self) {
+        for tree in self.trees.iter_mut() {
+            tree.flatten_account_loads();
         }
     }
 }

@@ -120,6 +120,13 @@ impl SeerContext {
             .step(&self.program_manager, i, mem, reg);
     }
 
+    pub fn raw_account_load(&mut self, data: crate::tree::nodes::TreeAccountLoad) {
+        self.transaction_context
+            .as_mut()
+            .expect("Account load before transaction context exists")
+            .raw_account_load(data);
+    }
+
     pub fn log(&mut self, message: &str) {
         seer_debug!("Log: {:?}", message);
         self.transaction_context

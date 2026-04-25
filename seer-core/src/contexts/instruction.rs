@@ -9,7 +9,7 @@ use crate::{
     program_manager::program_manager::ProgramManager,
     register_trace::{RegisterTraceCollector, REGISTER_COUNT},
     save::save_register_trace_chunk,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
+    tree::nodes::{RootViewChildren, TreeAccount, TreeAccountLoad, TreeRoot},
 };
 
 pub struct InstructionContext {
@@ -121,6 +121,10 @@ impl InstructionContext {
         if let Some(analysis) = self.analysis.as_mut() {
             analysis.account_diff(data);
         }
+    }
+
+    pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
+        self.tracer.raw_account_load(data);
     }
 
     pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
