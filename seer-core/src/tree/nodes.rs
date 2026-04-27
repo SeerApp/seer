@@ -5,6 +5,7 @@ use crate::{
     account_reads::types::{normalize_step_range, TaggedAccountLoad, TaggedAccountLoadAggregated},
     dwarf::source_die::{SourceDie, SourceDieType},
     idl::IdlTreeParser,
+    idl::parsed_arg::collect_parsed_arg_byte_offsets,
     idl::types::{ParsedAccount, ParsedInstruction},
     program_manager::program_manager::ProgramManager,
     tree::loc::Loc,
@@ -621,9 +622,16 @@ fn aggregate_data_run_tagged(
     account_snapshots: &HashMap<Pubkey, AccountStateSnapshot>,
     program_manager: Option<&ProgramManager>,
 ) -> Vec<TreeAccountLoadAggregated> {
+    let owner_hint = run.iter().find_map(|t| t.load.owner_snapshot);
     let loads = run.iter().map(|t| &t.load);
     let data_loads = loads.filter(|load| matches!(load.read_kind, TreeAccountLoadKind::Data { .. }));
-    aggregate_data_segments_for_key(collect_data_segments(data_loads), key, account_snapshots, program_manager)
+    aggregate_data_segments_for_key(
+        collect_data_segments(data_loads),
+        key,
+        owner_hint,
+        account_snapshots,
+        program_manager,
+    )
 }
 
 pub fn finalize_invoke_account_read_aggregates(
@@ -1238,6 +1246,7 @@ where
 fn aggregate_data_segments_for_key(
     mut segments: Vec<DataReadSegmentRef<'_>>,
     key: Pubkey,
+    owner_hint: Option<Pubkey>,
     account_snapshots: &HashMap<Pubkey, AccountStateSnapshot>,
     program_manager: Option<&ProgramManager>,
 ) -> Vec<TreeAccountLoadAggregated> {
@@ -1318,10 +1327,14 @@ fn aggregate_data_segments_for_key(
     }
 
     let parsed = program_manager.and_then(|pm| {
-        let owner = account_snapshots.get(&key).map(|s| s.owner)?;
+        let owner = owner_hint.or_else(|| account_snapshots.get(&key).map(|s| s.owner))?;
         let idl_lookup = pm.get_idl_lookup_cached(&owner)?;
         idl_lookup.get_account(&full_bytes)
     });
+    let parsed_byte_offsets = parsed
+        .as_ref()
+        .map(|parsed_account| collect_parsed_arg_byte_offsets(&parsed_account.data))
+        .unwrap_or_default();
 
     vec![TreeAccountLoadAggregated {
         key,
@@ -1329,6 +1342,7 @@ fn aggregate_data_segments_for_key(
             bytes: full_bytes,
             reads,
             parsed,
+            parsed_byte_offsets,
         },
     }]
 }

@@ -242,6 +242,7 @@ pub fn get_view_struct_type_node<'a>(
 
     for (idx, field) in origin.fields.iter().enumerate() {
         ctx.push_path(field.name.to_string());
+        let field_byte_offset = cur.absolute_pos();
         let field_is_last = is_last && idx + 1 == field_count;
         let value = get_parsed_arg_value(
             ctx,
@@ -260,6 +261,7 @@ pub fn get_view_struct_type_node<'a>(
         fields.push(ViewStructFieldTypeNode {
             name: String::from(field.name.clone()),
             docs: field.docs.clone(),
+            byte_offset: Some(field_byte_offset),
             value,
         });
     }

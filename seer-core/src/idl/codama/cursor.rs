@@ -445,6 +445,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         ctx: &mut CodamaParseCtx<'_>,
         defined_types: &[DefinedTypeNode],
     ) -> Option<ParsedArgValue> {
+        let fixed_start_offset = self.absolute_pos();
         let bytes = match self.take(origin.size) {
             Some(b) => b,
             None => {
@@ -453,7 +454,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                 return None;
             }
         };
-        let mut inner = Cursor::new(bytes);
+        let mut inner = Cursor::new_with_base(bytes, fixed_start_offset);
         get_parsed_arg_value(ctx, &origin.r#type, &mut inner, defined_types, true, None)
     }
 

@@ -1,11 +1,24 @@
 pub struct Cursor<'a> {
     buf: &'a [u8],
     pos: usize,
+    base_offset: usize,
 }
 
 impl<'a> Cursor<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        Self { buf: data, pos: 0 }
+        Self {
+            buf: data,
+            pos: 0,
+            base_offset: 0,
+        }
+    }
+
+    pub fn new_with_base(data: &'a [u8], base_offset: usize) -> Self {
+        Self {
+            buf: data,
+            pos: 0,
+            base_offset,
+        }
     }
 
     pub fn pos(&self) -> usize {
@@ -16,7 +29,12 @@ impl<'a> Cursor<'a> {
         Self {
             buf: self.buf,
             pos: self.pos,
+            base_offset: self.base_offset,
         }
+    }
+
+    pub fn absolute_pos(&self) -> usize {
+        self.base_offset + self.pos
     }
 
     pub fn peek(&self, n: usize) -> Option<&[u8]> {

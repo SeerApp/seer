@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_pubkey::Pubkey;
 
-use crate::idl::types::ParsedAccount;
+use crate::idl::{parsed_arg::ParsedArgByteOffset, types::ParsedAccount};
 use crate::tree::nodes::TreeAccountLoadKind;
 
 /// One guest load attributed to an account pubkey and classified field/data offset.
@@ -90,6 +90,8 @@ pub enum AggregatedAccountLoadKind {
         reads: Vec<AggregatedDataRead>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         parsed: Option<ParsedAccount>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        parsed_byte_offsets: Vec<ParsedArgByteOffset>,
     },
 }
 
@@ -172,11 +174,13 @@ fn aggregated_account_load_kind_from_map<E: de::Error>(
                 })
             }
             "readData" => {
-                let (bytes, reads, parsed) = decode_read_data_kind_from_map(&map)?;
+                let (bytes, reads, parsed, parsed_byte_offsets) =
+                    decode_read_data_kind_from_map(&map)?;
                 Ok(AggregatedAccountLoadKind::ReadData {
                     bytes,
                     reads,
                     parsed,
+                    parsed_byte_offsets,
                 })
             }
             "readLamports" => {
@@ -241,11 +245,12 @@ fn aggregated_account_load_kind_from_map<E: de::Error>(
             .ok_or_else(|| E::custom("aggregated read_kind readData: expected object"))?;
         let inner_map: BTreeMap<String, serde_json::Value> =
             inner.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let (bytes, reads, parsed) = decode_read_data_kind_from_map(&inner_map)?;
+        let (bytes, reads, parsed, parsed_byte_offsets) = decode_read_data_kind_from_map(&inner_map)?;
         return Ok(AggregatedAccountLoadKind::ReadData {
             bytes,
             reads,
             parsed,
+            parsed_byte_offsets,
         });
     }
 
@@ -311,7 +316,15 @@ fn decode_read_data_span_meta_from_map<E: de::Error>(
 
 fn decode_read_data_kind_from_map<E: de::Error>(
     map: &BTreeMap<String, serde_json::Value>,
-) -> Result<(Vec<u8>, Vec<AggregatedDataRead>, Option<ParsedAccount>), E> {
+) -> Result<
+    (
+        Vec<u8>,
+        Vec<AggregatedDataRead>,
+        Option<ParsedAccount>,
+        Vec<ParsedArgByteOffset>,
+    ),
+    E,
+> {
     let bytes = map
         .get("bytes")
         .and_then(|v| v.as_array())
@@ -355,7 +368,15 @@ fn decode_read_data_kind_from_map<E: de::Error>(
             .map(serde_json::from_value::<ParsedAccount>)
             .transpose()
             .map_err(E::custom)?;
-        return Ok((bytes, reads, parsed));
+        let parsed_byte_offsets = map
+            .get("parsed_byte_offsets")
+            .or_else(|| map.get("parsedByteOffsets"))
+            .cloned()
+            .map(serde_json::from_value::<Vec<ParsedArgByteOffset>>)
+            .transpose()
+            .map_err(E::custom)?
+            .unwrap_or_default();
+        return Ok((bytes, reads, parsed, parsed_byte_offsets));
     }
 
     let (offset, bytes_width, _span_bytes) = decode_read_data_fields_from_map(map)?;
@@ -366,6 +387,14 @@ fn decode_read_data_kind_from_map<E: de::Error>(
         .map(serde_json::from_value::<ParsedAccount>)
         .transpose()
         .map_err(E::custom)?;
+    let parsed_byte_offsets = map
+        .get("parsed_byte_offsets")
+        .or_else(|| map.get("parsedByteOffsets"))
+        .cloned()
+        .map(serde_json::from_value::<Vec<ParsedArgByteOffset>>)
+        .transpose()
+        .map_err(E::custom)?
+        .unwrap_or_default();
     Ok((
         bytes,
         vec![AggregatedDataRead {
@@ -375,6 +404,7 @@ fn decode_read_data_kind_from_map<E: de::Error>(
             step_order_end,
         }],
         parsed,
+        parsed_byte_offsets,
     ))
 }
 
@@ -442,13 +472,23 @@ impl From<TreeAccountLoadAggregatedWire> for TreeAccountLoadAggregated {
                     step_order: w.step_order.unwrap_or(step_order),
                 }
             }
-            AggregatedAccountLoadKind::ReadData { bytes, mut reads, parsed } => {
+            AggregatedAccountLoadKind::ReadData {
+                bytes,
+                mut reads,
+                parsed,
+                parsed_byte_offsets,
+            } => {
                 for read in &mut reads {
                     let (start, end) = normalize_step_range(read.step_order, read.step_order_end);
                     read.step_order = start;
                     read.step_order_end = end;
                 }
-                AggregatedAccountLoadKind::ReadData { bytes, reads, parsed }
+                AggregatedAccountLoadKind::ReadData {
+                    bytes,
+                    reads,
+                    parsed,
+                    parsed_byte_offsets,
+                }
             }
         };
         Self {

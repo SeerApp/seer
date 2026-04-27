@@ -471,6 +471,7 @@ fn get_struct<'a>(
                 let mut return_struct = ViewStructTypeNode { fields: vec![] };
                 for f in named_fields {
                     ctx.push_path(f.name.clone());
+                    let field_byte_offset = cursor.absolute_pos();
                     let value = get_parsed_arg_value_from_ty(
                         types,
                         &f.ty,
@@ -483,6 +484,7 @@ fn get_struct<'a>(
                     return_struct.fields.push(ViewStructFieldTypeNode {
                         name: f.name.clone(),
                         docs: f.docs.clone().into(),
+                        byte_offset: Some(field_byte_offset),
                         value,
                     });
                 }
