@@ -1,8 +1,9 @@
 use crate::{
+    account_reads::types::TreeAccountLoad,
     idl::IdlTreeParser,
     tree::nodes::{
-        EntrypointChildren, FnCallChildren, RootChildren, TreeAccount, TreeAccountLoad,
-        TreeAccountLoadAggregated, TreeEntrypoint, TreeError, TreeFnCall, TreeRoot,
+        EntrypointChildren, FnCallChildren, RootChildren, TreeAccount, TreeEntrypoint,
+        TreeError, TreeFnCall, TreeRoot,
     },
 };
 
@@ -15,12 +16,6 @@ impl TreeRoot<RootChildren> {
                     e.parse(parser);
                 }
                 RootChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                RootChildren::RawAccountLoad(a) => {
-                    a.parse(parser);
-                }
-                RootChildren::AccountLoad(a) => {
                     a.parse(parser);
                 }
                 RootChildren::Error(e) => {
@@ -40,12 +35,6 @@ impl TreeEntrypoint<EntrypointChildren> {
                     e.parse(parser);
                 }
                 EntrypointChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                EntrypointChildren::RawAccountLoad(a) => {
-                    a.parse(parser);
-                }
-                EntrypointChildren::AccountLoad(a) => {
                     a.parse(parser);
                 }
                 EntrypointChildren::Error(e) => {
@@ -68,12 +57,6 @@ impl TreeFnCall<FnCallChildren> {
                     e.parse(parser);
                 }
                 FnCallChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                FnCallChildren::RawAccountLoad(a) => {
-                    a.parse(parser);
-                }
-                FnCallChildren::AccountLoad(a) => {
                     a.parse(parser);
                 }
                 FnCallChildren::Error(e) => {
@@ -99,12 +82,6 @@ impl TreeAccount {
 impl TreeAccountLoad {
     pub fn parse<T: IdlTreeParser>(&mut self, _parser: &T) {
         // Raw loads carry decoded bytes in `read_kind`; no separate snapshot to IDL-parse.
-    }
-}
-
-impl TreeAccountLoadAggregated {
-    pub fn parse<T: IdlTreeParser>(&mut self, _parser: &T) {
-        // Aggregated loads are derived from raw reads; nothing to IDL-parse.
     }
 }
 

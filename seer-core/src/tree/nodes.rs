@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
-use std::str::FromStr;
 
 use crate::{
+    account_reads::types::{normalize_step_range, TaggedAccountLoad, TaggedAccountLoadAggregated},
     dwarf::source_die::{SourceDie, SourceDieType},
+    idl::IdlTreeParser,
     idl::types::{ParsedAccount, ParsedInstruction},
+    program_manager::program_manager::ProgramManager,
     tree::loc::Loc,
 };
 use serde::de::{self, MapAccess, Visitor};
@@ -15,17 +17,10 @@ use solana_instruction_error::InstructionError;
 use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
-mod pubkey_string_serde {
-    use serde::Serializer;
-    use solana_pubkey::Pubkey;
-
-    pub fn serialize<S>(value: &Pubkey, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&value.to_string())
-    }
-}
+pub use crate::account_reads::types::TreeAccountLoad;
+pub use crate::account_reads::types::{
+    AggregatedAccountLoadKind, AggregatedDataRead, AggregatedReadSpan, TreeAccountLoadAggregated,
+};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
@@ -512,464 +507,6 @@ fn tree_account_load_kind_from_map<E: de::Error>(
     ))
 }
 
-/// One guest load attributed to an account pubkey and classified field/data offset.
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TreeAccountLoad {
-    #[serde(default)]
-    pub step_order: u64,
-    #[serde_as(as = "DisplayFromStr")]
-    pub key: Pubkey,
-    pub read_kind: TreeAccountLoadKind,
-    #[serde(skip_serializing, skip_deserializing, default)]
-    pub owner_snapshot: Option<Pubkey>,
-}
-
-impl PartialEq for TreeAccountLoad {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
-            && self.step_order == other.step_order
-            && self.read_kind == other.read_kind
-    }
-}
-
-/// Aggregated account field load (built after execution from raw loads).
-///
-/// JSON is **internally tagged** on `kind` (camelCase), for example:
-/// `{ "kind": "readOwner", "owner": "…", "stepOrder": 1, "stepOrderEnd": 2 }`,
-/// `{ "kind": "readData", "bytes": [...], "reads": [ ... ] }`, `{ "kind": "readKey", ... }`,
-/// `{ "kind": "readLamports", "lamports": …, "stepOrder": … }`,
-/// `{ "kind": "readDataLen", "len": …, "stepOrder": … }` (no `stepOrderEnd`).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AggregatedReadSpan {
-    pub step_order: u64,
-    pub step_order_end: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AggregatedDataRead {
-    pub offset: usize,
-    pub bytes_width: usize,
-    pub step_order: u64,
-    pub step_order_end: u64,
-}
-
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum AggregatedAccountLoadKind {
-    ReadKey {
-        step_order: u64,
-        step_order_end: u64,
-    },
-    ReadOwner {
-        #[serde(with = "pubkey_string_serde")]
-        owner: Pubkey,
-        step_order: u64,
-        step_order_end: u64,
-    },
-    ReadLamports {
-        lamports: u64,
-        step_order: u64,
-        step_order_end: u64,
-    },
-    ReadDataLen {
-        len: u64,
-        step_order: u64,
-    },
-    ReadData {
-        /// Full serialized account `data` for `key` (latest `TreeAccount.after` in this subtree when present).
-        bytes: Vec<u8>,
-        /// Discontiguous read spans against `bytes`.
-        reads: Vec<AggregatedDataRead>,
-    },
-}
-
-impl<'de> Deserialize<'de> for AggregatedAccountLoadKind {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(AggregatedAccountLoadKindVisitor)
-    }
-}
-
-struct AggregatedAccountLoadKindVisitor;
-
-impl<'de> Visitor<'de> for AggregatedAccountLoadKindVisitor {
-    type Value = AggregatedAccountLoadKind;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("aggregated account load read_kind")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        match v {
-            "readKey" => Ok(AggregatedAccountLoadKind::ReadKey {
-                step_order: 0,
-                step_order_end: 0,
-            }),
-            other => Err(E::unknown_variant(other, &["readKey"])),
-        }
-    }
-
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        self.visit_str(&v)
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut collected: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-        while let Some(key) = map.next_key::<String>()? {
-            let value: serde_json::Value = map.next_value()?;
-            collected.insert(key, value);
-        }
-        aggregated_account_load_kind_from_map(collected)
-    }
-}
-
-fn aggregated_account_load_kind_from_map<E: de::Error>(
-    map: BTreeMap<String, serde_json::Value>,
-) -> Result<AggregatedAccountLoadKind, E> {
-    if let Some(kind_val) = map.get("kind") {
-        let kind = kind_val
-            .as_str()
-            .ok_or_else(|| E::custom("aggregated read_kind: \"kind\" must be a string"))?;
-        return match kind {
-            "readKey" => {
-                let (step_order, step_order_end) = decode_step_range_from_map(&map);
-                Ok(AggregatedAccountLoadKind::ReadKey {
-                    step_order,
-                    step_order_end,
-                })
-            }
-            "readOwner" => {
-                let owner_str = map.get("owner").and_then(|v| v.as_str()).ok_or_else(|| {
-                    E::custom("aggregated read_kind readOwner: missing \"owner\"")
-                })?;
-                let owner = Pubkey::from_str(owner_str).map_err(E::custom)?;
-                let (step_order, step_order_end) = decode_step_range_from_map(&map);
-                Ok(AggregatedAccountLoadKind::ReadOwner {
-                    owner,
-                    step_order,
-                    step_order_end,
-                })
-            }
-            "readData" => {
-                let (bytes, reads) = decode_read_data_kind_from_map(&map)?;
-                Ok(AggregatedAccountLoadKind::ReadData {
-                    bytes,
-                    reads,
-                })
-            }
-            "readLamports" => {
-                let lamports = map
-                    .get("lamports")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| E::custom("aggregated read_kind readLamports: missing \"lamports\""))?;
-                let (step_order, step_order_end) = decode_step_range_from_map(&map);
-                Ok(AggregatedAccountLoadKind::ReadLamports {
-                    lamports,
-                    step_order,
-                    step_order_end,
-                })
-            }
-            "readDataLen" => {
-                let len = map
-                    .get("len")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| E::custom("aggregated read_kind readDataLen: missing \"len\""))?;
-                let step_order = decode_step_order_only_from_map(&map);
-                Ok(AggregatedAccountLoadKind::ReadDataLen { len, step_order })
-            }
-            other => Err(E::unknown_variant(
-                other,
-                &[
-                    "readKey",
-                    "readOwner",
-                    "readData",
-                    "readLamports",
-                    "readDataLen",
-                ],
-            )),
-        };
-    }
-
-    // Legacy externally tagged JSON: `{ "readOwner": { "owner": "…" } }` etc.
-    if let Some(v) = map.get("readKey") {
-        if v.is_null() || v.as_object().map(|o| o.is_empty()).unwrap_or(false) {
-            return Ok(AggregatedAccountLoadKind::ReadKey {
-                step_order: 0,
-                step_order_end: 0,
-            });
-        }
-    }
-    if let Some(v) = map.get("readOwner") {
-        let inner = v
-            .as_object()
-            .ok_or_else(|| E::custom("aggregated read_kind readOwner: expected object"))?;
-        let owner_str = inner
-            .get("owner")
-            .and_then(|x| x.as_str())
-            .ok_or_else(|| E::custom("aggregated read_kind readOwner: missing owner"))?;
-        let owner = Pubkey::from_str(owner_str).map_err(E::custom)?;
-        return Ok(AggregatedAccountLoadKind::ReadOwner {
-            owner,
-            step_order: 0,
-            step_order_end: 0,
-        });
-    }
-    if let Some(v) = map.get("readData") {
-        let inner: &serde_json::Map<String, serde_json::Value> = v
-            .as_object()
-            .ok_or_else(|| E::custom("aggregated read_kind readData: expected object"))?;
-        let inner_map: BTreeMap<String, serde_json::Value> =
-            inner.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let (bytes, reads) = decode_read_data_kind_from_map(&inner_map)?;
-        return Ok(AggregatedAccountLoadKind::ReadData {
-            bytes,
-            reads,
-        });
-    }
-
-    Err(E::custom(
-        "aggregated read_kind: expected {\"kind\": ...} or legacy readKey/readOwner/readData",
-    ))
-}
-
-fn decode_step_range_from_map(map: &BTreeMap<String, serde_json::Value>) -> (u64, u64) {
-    let start = map
-        .get("stepOrder")
-        .or_else(|| map.get("step_order"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let end = map
-        .get("stepOrderEnd")
-        .or_else(|| map.get("step_order_end"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(start);
-    if start <= end {
-        (start, end)
-    } else {
-        (end, start)
-    }
-}
-
-fn decode_step_order_only_from_map(map: &BTreeMap<String, serde_json::Value>) -> u64 {
-    map.get("stepOrder")
-        .or_else(|| map.get("step_order"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-}
-
-fn decode_read_data_fields_from_map<E: de::Error>(
-    map: &BTreeMap<String, serde_json::Value>,
-) -> Result<(usize, usize, Vec<u8>), E> {
-    let (offset, bytes_width) = decode_read_data_span_meta_from_map(map)?;
-    let bytes_arr = map
-        .get("bytes")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| E::custom("readData: missing bytes"))?;
-    let mut bytes = Vec::with_capacity(bytes_arr.len());
-    for n in bytes_arr {
-        let x = n
-            .as_u64()
-            .ok_or_else(|| E::custom("readData: non-integer byte"))?;
-        let b = u8::try_from(x).map_err(|_| E::custom("readData: byte out of range"))?;
-        bytes.push(b);
-    }
-    Ok((offset, bytes_width, bytes))
-}
-
-fn decode_read_data_span_meta_from_map<E: de::Error>(
-    map: &BTreeMap<String, serde_json::Value>,
-) -> Result<(usize, usize), E> {
-    let offset = map
-        .get("offset")
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| E::custom("readData: missing offset"))? as usize;
-    let bytes_width = map
-        .get("bytesWidth")
-        .or_else(|| map.get("bytes_width"))
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| E::custom("readData: missing bytesWidth"))? as usize;
-    Ok((offset, bytes_width))
-}
-
-fn decode_read_data_kind_from_map<E: de::Error>(
-    map: &BTreeMap<String, serde_json::Value>,
-) -> Result<(Vec<u8>, Vec<AggregatedDataRead>), E> {
-    let bytes = map
-        .get("bytes")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            let mut out = Vec::with_capacity(arr.len());
-            for n in arr {
-                let x = n
-                    .as_u64()
-                    .ok_or_else(|| E::custom("readData: non-integer byte"))?;
-                let b = u8::try_from(x).map_err(|_| E::custom("readData: byte out of range"))?;
-                out.push(b);
-            }
-            Ok::<Vec<u8>, E>(out)
-        })
-        .transpose()?
-        .unwrap_or_default();
-
-    if let Some(reads_val) = map.get("reads") {
-        let reads_arr = reads_val
-            .as_array()
-            .ok_or_else(|| E::custom("readData: reads must be an array"))?;
-        let mut reads = Vec::with_capacity(reads_arr.len());
-        for r in reads_arr {
-            let obj = r
-                .as_object()
-                .ok_or_else(|| E::custom("readData: each reads item must be object"))?;
-            let obj_map: BTreeMap<String, serde_json::Value> =
-                obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            let (offset, bytes_width) = decode_read_data_span_meta_from_map(&obj_map)?;
-            let (step_order, step_order_end) = decode_step_range_from_map(&obj_map);
-            reads.push(AggregatedDataRead {
-                offset,
-                bytes_width,
-                step_order,
-                step_order_end,
-            });
-        }
-        return Ok((bytes, reads));
-    }
-
-    // Legacy single-range representation.
-    let (offset, bytes_width, _span_bytes) = decode_read_data_fields_from_map(map)?;
-    let (step_order, step_order_end) = decode_step_range_from_map(map);
-    Ok((
-        bytes,
-        vec![AggregatedDataRead {
-            offset,
-            bytes_width,
-            step_order,
-            step_order_end,
-        }],
-    ))
-}
-
-#[serde_as]
-#[derive(Deserialize)]
-struct TreeAccountLoadAggregatedWire {
-    #[serde(default)]
-    step_order: Option<u64>,
-    #[serde(default)]
-    step_order_end: u64,
-    #[serde_as(as = "DisplayFromStr")]
-    key: Pubkey,
-    read_kind: AggregatedAccountLoadKind,
-}
-
-impl From<TreeAccountLoadAggregatedWire> for TreeAccountLoadAggregated {
-    fn from(w: TreeAccountLoadAggregatedWire) -> Self {
-        let read_kind = match w.read_kind {
-            AggregatedAccountLoadKind::ReadKey {
-                step_order,
-                step_order_end,
-            } => {
-                let (start, end) = normalize_step_range(
-                    w.step_order.unwrap_or(step_order),
-                    if w.step_order.is_some() {
-                        w.step_order_end
-                    } else {
-                        step_order_end
-                    },
-                );
-                AggregatedAccountLoadKind::ReadKey {
-                    step_order: start,
-                    step_order_end: end,
-                }
-            }
-            AggregatedAccountLoadKind::ReadOwner {
-                owner,
-                step_order,
-                step_order_end,
-            } => {
-                let (start, end) = normalize_step_range(
-                    w.step_order.unwrap_or(step_order),
-                    if w.step_order.is_some() {
-                        w.step_order_end
-                    } else {
-                        step_order_end
-                    },
-                );
-                AggregatedAccountLoadKind::ReadOwner {
-                    owner,
-                    step_order: start,
-                    step_order_end: end,
-                }
-            }
-            AggregatedAccountLoadKind::ReadLamports {
-                lamports,
-                step_order,
-                step_order_end,
-            } => {
-                let (start, end) = normalize_step_range(
-                    w.step_order.unwrap_or(step_order),
-                    if w.step_order.is_some() {
-                        w.step_order_end
-                    } else {
-                        step_order_end
-                    },
-                );
-                AggregatedAccountLoadKind::ReadLamports {
-                    lamports,
-                    step_order: start,
-                    step_order_end: end,
-                }
-            }
-            AggregatedAccountLoadKind::ReadDataLen { len, step_order } => {
-                AggregatedAccountLoadKind::ReadDataLen {
-                    len,
-                    step_order: w.step_order.unwrap_or(step_order),
-                }
-            }
-            AggregatedAccountLoadKind::ReadData { bytes, mut reads } => {
-                for read in &mut reads {
-                    let (start, end) = normalize_step_range(read.step_order, read.step_order_end);
-                    read.step_order = start;
-                    read.step_order_end = end;
-                }
-                AggregatedAccountLoadKind::ReadData { bytes, reads }
-            }
-        };
-        Self {
-            key: w.key,
-            read_kind,
-        }
-    }
-}
-
-fn normalize_step_range(step_order: u64, step_order_end: u64) -> (u64, u64) {
-    if step_order <= step_order_end {
-        (step_order, step_order_end)
-    } else {
-        (step_order_end, step_order)
-    }
-}
-
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(from = "TreeAccountLoadAggregatedWire")]
-pub struct TreeAccountLoadAggregated {
-    #[serde_as(as = "DisplayFromStr")]
-    pub key: Pubkey,
-    pub read_kind: AggregatedAccountLoadKind,
-}
 
 #[derive(Clone, PartialEq)]
 pub enum RootChildren {
@@ -977,8 +514,6 @@ pub enum RootChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
     Invoke { tree_index: usize, step_order: u64 },
 }
 
@@ -989,8 +524,6 @@ pub enum RootViewChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
 }
 
 #[derive(Debug, Clone)]
@@ -1000,8 +533,6 @@ pub enum EntrypointChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
     Invoke { tree_index: usize, step_order: u64 },
 }
 
@@ -1013,8 +544,6 @@ pub enum EntrypointViewChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
 }
 
 #[derive(Debug, Clone)]
@@ -1024,8 +553,6 @@ pub enum FnCallChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
     Invoke { tree_index: usize, step_order: u64 },
 }
 
@@ -1036,8 +563,6 @@ pub enum FnCallViewChildren {
     Log(TreeLog),
     Error(TreeError),
     Account(TreeAccount),
-    RawAccountLoad(TreeAccountLoad),
-    AccountLoad(TreeAccountLoadAggregated),
     Invoke(TreeRoot<RootViewChildren>),
 }
 
@@ -1045,8 +570,6 @@ impl From<EntrypointChildren> for FnCallChildren {
     fn from(value: EntrypointChildren) -> Self {
         match value {
             EntrypointChildren::Account(a) => FnCallChildren::Account(a),
-            EntrypointChildren::RawAccountLoad(a) => FnCallChildren::RawAccountLoad(a),
-            EntrypointChildren::AccountLoad(a) => FnCallChildren::AccountLoad(a),
             EntrypointChildren::Log(l) => FnCallChildren::Log(l),
             EntrypointChildren::Error(err) => FnCallChildren::Error(err),
             EntrypointChildren::Invoke {
@@ -1062,15 +585,124 @@ impl From<EntrypointChildren> for FnCallChildren {
     }
 }
 
-impl From<&EntrypointChildren> for RootChildren {
-    fn from(value: &EntrypointChildren) -> Self {
-        match value {
-            EntrypointChildren::Log(l) => RootChildren::Log(l.clone()),
-            EntrypointChildren::Account(a) => RootChildren::Account(a.clone()),
-            EntrypointChildren::RawAccountLoad(a) => RootChildren::RawAccountLoad(a.clone()),
-            _ => panic!("Invalid conversion from EntrypointChildren to RootChildren"),
+fn push_tagged_aggregate_merge(out: &mut Vec<TaggedAccountLoadAggregated>, next: TaggedAccountLoadAggregated) {
+    if let Some(prev) = out.last_mut() {
+        if prev.tree_uid == next.tree_uid
+            && prev.aggregate.key == next.aggregate.key
+            && try_merge_aggregated_read_kind(&mut prev.aggregate.read_kind, &next.aggregate.read_kind)
+        {
+            return;
         }
     }
+    out.push(next);
+}
+
+fn tagged_data_run_head(loads: &[TaggedAccountLoad], start: usize) -> Option<(Pubkey, usize)> {
+    let first = &loads[start].load;
+    let TreeAccountLoadKind::Data { .. } = &first.read_kind else {
+        return None;
+    };
+    let key = first.key;
+    let mut len = 1usize;
+    while start + len < loads.len() {
+        let next = &loads[start + len].load;
+        if next.key == key && matches!(next.read_kind, TreeAccountLoadKind::Data { .. }) {
+            len += 1;
+        } else {
+            break;
+        }
+    }
+    Some((key, len))
+}
+
+fn aggregate_data_run_tagged(
+    run: &[TaggedAccountLoad],
+    key: Pubkey,
+    account_snapshots: &HashMap<Pubkey, AccountStateSnapshot>,
+    program_manager: Option<&ProgramManager>,
+) -> Vec<TreeAccountLoadAggregated> {
+    let loads = run.iter().map(|t| &t.load);
+    let data_loads = loads.filter(|load| matches!(load.read_kind, TreeAccountLoadKind::Data { .. }));
+    aggregate_data_segments_for_key(collect_data_segments(data_loads), key, account_snapshots, program_manager)
+}
+
+pub fn finalize_invoke_account_read_aggregates(
+    trees: &[TreeRoot<RootChildren>],
+    loads: &[TaggedAccountLoad],
+    program_manager: Option<&ProgramManager>,
+) -> Vec<TaggedAccountLoadAggregated> {
+    let mut account_snapshots: HashMap<Pubkey, AccountStateSnapshot> = HashMap::new();
+    for tree in trees {
+        collect_latest_account_after_by_key_root(&tree.children, &mut account_snapshots);
+    }
+
+    let mut tagged = loads.to_vec();
+    tagged.sort_by(|a, b| {
+        a.tree_uid
+            .cmp(&b.tree_uid)
+            .then(a.load.step_order.cmp(&b.load.step_order))
+    });
+
+    let mut out: Vec<TaggedAccountLoadAggregated> = Vec::new();
+    let mut i = 0usize;
+    while i < tagged.len() {
+        if let Some((key, run_len)) = tagged_data_run_head(&tagged, i) {
+            if run_len >= 2 {
+                let run = &tagged[i..i + run_len];
+                let aggs = aggregate_data_run_tagged(run, key, &account_snapshots, program_manager);
+                if !aggs.is_empty() {
+                    for agg in aggs {
+                        push_tagged_aggregate_merge(
+                            &mut out,
+                            TaggedAccountLoadAggregated {
+                                tree_uid: tagged[i].tree_uid,
+                                aggregate: agg,
+                            },
+                        );
+                    }
+                    i += run_len;
+                    continue;
+                }
+            }
+        }
+        if i + 4 <= tagged.len() {
+            let four = [
+                &tagged[i].load,
+                &tagged[i + 1].load,
+                &tagged[i + 2].load,
+                &tagged[i + 3].load,
+            ];
+            if let Some(agg) = try_aggregate_four_raw_loads(four) {
+                push_tagged_aggregate_merge(
+                    &mut out,
+                    TaggedAccountLoadAggregated {
+                        tree_uid: tagged[i].tree_uid,
+                        aggregate: agg,
+                    },
+                );
+                i += 4;
+                continue;
+            }
+        }
+        let load = &tagged[i].load;
+        if is_raw_key_or_owner_load(load) {
+            i += 1;
+            continue;
+        }
+        if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
+            push_tagged_aggregate_merge(
+                &mut out,
+                TaggedAccountLoadAggregated {
+                    tree_uid: tagged[i].tree_uid,
+                    aggregate: agg,
+                },
+            );
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
 }
 
 impl TreeRoot<RootChildren> {
@@ -1114,10 +746,6 @@ impl TreeRoot<RootChildren> {
 
                     new_children.push(RootChildren::Account(acc));
                 }
-                RootChildren::RawAccountLoad(a) => {
-                    new_children.push(RootChildren::RawAccountLoad(a))
-                }
-                RootChildren::AccountLoad(a) => new_children.push(RootChildren::AccountLoad(a)),
                 RootChildren::Log(l) => new_children.push(RootChildren::Log(l)),
                 RootChildren::Error(e) => new_children.push(RootChildren::Error(e)),
             }
@@ -1158,12 +786,6 @@ impl TreeRoot<RootChildren> {
                     }
 
                     new_children.push(EntrypointChildren::Account(acc));
-                }
-                EntrypointChildren::RawAccountLoad(a) => {
-                    new_children.push(EntrypointChildren::RawAccountLoad(a));
-                }
-                EntrypointChildren::AccountLoad(a) => {
-                    new_children.push(EntrypointChildren::AccountLoad(a));
                 }
                 EntrypointChildren::Log(l) => new_children.push(EntrypointChildren::Log(l)),
                 EntrypointChildren::Error(e) => new_children.push(EntrypointChildren::Error(e)),
@@ -1206,10 +828,6 @@ impl TreeRoot<RootChildren> {
 
                     new_children.push(FnCallChildren::Account(acc));
                 }
-                FnCallChildren::RawAccountLoad(a) => {
-                    new_children.push(FnCallChildren::RawAccountLoad(a))
-                }
-                FnCallChildren::AccountLoad(a) => new_children.push(FnCallChildren::AccountLoad(a)),
                 FnCallChildren::Log(l) => new_children.push(FnCallChildren::Log(l)),
                 FnCallChildren::Error(e) => new_children.push(FnCallChildren::Error(e)),
             }
@@ -1218,367 +836,12 @@ impl TreeRoot<RootChildren> {
         *children = new_children;
     }
 
-    /// Merges adjacent raw account loads into [`TreeAccountLoadAggregated`] nodes (post-execution).
-    pub fn flatten_account_loads(&mut self) {
-        Self::recurse_merge_account_loads_root(&mut self.children);
-    }
+    /// Account reads are persisted to sidecar JSON; this is a no-op on the trace tree.
+    pub fn flatten_account_loads(&mut self) {}
 
-    fn recurse_merge_account_loads_root(children: &mut Vec<RootChildren>) {
-        for child in children.iter_mut() {
-            if let RootChildren::Entrypoint(e) = child {
-                Self::recurse_merge_account_loads_ep(&mut e.children);
-            }
-        }
-        Self::collapse_raw_loads_root(children);
-    }
+    /// See [`Self::flatten_account_loads`].
+    pub fn flatten_account_loads_with_program_manager(&mut self, _program_manager: &ProgramManager) {}
 
-    fn recurse_merge_account_loads_ep(children: &mut Vec<EntrypointChildren>) {
-        for child in children.iter_mut() {
-            match child {
-                EntrypointChildren::Entrypoint(e) => {
-                    Self::recurse_merge_account_loads_ep(&mut e.children);
-                }
-                EntrypointChildren::FnCall(f) => {
-                    Self::recurse_merge_account_loads_fn(&mut f.children);
-                }
-                _ => {}
-            }
-        }
-        Self::collapse_raw_loads_ep(children);
-    }
-
-    fn recurse_merge_account_loads_fn(children: &mut Vec<FnCallChildren>) {
-        for child in children.iter_mut() {
-            match child {
-                FnCallChildren::Entrypoint(e) => {
-                    Self::recurse_merge_account_loads_ep(&mut e.children);
-                }
-                FnCallChildren::FnCall(f) => {
-                    Self::recurse_merge_account_loads_fn(&mut f.children);
-                }
-                _ => {}
-            }
-        }
-        Self::collapse_raw_loads_fn(children);
-    }
-
-    fn collapse_raw_loads_root(children: &mut Vec<RootChildren>) {
-        let old = std::mem::take(children);
-        let mut account_snapshots: HashMap<Pubkey, Vec<u8>> = HashMap::new();
-        collect_latest_account_after_by_key_root(&old, &mut account_snapshots);
-        let mut out = Vec::with_capacity(old.len());
-        let mut i = 0usize;
-        while i < old.len() {
-            if let Some((key, run_len)) = Self::root_data_run_head(&old, i) {
-                if run_len >= 2 {
-                    let run = &old[i..i + run_len];
-                    let aggs = aggregate_data_run_root(run, key, &account_snapshots);
-                    if !aggs.is_empty() {
-                        for agg in aggs {
-                            Self::push_root_child_with_account_load_merge(
-                                &mut out,
-                                RootChildren::AccountLoad(agg),
-                            );
-                        }
-                        i += run_len;
-                        continue;
-                    }
-                }
-            }
-            if i + 4 <= old.len() {
-                if let Some(four) = Self::root_children_four_raw_refs(&old[i..i + 4]) {
-                    if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        Self::push_root_child_with_account_load_merge(
-                            &mut out,
-                            RootChildren::AccountLoad(agg),
-                        );
-                        i += 4;
-                        continue;
-                    }
-                }
-            }
-            if let RootChildren::RawAccountLoad(load) = &old[i] {
-                if is_raw_key_or_owner_load(load) {
-                    i += 1;
-                    continue;
-                }
-                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
-                    Self::push_root_child_with_account_load_merge(
-                        &mut out,
-                        RootChildren::AccountLoad(agg),
-                    );
-                    i += 1;
-                    continue;
-                }
-            }
-            Self::push_root_child_with_account_load_merge(&mut out, old[i].clone());
-            i += 1;
-        }
-        *children = out;
-    }
-
-    fn root_data_run_head(children: &[RootChildren], start: usize) -> Option<(Pubkey, usize)> {
-        let RootChildren::RawAccountLoad(first) = &children[start] else {
-            return None;
-        };
-        let TreeAccountLoadKind::Data { .. } = &first.read_kind else {
-            return None;
-        };
-        let key = first.key;
-        let mut len = 1usize;
-        while start + len < children.len() {
-            match &children[start + len] {
-                RootChildren::RawAccountLoad(next)
-                    if next.key == key
-                        && matches!(next.read_kind, TreeAccountLoadKind::Data { .. }) =>
-                {
-                    len += 1;
-                }
-                _ => break,
-            }
-        }
-        Some((key, len))
-    }
-
-    fn root_children_four_raw_refs(slice: &[RootChildren]) -> Option<[&TreeAccountLoad; 4]> {
-        match (&slice[0], &slice[1], &slice[2], &slice[3]) {
-            (
-                RootChildren::RawAccountLoad(a0),
-                RootChildren::RawAccountLoad(a1),
-                RootChildren::RawAccountLoad(a2),
-                RootChildren::RawAccountLoad(a3),
-            ) => Some([a0, a1, a2, a3]),
-            _ => None,
-        }
-    }
-
-    fn collapse_raw_loads_ep(children: &mut Vec<EntrypointChildren>) {
-        let old = std::mem::take(children);
-        let mut account_snapshots: HashMap<Pubkey, Vec<u8>> = HashMap::new();
-        collect_latest_account_after_by_key_ep(&old, &mut account_snapshots);
-        let mut out = Vec::with_capacity(old.len());
-        let mut i = 0usize;
-        while i < old.len() {
-            if let Some((key, run_len)) = Self::ep_data_run_head(&old, i) {
-                if run_len >= 2 {
-                    let run = &old[i..i + run_len];
-                    let aggs = aggregate_data_run_ep(run, key, &account_snapshots);
-                    if !aggs.is_empty() {
-                        for agg in aggs {
-                            Self::push_ep_child_with_account_load_merge(
-                                &mut out,
-                                EntrypointChildren::AccountLoad(agg),
-                            );
-                        }
-                        i += run_len;
-                        continue;
-                    }
-                }
-            }
-            if i + 4 <= old.len() {
-                if let Some(four) = Self::ep_children_four_raw_refs(&old[i..i + 4]) {
-                    if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        Self::push_ep_child_with_account_load_merge(
-                            &mut out,
-                            EntrypointChildren::AccountLoad(agg),
-                        );
-                        i += 4;
-                        continue;
-                    }
-                }
-            }
-            if let EntrypointChildren::RawAccountLoad(load) = &old[i] {
-                if is_raw_key_or_owner_load(load) {
-                    i += 1;
-                    continue;
-                }
-                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
-                    Self::push_ep_child_with_account_load_merge(
-                        &mut out,
-                        EntrypointChildren::AccountLoad(agg),
-                    );
-                    i += 1;
-                    continue;
-                }
-            }
-            Self::push_ep_child_with_account_load_merge(&mut out, old[i].clone());
-            i += 1;
-        }
-        *children = out;
-    }
-
-    fn ep_data_run_head(children: &[EntrypointChildren], start: usize) -> Option<(Pubkey, usize)> {
-        let EntrypointChildren::RawAccountLoad(first) = &children[start] else {
-            return None;
-        };
-        let TreeAccountLoadKind::Data { .. } = &first.read_kind else {
-            return None;
-        };
-        let key = first.key;
-        let mut len = 1usize;
-        while start + len < children.len() {
-            match &children[start + len] {
-                EntrypointChildren::RawAccountLoad(next)
-                    if next.key == key
-                        && matches!(next.read_kind, TreeAccountLoadKind::Data { .. }) =>
-                {
-                    len += 1;
-                }
-                _ => break,
-            }
-        }
-        Some((key, len))
-    }
-
-    fn ep_children_four_raw_refs(slice: &[EntrypointChildren]) -> Option<[&TreeAccountLoad; 4]> {
-        match (&slice[0], &slice[1], &slice[2], &slice[3]) {
-            (
-                EntrypointChildren::RawAccountLoad(a0),
-                EntrypointChildren::RawAccountLoad(a1),
-                EntrypointChildren::RawAccountLoad(a2),
-                EntrypointChildren::RawAccountLoad(a3),
-            ) => Some([a0, a1, a2, a3]),
-            _ => None,
-        }
-    }
-
-    fn collapse_raw_loads_fn(children: &mut Vec<FnCallChildren>) {
-        let old = std::mem::take(children);
-        let mut account_snapshots: HashMap<Pubkey, Vec<u8>> = HashMap::new();
-        collect_latest_account_after_by_key_fn(&old, &mut account_snapshots);
-        let mut out = Vec::with_capacity(old.len());
-        let mut i = 0usize;
-        while i < old.len() {
-            if let Some((key, run_len)) = Self::fn_data_run_head(&old, i) {
-                if run_len >= 2 {
-                    let run = &old[i..i + run_len];
-                    let aggs = aggregate_data_run_fn(run, key, &account_snapshots);
-                    if !aggs.is_empty() {
-                        for agg in aggs {
-                            Self::push_fn_child_with_account_load_merge(
-                                &mut out,
-                                FnCallChildren::AccountLoad(agg),
-                            );
-                        }
-                        i += run_len;
-                        continue;
-                    }
-                }
-            }
-            if i + 4 <= old.len() {
-                if let Some(four) = Self::fn_children_four_raw_refs(&old[i..i + 4]) {
-                    if let Some(agg) = try_aggregate_four_raw_loads(four) {
-                        Self::push_fn_child_with_account_load_merge(
-                            &mut out,
-                            FnCallChildren::AccountLoad(agg),
-                        );
-                        i += 4;
-                        continue;
-                    }
-                }
-            }
-            if let FnCallChildren::RawAccountLoad(load) = &old[i] {
-                if is_raw_key_or_owner_load(load) {
-                    i += 1;
-                    continue;
-                }
-                if let Some(agg) = try_scalar_raw_load_as_aggregated(load) {
-                    Self::push_fn_child_with_account_load_merge(
-                        &mut out,
-                        FnCallChildren::AccountLoad(agg),
-                    );
-                    i += 1;
-                    continue;
-                }
-            }
-            Self::push_fn_child_with_account_load_merge(&mut out, old[i].clone());
-            i += 1;
-        }
-        *children = out;
-    }
-
-    fn fn_data_run_head(children: &[FnCallChildren], start: usize) -> Option<(Pubkey, usize)> {
-        let FnCallChildren::RawAccountLoad(first) = &children[start] else {
-            return None;
-        };
-        let TreeAccountLoadKind::Data { .. } = &first.read_kind else {
-            return None;
-        };
-        let key = first.key;
-        let mut len = 1usize;
-        while start + len < children.len() {
-            match &children[start + len] {
-                FnCallChildren::RawAccountLoad(next)
-                    if next.key == key
-                        && matches!(next.read_kind, TreeAccountLoadKind::Data { .. }) =>
-                {
-                    len += 1;
-                }
-                _ => break,
-            }
-        }
-        Some((key, len))
-    }
-
-    fn fn_children_four_raw_refs(slice: &[FnCallChildren]) -> Option<[&TreeAccountLoad; 4]> {
-        match (&slice[0], &slice[1], &slice[2], &slice[3]) {
-            (
-                FnCallChildren::RawAccountLoad(a0),
-                FnCallChildren::RawAccountLoad(a1),
-                FnCallChildren::RawAccountLoad(a2),
-                FnCallChildren::RawAccountLoad(a3),
-            ) => Some([a0, a1, a2, a3]),
-            _ => None,
-        }
-    }
-
-    fn push_root_child_with_account_load_merge(out: &mut Vec<RootChildren>, child: RootChildren) {
-        if let RootChildren::AccountLoad(next_load) = child {
-            if let Some(RootChildren::AccountLoad(prev_load)) = out.last_mut() {
-                if prev_load.key == next_load.key
-                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
-                {
-                    return;
-                }
-            }
-            out.push(RootChildren::AccountLoad(next_load));
-            return;
-        }
-        out.push(child);
-    }
-
-    fn push_ep_child_with_account_load_merge(
-        out: &mut Vec<EntrypointChildren>,
-        child: EntrypointChildren,
-    ) {
-        if let EntrypointChildren::AccountLoad(next_load) = child {
-            if let Some(EntrypointChildren::AccountLoad(prev_load)) = out.last_mut() {
-                if prev_load.key == next_load.key
-                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
-                {
-                    return;
-                }
-            }
-            out.push(EntrypointChildren::AccountLoad(next_load));
-            return;
-        }
-        out.push(child);
-    }
-
-    fn push_fn_child_with_account_load_merge(out: &mut Vec<FnCallChildren>, child: FnCallChildren) {
-        if let FnCallChildren::AccountLoad(next_load) = child {
-            if let Some(FnCallChildren::AccountLoad(prev_load)) = out.last_mut() {
-                if prev_load.key == next_load.key
-                    && try_merge_aggregated_read_kind(&mut prev_load.read_kind, &next_load.read_kind)
-                {
-                    return;
-                }
-            }
-            out.push(FnCallChildren::AccountLoad(next_load));
-            return;
-        }
-        out.push(child);
-    }
 }
 
 fn merge_step_ranges(
@@ -1860,31 +1123,26 @@ struct DataReadSegmentRef<'a> {
     step_order: u64,
 }
 
-fn collect_latest_account_after_by_key_root(
-    children: &[RootChildren],
-    out: &mut HashMap<Pubkey, Vec<u8>>,
-) {
-    for c in children {
-        match c {
-            RootChildren::Account(a) => {
-                out.insert(a.key, a.after.data().to_vec());
-            }
-            RootChildren::Entrypoint(e) => {
-                collect_latest_account_after_by_key_ep(&e.children, out);
-            }
-            _ => {}
-        }
-    }
+#[derive(Clone, Debug)]
+struct AccountStateSnapshot {
+    data: Vec<u8>,
+    owner: Pubkey,
 }
 
 fn collect_latest_account_after_by_key_ep(
     children: &[EntrypointChildren],
-    out: &mut HashMap<Pubkey, Vec<u8>>,
+    out: &mut HashMap<Pubkey, AccountStateSnapshot>,
 ) {
     for c in children {
         match c {
             EntrypointChildren::Account(a) => {
-                out.insert(a.key, a.after.data().to_vec());
+                out.insert(
+                    a.key,
+                    AccountStateSnapshot {
+                        data: a.after.data().to_vec(),
+                        owner: a.after.owner(),
+                    },
+                );
             }
             EntrypointChildren::Entrypoint(e) => {
                 collect_latest_account_after_by_key_ep(&e.children, out);
@@ -1897,14 +1155,43 @@ fn collect_latest_account_after_by_key_ep(
     }
 }
 
+fn collect_latest_account_after_by_key_root(
+    children: &[RootChildren],
+    out: &mut HashMap<Pubkey, AccountStateSnapshot>,
+) {
+    for c in children {
+        match c {
+            RootChildren::Account(a) => {
+                out.insert(
+                    a.key,
+                    AccountStateSnapshot {
+                        data: a.after.data().to_vec(),
+                        owner: a.after.owner(),
+                    },
+                );
+            }
+            RootChildren::Entrypoint(e) => {
+                collect_latest_account_after_by_key_ep(&e.children, out);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn collect_latest_account_after_by_key_fn(
     children: &[FnCallChildren],
-    out: &mut HashMap<Pubkey, Vec<u8>>,
+    out: &mut HashMap<Pubkey, AccountStateSnapshot>,
 ) {
     for c in children {
         match c {
             FnCallChildren::Account(a) => {
-                out.insert(a.key, a.after.data().to_vec());
+                out.insert(
+                    a.key,
+                    AccountStateSnapshot {
+                        data: a.after.data().to_vec(),
+                        owner: a.after.owner(),
+                    },
+                );
             }
             FnCallChildren::Entrypoint(e) => {
                 collect_latest_account_after_by_key_ep(&e.children, out);
@@ -1951,7 +1238,8 @@ where
 fn aggregate_data_segments_for_key(
     mut segments: Vec<DataReadSegmentRef<'_>>,
     key: Pubkey,
-    account_snapshots: &HashMap<Pubkey, Vec<u8>>,
+    account_snapshots: &HashMap<Pubkey, AccountStateSnapshot>,
+    program_manager: Option<&ProgramManager>,
 ) -> Vec<TreeAccountLoadAggregated> {
     if segments.is_empty() {
         return Vec::new();
@@ -2012,8 +1300,8 @@ fn aggregate_data_segments_for_key(
 
     let mut full_bytes = account_snapshots
         .get(&key)
+        .map(|s| s.data.clone())
         .filter(|b| !b.is_empty())
-        .cloned()
         .unwrap_or_default();
 
     if full_bytes.len() < max_needed_len {
@@ -2029,11 +1317,18 @@ fn aggregate_data_segments_for_key(
         }
     }
 
+    let parsed = program_manager.and_then(|pm| {
+        let owner = account_snapshots.get(&key).map(|s| s.owner)?;
+        let idl_lookup = pm.get_idl_lookup_cached(&owner)?;
+        idl_lookup.get_account(&full_bytes)
+    });
+
     vec![TreeAccountLoadAggregated {
         key,
         read_kind: AggregatedAccountLoadKind::ReadData {
             bytes: full_bytes,
             reads,
+            parsed,
         },
     }]
 }
@@ -2054,42 +1349,6 @@ fn write_segment_bytes(
         let copy_end = write_start.saturating_add(copy_len);
         region_bytes[write_start..copy_end].copy_from_slice(&seg.bytes[..copy_len]);
     }
-}
-
-fn aggregate_data_run_root(
-    run: &[RootChildren],
-    key: Pubkey,
-    account_snapshots: &HashMap<Pubkey, Vec<u8>>,
-) -> Vec<TreeAccountLoadAggregated> {
-    let loads = run.iter().filter_map(|c| match c {
-        RootChildren::RawAccountLoad(load) => Some(load),
-        _ => None,
-    });
-    aggregate_data_segments_for_key(collect_data_segments(loads), key, account_snapshots)
-}
-
-fn aggregate_data_run_ep(
-    run: &[EntrypointChildren],
-    key: Pubkey,
-    account_snapshots: &HashMap<Pubkey, Vec<u8>>,
-) -> Vec<TreeAccountLoadAggregated> {
-    let loads = run.iter().filter_map(|c| match c {
-        EntrypointChildren::RawAccountLoad(load) => Some(load),
-        _ => None,
-    });
-    aggregate_data_segments_for_key(collect_data_segments(loads), key, account_snapshots)
-}
-
-fn aggregate_data_run_fn(
-    run: &[FnCallChildren],
-    key: Pubkey,
-    account_snapshots: &HashMap<Pubkey, Vec<u8>>,
-) -> Vec<TreeAccountLoadAggregated> {
-    let loads = run.iter().filter_map(|c| match c {
-        FnCallChildren::RawAccountLoad(load) => Some(load),
-        _ => None,
-    });
-    aggregate_data_segments_for_key(collect_data_segments(loads), key, account_snapshots)
 }
 
 impl TreeRoot<RootChildren> {
@@ -2128,12 +1387,6 @@ impl TreeRoot<RootChildren> {
                 RootChildren::Account(a) => tree_view
                     .children
                     .push(RootViewChildren::Account(a.clone())),
-                RootChildren::RawAccountLoad(a) => tree_view
-                    .children
-                    .push(RootViewChildren::RawAccountLoad(a.clone())),
-                RootChildren::AccountLoad(a) => tree_view
-                    .children
-                    .push(RootViewChildren::AccountLoad(a.clone())),
                 RootChildren::Error(e) => {
                     tree_view.children.push(RootViewChildren::Error(e.clone()))
                 }
@@ -2205,12 +1458,6 @@ impl TreeRoot<RootChildren> {
         }
     }
 
-    pub fn push_raw_account_load(&mut self, data: TreeAccountLoad) {
-        match self.children.last_mut() {
-            Some(RootChildren::Entrypoint(e)) => e.push_raw_account_load(data),
-            _ => self.children.push(RootChildren::RawAccountLoad(data)),
-        }
-    }
 }
 
 impl TreeEntrypoint<EntrypointChildren> {
@@ -2244,12 +1491,6 @@ impl TreeEntrypoint<EntrypointChildren> {
                 EntrypointChildren::Account(a) => tree_view
                     .children
                     .push(EntrypointViewChildren::Account(a.clone())),
-                EntrypointChildren::RawAccountLoad(a) => tree_view
-                    .children
-                    .push(EntrypointViewChildren::RawAccountLoad(a.clone())),
-                EntrypointChildren::AccountLoad(a) => tree_view
-                    .children
-                    .push(EntrypointViewChildren::AccountLoad(a.clone())),
                 EntrypointChildren::Error(e) => tree_view
                     .children
                     .push(EntrypointViewChildren::Error(e.clone())),
@@ -2399,14 +1640,6 @@ impl TreeEntrypoint<EntrypointChildren> {
         }
     }
 
-    pub fn push_raw_account_load(&mut self, data: TreeAccountLoad) {
-        match self.children.last_mut() {
-            Some(EntrypointChildren::Entrypoint(e)) => e.push_raw_account_load(data),
-            Some(EntrypointChildren::FnCall(f)) => f.push_raw_account_load(data),
-            _ => self.children.push(EntrypointChildren::RawAccountLoad(data)),
-        }
-    }
-
     pub fn is_superset_of(&self, entrypoint: &TreeEntrypoint<EntrypointChildren>) -> bool {
         if self != entrypoint {
             return false;
@@ -2463,12 +1696,6 @@ impl TreeFnCall<FnCallChildren> {
                 FnCallChildren::Account(a) => tree_view
                     .children
                     .push(FnCallViewChildren::Account(a.clone())),
-                FnCallChildren::RawAccountLoad(a) => tree_view
-                    .children
-                    .push(FnCallViewChildren::RawAccountLoad(a.clone())),
-                FnCallChildren::AccountLoad(a) => tree_view
-                    .children
-                    .push(FnCallViewChildren::AccountLoad(a.clone())),
                 FnCallChildren::Log(l) => {
                     tree_view.children.push(FnCallViewChildren::Log(l.clone()))
                 }
@@ -2587,14 +1814,6 @@ impl TreeFnCall<FnCallChildren> {
             Some(FnCallChildren::Entrypoint(e)) => e.push_account_diff(data),
             Some(FnCallChildren::FnCall(f)) => f.push_account_diff(data),
             _ => self.children.push(FnCallChildren::Account(data)),
-        }
-    }
-
-    pub fn push_raw_account_load(&mut self, data: TreeAccountLoad) {
-        match self.children.last_mut() {
-            Some(FnCallChildren::Entrypoint(e)) => e.push_raw_account_load(data),
-            Some(FnCallChildren::FnCall(f)) => f.push_raw_account_load(data),
-            _ => self.children.push(FnCallChildren::RawAccountLoad(data)),
         }
     }
 

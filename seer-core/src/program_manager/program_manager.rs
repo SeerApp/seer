@@ -232,6 +232,15 @@ impl ProgramManager {
         }
     }
 
+    /// Fast-path lookup that never performs RPC/network fetches.
+    pub fn get_idl_lookup_cached(&self, key: &Pubkey) -> Option<Arc<IdlLookup>> {
+        self.inner
+            .lock()
+            .expect("program manager inner lock should not be poisoned")
+            .get(key)
+            .and_then(|program_info| program_info.idl_lookup.clone())
+    }
+
     pub fn queue_disasm_if_needed(&self, program_id: Pubkey) {
         let mut guard = self
             .disasm_status

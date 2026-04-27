@@ -47,11 +47,26 @@ pub fn save_register_trace_chunk(
     trace_chunk: &RegisterTraceChunk,
 ) {
     let filename = format!(
-        "{}_{}_{}_{}_{}.json",
+        "{}_{}_reg_{}_{}_{}.json",
         signature, instruction, min_order, max_order, tree_uid
     );
 
     save_json_file(get_output_path(&filename), trace_chunk, false);
+}
+
+pub fn save_account_reads_chunk(
+    signature: &str,
+    instruction: u8,
+    tree_uid: u64,
+    min_order: u64,
+    max_order: u64,
+    chunk: &serde_json::Value,
+) {
+    let filename = format!(
+        "{}_{}_reads_{}_{}_{}.json",
+        signature, instruction, min_order, max_order, tree_uid
+    );
+    save_json_file(get_output_path(&filename), chunk, false);
 }
 
 /// Writes `<folder>/<signature>_<instruction>.json`, creating `folder` as needed (overwrites).
@@ -80,13 +95,32 @@ pub fn save_register_trace_chunk_to_dir(
     trace_chunk: &RegisterTraceChunk,
 ) {
     let filename = format!(
-        "{}_{}_{}_{}_{}.json",
+        "{}_{}_reg_{}_{}_{}.json",
         signature, instruction, min_order, max_order, tree_uid
     );
     let mut output_path = folder.clone();
     output_path.push(filename);
     create_dir_all(folder).expect("create register trace output dir");
     save_json_file(output_path, trace_chunk, true);
+}
+
+pub fn save_account_reads_chunk_to_dir(
+    folder: &PathBuf,
+    signature: &str,
+    instruction: u8,
+    tree_uid: u64,
+    min_order: u64,
+    max_order: u64,
+    chunk: &serde_json::Value,
+) {
+    let filename = format!(
+        "{}_{}_reads_{}_{}_{}.json",
+        signature, instruction, min_order, max_order, tree_uid
+    );
+    let mut output_path = folder.clone();
+    output_path.push(filename);
+    create_dir_all(folder).expect("create account reads output dir");
+    save_json_file(output_path, chunk, true);
 }
 
 pub fn load_trace_tree(
@@ -157,7 +191,7 @@ mod tests {
     use crate::{
         init_seer_logger,
         register_trace::{RegisterSnapshot, RegisterTraceChunk},
-        save::save_register_trace_chunk_to_dir,
+        save::{save_account_reads_chunk_to_dir, save_register_trace_chunk_to_dir},
         SeerLogger,
     };
 
@@ -192,7 +226,7 @@ mod tests {
 
         save_register_trace_chunk_to_dir(&folder, "sig", 3, 7, 10, 42, &chunk);
 
-        let output_path = folder.join("sig_3_10_42_7.json");
+        let output_path = folder.join("sig_3_reg_10_42_7.json");
         assert!(output_path.is_file());
 
         let content = fs::read_to_string(&output_path).expect("read register trace");
@@ -201,6 +235,17 @@ mod tests {
         assert!(content.contains("\"0\": \"7\""));
         assert!(!content.contains("\"11\""));
 
+        fs::remove_dir_all(folder).expect("remove temp dir");
+    }
+
+    #[test]
+    fn saves_account_reads_chunk_with_reads_infix_filename() {
+        init_test_logger();
+        let folder = temp_output_dir();
+        let chunk = serde_json::json!({});
+        save_account_reads_chunk_to_dir(&folder, "sig", 2, 99, 5, 6, &chunk);
+        let output_path = folder.join("sig_2_reads_5_6_99.json");
+        assert!(output_path.is_file());
         fs::remove_dir_all(folder).expect("remove temp dir");
     }
 }

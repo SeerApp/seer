@@ -2,9 +2,10 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
+    account_reads::types::TreeAccountLoad,
     contexts::invoke::InvokeContext,
     program_manager::program_manager::ProgramManager,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeAccountLoad, TreeRoot},
+    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
 /// Sender-preserving layer
@@ -106,13 +107,25 @@ impl Tracer {
             .expect("Finalizing tree on empty invoke context");
 
         invoke_context.flatten_account_diffs();
-        invoke_context.flatten_account_loads();
 
         for tree in invoke_context.trees_iter_mut() {
             if let Some(idl_lookup) = program_manager.get_idl_lookup(&tree.receiver) {
                 idl_lookup.parse_tree(tree);
             }
         }
+    }
+
+    pub fn persist_account_read_sidecars(
+        &mut self,
+        signature: &str,
+        instruction: u8,
+        program_manager: &ProgramManager,
+    ) {
+        let Some(ic) = self.invoke_context.as_mut() else {
+            return;
+        };
+        let rows = ic.finalize_account_read_aggregates(Some(program_manager));
+        crate::account_reads_persist::persist_account_reads_chunks(signature, instruction, &rows);
     }
 }
 

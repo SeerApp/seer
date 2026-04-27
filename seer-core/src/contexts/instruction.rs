@@ -4,12 +4,13 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
+    account_reads::types::TreeAccountLoad,
     analysis::Analysis,
     contexts::tracer::Tracer,
     program_manager::program_manager::ProgramManager,
     register_trace::{RegisterTraceCollector, REGISTER_COUNT},
     save::save_register_trace_chunk,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeAccountLoad, TreeRoot},
+    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
 };
 
 pub struct InstructionContext {
@@ -128,7 +129,11 @@ impl InstructionContext {
     }
 
     pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
-        self.tracer.finalize_tree(&program_manager);
+        self.tracer.finalize_tree(program_manager);
+        if let Some(sig) = self.signature.as_deref() {
+            self.tracer
+                .persist_account_read_sidecars(sig, self.index, program_manager);
+        }
     }
 
     fn save_register_trace_chunk(

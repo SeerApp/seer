@@ -7,8 +7,9 @@ use std::ptr;
 use solana_pubkey::Pubkey;
 
 use crate::{
+    account_reads::types::TreeAccountLoad,
     contexts::seer::SeerContext,
-    tree::nodes::{TreeAccountLoad, TreeAccountLoadKind},
+    tree::nodes::TreeAccountLoadKind,
 };
 
 /// Snapshot of Agave `SerializedAccountMetadata` fields needed for classification.

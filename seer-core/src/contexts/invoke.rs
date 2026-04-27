@@ -5,19 +5,22 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     program_manager::program_manager::ProgramManager,
+    account_reads::types::{TaggedAccountLoad, TaggedAccountLoadAggregated, TreeAccountLoad},
     tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
-        nodes::{
-            EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeAccountLoad,
-            TreeEntrypoint, TreeLog, TreeRoot,
-        },
+        nodes::{self, EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint, TreeLog, TreeRoot},
     },
 };
+
+enum Pushable {
+    Log(TreeLog),
+    Account(TreeAccount),
+}
 
 struct LiveTrace {
     tree_index: usize,
     last_known_entrypoint: Option<TreeEntrypoint<EntrypointChildren>>,
-    pushables: Vec<EntrypointChildren>,
+    pushables: Vec<Pushable>,
 
     // edge cases
     delayed_log_edge_case: DelayedLogEdgeCase,
@@ -26,6 +29,7 @@ struct LiveTrace {
 pub struct InvokeContext {
     live_trace: Vec<LiveTrace>,
     trees: Vec<TreeRoot<RootChildren>>,
+    account_reads: Vec<TaggedAccountLoad>,
 }
 
 impl InvokeContext {
@@ -33,6 +37,7 @@ impl InvokeContext {
         Self {
             live_trace: vec![],
             trees: vec![],
+            account_reads: vec![],
         }
     }
 
@@ -61,16 +66,12 @@ impl InvokeContext {
             if let Some(mut lke) = live_trace.last_known_entrypoint.take() {
                 for p in live_trace.pushables.iter() {
                     match p {
-                        EntrypointChildren::Log(l) => {
+                        Pushable::Log(l) => {
                             lke.push_log(l.message.clone(), l.step_order);
                         }
-                        EntrypointChildren::Account(a) => {
+                        Pushable::Account(a) => {
                             lke.push_account_diff(a.clone());
                         }
-                        EntrypointChildren::RawAccountLoad(a) => {
-                            lke.push_raw_account_load(a.clone());
-                        }
-                        _ => panic!("Unexpected value in pushables!"),
                     }
                 }
 
@@ -114,7 +115,10 @@ impl InvokeContext {
         }
 
         for p in &live_trace.pushables {
-            root.children.push(p.into());
+            match p {
+                Pushable::Log(l) => root.children.push(RootChildren::Log(l.clone())),
+                Pushable::Account(a) => root.children.push(RootChildren::Account(a.clone())),
+            }
         }
 
         self.live_trace.pop();
@@ -130,16 +134,12 @@ impl InvokeContext {
         if let Some(mut lke) = live_trace.last_known_entrypoint.clone() {
             for p in live_trace.pushables.iter() {
                 match p {
-                    EntrypointChildren::Log(l) => {
+                    Pushable::Log(l) => {
                         lke.push_log(l.message.clone(), l.step_order);
                     }
-                    EntrypointChildren::Account(a) => {
+                    Pushable::Account(a) => {
                         lke.push_account_diff(a.clone());
                     }
-                    EntrypointChildren::RawAccountLoad(a) => {
-                        lke.push_raw_account_load(a.clone());
-                    }
-                    _ => panic!("Unexpected value in pushables!"),
                 }
             }
             live_trace.pushables = vec![];
@@ -169,7 +169,7 @@ impl InvokeContext {
             .log_hook(&mut live_trace.last_known_entrypoint);
 
         if live_trace.last_known_entrypoint.is_some() {
-            live_trace.pushables.push(EntrypointChildren::Log(TreeLog::new(
+            live_trace.pushables.push(Pushable::Log(TreeLog::new(
                 message.to_string(),
                 step_order,
             )));
@@ -190,7 +190,7 @@ impl InvokeContext {
 
         if let Some(live_trace) = self.live_trace.last_mut() {
             if live_trace.last_known_entrypoint.is_some() {
-                live_trace.pushables.push(EntrypointChildren::Account(data));
+                live_trace.pushables.push(Pushable::Account(data));
                 return;
             }
         }
@@ -199,24 +199,16 @@ impl InvokeContext {
     }
 
     pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
-        let tree_index = self
+        let tree_uid = self
             .live_trace
             .last()
-            .map(|trace| trace.tree_index)
-            .unwrap_or(0);
+            .map(|lt| self.trees[lt.tree_index].uid)
+            .unwrap_or_else(|| self.trees.last().map(|t| t.uid).unwrap_or(0));
 
-        let root = &mut self.trees[tree_index];
-
-        if let Some(live_trace) = self.live_trace.last_mut() {
-            if live_trace.last_known_entrypoint.is_some() {
-                live_trace
-                    .pushables
-                    .push(EntrypointChildren::RawAccountLoad(data));
-                return;
-            }
-        }
-
-        root.push_raw_account_load(data);
+        self.account_reads.push(TaggedAccountLoad {
+            tree_uid,
+            load: data,
+        });
     }
 
     pub fn get_last_receiver(&self) -> Pubkey {
@@ -242,6 +234,23 @@ impl InvokeContext {
         for tree in self.trees.iter_mut() {
             tree.flatten_account_loads();
         }
+    }
+
+    pub fn flatten_account_loads_with_program_manager(&mut self, program_manager: &ProgramManager) {
+        for tree in self.trees.iter_mut() {
+            tree.flatten_account_loads_with_program_manager(program_manager);
+        }
+    }
+
+    pub fn finalize_account_read_aggregates(
+        &mut self,
+        program_manager: Option<&ProgramManager>,
+    ) -> Vec<TaggedAccountLoadAggregated> {
+        nodes::finalize_invoke_account_read_aggregates(
+            &self.trees[..],
+            &self.account_reads,
+            program_manager,
+        )
     }
 }
 
