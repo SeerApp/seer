@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-fn load_chunk_rows(json: &serde_json::Value) -> Option<Vec<(u64, ViewAccountRead)>> {
+pub fn load_account_reads_chunk_rows(json: &serde_json::Value) -> Option<Vec<(u64, ViewAccountRead)>> {
     let obj = json.as_object()?;
     let mut rows: Vec<(u64, ViewAccountRead)> = Vec::with_capacity(obj.len());
     for (step_key, row_val) in obj {
@@ -49,7 +49,7 @@ fn try_enrich_read_data(
         return false;
     };
 
-    let Some(idl) = program_context.get_idl_lookup(idl_receiver) else {
+    let Some(idl) = program_context.get_idl_lookup_cached(idl_receiver) else {
         return false;
     };
 
@@ -60,6 +60,22 @@ fn try_enrich_read_data(
     *parsed = Some(result.parsed);
     *parsed_byte_offsets = result.parsed_byte_offsets;
     true
+}
+
+/// Applies IDL parsing to `ReadData` rows using the same rules as the post-instruction refresh pass.
+/// Returns how many rows were updated.
+pub fn enrich_chunk_rows(
+    rows: &mut [(u64, ViewAccountRead)],
+    receiver_by_account: &HashMap<Pubkey, Pubkey>,
+    program_context: &GlobalProgramContext,
+) -> usize {
+    let mut n = 0usize;
+    for (_, row) in rows.iter_mut() {
+        if try_enrich_read_data(row, receiver_by_account, program_context) {
+            n += 1;
+        }
+    }
+    n
 }
 
 fn refresh_reads_chunk_file(
@@ -75,18 +91,11 @@ fn refresh_reads_chunk_file(
 
     let raw = fs::read_to_string(chunk_path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let Some(mut rows) = load_chunk_rows(&json) else {
+    let Some(mut rows) = load_account_reads_chunk_rows(&json) else {
         return Some(());
     };
 
-    let mut any = false;
-    for (_, row) in rows.iter_mut() {
-        if try_enrich_read_data(row, receiver_by_account, program_context) {
-            any = true;
-        }
-    }
-
-    if !any {
+    if enrich_chunk_rows(&mut rows, receiver_by_account, program_context) == 0 {
         return Some(());
     }
 

@@ -152,10 +152,11 @@ pub fn save_account_reads_chunk(
 ) {
     let reads_dir = account_reads_dir(signature, instruction, key);
     create_dir_all(&reads_dir).expect("create reads output dir");
+
     save_json_file(
         reads_dir.join(register_trace_chunk_filename(min_order, max_order)),
         chunk,
-        false,
+        true,
     );
 }
 
