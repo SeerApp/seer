@@ -39,27 +39,21 @@ impl TxMetadata {
             data: TxData {
                 success: true,
                 output: TxOutput { error: None },
-                notes: TxNotes { warnings: vec![] }
+                notes: TxNotes { warnings: vec![] },
             },
         }
     }
 
-    pub fn set_output(
-        &mut self,
-        error: Option<InstructionError>,
-        idl: Option<&dyn IdlTreeParser>,
-    ) {
-        if let Some(err) = error {
-            // Keep the first observed program error as canonical transaction metadata.
-            // Program exits unwind from inner to outer, so the earliest error we see is innermost.
-            if self.data.output.error.is_none() {
-                let message = idl
-                    .map(|parser| parser.get_error(err.clone()))
-                    .unwrap_or_else(|| err.to_string());
-                self.data.output.error = Some(TxError { message });
-            }
-            self.data.success = false;
+    pub fn set_error(&mut self, err: InstructionError, idl: Option<&dyn IdlTreeParser>) {
+        // Keep the first observed program error as canonical transaction metadata.
+        // Program exits unwind from inner to outer, so the earliest error we see is innermost.
+        if self.data.output.error.is_none() {
+            let message = idl
+                .map(|parser| parser.get_error(err.clone()))
+                .unwrap_or_else(|| err.to_string());
+            self.data.output.error = Some(TxError { message });
         }
+        self.data.success = false;
     }
 }
 
@@ -72,21 +66,27 @@ mod tests {
     fn keeps_first_error_as_canonical_output() {
         let mut meta = TxMetadata::default();
 
-        meta.set_output(Some(InstructionError::Custom(1)), None);
-        meta.set_output(Some(InstructionError::Custom(2)), None);
+        meta.set_error(InstructionError::Custom(1), None);
+        meta.set_error(InstructionError::Custom(2), None);
 
         assert!(!meta.data.success);
-        assert_eq!(meta.data.output.error.as_ref().unwrap().message, "custom program error: 0x1");
+        assert_eq!(
+            meta.data.output.error.as_ref().unwrap().message,
+            "custom program error: 0x1"
+        );
     }
 
     #[test]
-    fn successful_programs_do_not_clear_existing_error() {
+    fn subsequent_errors_do_not_replace_canonical_error() {
         let mut meta = TxMetadata::default();
 
-        meta.set_output(Some(InstructionError::Custom(7)), None);
-        meta.set_output(None, None);
+        meta.set_error(InstructionError::Custom(7), None);
+        meta.set_error(InstructionError::Custom(8), None);
 
         assert!(!meta.data.success);
-        assert_eq!(meta.data.output.error.as_ref().unwrap().message, "custom program error: 0x7");
+        assert_eq!(
+            meta.data.output.error.as_ref().unwrap().message,
+            "custom program error: 0x7"
+        );
     }
 }

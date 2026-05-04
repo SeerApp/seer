@@ -1,27 +1,77 @@
 use std::collections::HashSet;
+use std::fmt;
 
 use codama_nodes::{
     DefaultValueStrategy, DefinedTypeNode, EnumVariantTypeNode, NestedTypeNodeTrait, ProgramNode,
     TypeNode,
 };
 
-use crate::idl::{IdlIssue, IdlIssues, IdlLocation};
-
-fn push_loc_path(loc: &IdlLocation, segment: impl Into<String>) -> IdlLocation {
-    let mut l = loc.clone();
-    match &mut l {
-        IdlLocation::SchemaInstruction { path, .. }
-        | IdlLocation::SchemaAccount { path, .. }
-        | IdlLocation::SchemaDefinedType { path, .. } => path.push(segment.into()),
-        _ => {}
-    }
-    l
+/// Human-readable location for Codama schema validation warnings.
+#[derive(Clone, Debug)]
+enum SchemaLoc {
+    Instruction {
+        instruction: String,
+        path: Vec<String>,
+    },
+    Account {
+        account: String,
+        path: Vec<String>,
+    },
+    DefinedType {
+        type_name: String,
+        path: Vec<String>,
+    },
 }
 
-/// Single pass after JSON parse: record schema issues and names of definitions to skip permanently.
+impl fmt::Display for SchemaLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SchemaLoc::Instruction { instruction, path } => {
+                write!(f, "instruction:{instruction}")?;
+                if !path.is_empty() {
+                    write!(f, "/{}", path.join("/"))?;
+                }
+                Ok(())
+            }
+            SchemaLoc::Account { account, path } => {
+                write!(f, "account:{account}")?;
+                if !path.is_empty() {
+                    write!(f, "/{}", path.join("/"))?;
+                }
+                Ok(())
+            }
+            SchemaLoc::DefinedType { type_name, path } => {
+                write!(f, "defined_type:{type_name}")?;
+                if !path.is_empty() {
+                    write!(f, "/{}", path.join("/"))?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn push_loc_path(loc: &SchemaLoc, segment: impl Into<String>) -> SchemaLoc {
+    let seg = segment.into();
+    match loc.clone() {
+        SchemaLoc::Instruction { instruction, mut path } => {
+            path.push(seg);
+            SchemaLoc::Instruction { instruction, path }
+        }
+        SchemaLoc::Account { account, mut path } => {
+            path.push(seg);
+            SchemaLoc::Account { account, path }
+        }
+        SchemaLoc::DefinedType { type_name, mut path } => {
+            path.push(seg);
+            SchemaLoc::DefinedType { type_name, path }
+        }
+    }
+}
+
+/// Single pass after JSON parse: emit schema warnings and names of definitions to skip permanently.
 pub fn analyze_codama_program(
     program: &ProgramNode,
-    issues: &mut IdlIssues,
     skip_instructions: &mut HashSet<String>,
     skip_accounts: &mut HashSet<String>,
 ) {
@@ -30,12 +80,14 @@ pub fn analyze_codama_program(
     for ix in &program.instructions {
         let ix_name = ix.name.to_string();
         let discriminator_count = ix.discriminators.len();
-        let has_valid_instruction_discriminator_shape = discriminator_count > 0
-            || (single_instruction_program && discriminator_count == 0);
+        let has_valid_instruction_discriminator_shape =
+            discriminator_count > 0 || (single_instruction_program && discriminator_count == 0);
         if !has_valid_instruction_discriminator_shape {
-            issues.note_instruction_invalid_discriminator_layout(
-                ix_name.clone(),
+            crate::seer_warn!(
+                "Codama schema: skipping instruction {:?}: invalid discriminator layout (count={}, single_instruction_program={})",
+                ix_name,
                 discriminator_count,
+                single_instruction_program
             );
             skip_instructions.insert(ix_name);
             continue;
@@ -44,25 +96,17 @@ pub fn analyze_codama_program(
         let runtime_args: Vec<_> = ix
             .arguments
             .iter()
-            .filter(|arg| {
-                arg.default_value_strategy != Some(DefaultValueStrategy::Omitted)
-            })
+            .filter(|arg| arg.default_value_strategy != Some(DefaultValueStrategy::Omitted))
             .collect();
         let n = runtime_args.len();
         let mut ok = true;
         for (i, arg) in runtime_args.iter().enumerate() {
             let last = i + 1 == n;
-            let loc = IdlLocation::SchemaInstruction {
+            let loc = SchemaLoc::Instruction {
                 instruction: ix_name.clone(),
                 path: vec![arg.name.to_string()],
             };
-            if !validate_type_tree(
-                &arg.r#type,
-                &program.defined_types,
-                last,
-                loc,
-                issues,
-            ) {
+            if !validate_type_tree(&arg.r#type, &program.defined_types, last, loc) {
                 ok = false;
                 break;
             }
@@ -74,8 +118,7 @@ pub fn analyze_codama_program(
 
     for acc in &program.accounts {
         let acc_name = acc.name.to_string();
-        let should_validate =
-            program.accounts.len() == 1 || !acc.discriminators.is_empty();
+        let should_validate = program.accounts.len() == 1 || !acc.discriminators.is_empty();
         if !should_validate {
             continue;
         }
@@ -85,17 +128,11 @@ pub fn analyze_codama_program(
         let mut ok = true;
         for (i, field) in inner.fields.iter().enumerate() {
             let last = i + 1 == n;
-            let loc = IdlLocation::SchemaAccount {
+            let loc = SchemaLoc::Account {
                 account: acc_name.clone(),
                 path: vec![field.name.to_string()],
             };
-            if !validate_type_tree(
-                &field.r#type,
-                &program.defined_types,
-                last,
-                loc,
-                issues,
-            ) {
+            if !validate_type_tree(&field.r#type, &program.defined_types, last, loc) {
                 ok = false;
                 break;
             }
@@ -105,50 +142,47 @@ pub fn analyze_codama_program(
         }
     }
 }
+
 fn validate_type_tree(
     ty: &TypeNode,
     defined_types: &[DefinedTypeNode],
     is_last: bool,
-    loc: IdlLocation,
-    issues: &mut IdlIssues,
+    loc: SchemaLoc,
 ) -> bool {
     match ty {
         TypeNode::Link(link) => {
             let Some(dt) = defined_types.iter().find(|d| d.name == link.name) else {
-                issues.note(IdlIssue::MissingDefinedTypeLink {
-                    link_name: link.name.to_string(),
-                    at: loc,
-                });
+                crate::seer_warn!(
+                    "Codama schema: missing defined type link {:?} at {}",
+                    link.name.to_string(),
+                    loc
+                );
                 return false;
             };
-            let inner = IdlLocation::SchemaDefinedType {
+            let inner = SchemaLoc::DefinedType {
                 type_name: dt.name.to_string(),
                 path: vec![],
             };
-            validate_type_tree(&dt.r#type, defined_types, is_last, inner, issues)
+            validate_type_tree(&dt.r#type, defined_types, is_last, inner)
         }
         TypeNode::Bytes(_) | TypeNode::String(_) if !is_last => {
-            issues.note(IdlIssue::InvalidLayoutBytesOrStringWithoutLength { at: loc });
+            crate::seer_warn!(
+                "Codama schema: bytes/string field must be last in layout at {}",
+                loc
+            );
             false
         }
         TypeNode::RemainderOption(_) if !is_last => {
-            issues.note(IdlIssue::InvalidLayoutRemainderOptionNotLast { at: loc });
+            crate::seer_warn!(
+                "Codama schema: remainderOption must be last field at {}",
+                loc
+            );
             false
         }
-        TypeNode::Sentinel(s) => validate_type_tree(
-            &s.r#type,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
-        TypeNode::ZeroableOption(z) => validate_type_tree(
-            &z.item,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
+        TypeNode::Sentinel(s) => validate_type_tree(&s.r#type, defined_types, is_last, loc),
+        TypeNode::ZeroableOption(z) => {
+            validate_type_tree(&z.item, defined_types, is_last, loc)
+        }
         TypeNode::Struct(s) => {
             let n = s.fields.len();
             for (i, field) in s.fields.iter().enumerate() {
@@ -159,7 +193,6 @@ fn validate_type_tree(
                     defined_types,
                     last_sib && is_last,
                     floc,
-                    issues,
                 ) {
                     return false;
                 }
@@ -171,59 +204,23 @@ fn validate_type_tree(
             for (i, item) in t.items.iter().enumerate() {
                 let last_sib = i + 1 == n;
                 let iloc = push_loc_path(&loc, i.to_string());
-                if !validate_type_tree(
-                    item,
-                    defined_types,
-                    last_sib && is_last,
-                    iloc,
-                    issues,
-                ) {
+                if !validate_type_tree(item, defined_types, last_sib && is_last, iloc) {
                     return false;
                 }
             }
             true
         }
-        TypeNode::Array(a) => validate_type_tree(
-            &a.item,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
-        TypeNode::Set(s) => validate_type_tree(
-            &s.item,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
+        TypeNode::Array(a) => validate_type_tree(&a.item, defined_types, is_last, loc),
+        TypeNode::Set(s) => validate_type_tree(&s.item, defined_types, is_last, loc),
         TypeNode::Map(m) => {
             let kloc = push_loc_path(&loc, "key");
-            if !validate_type_tree(
-                &m.key,
-                defined_types,
-                is_last,
-                kloc,
-                issues,
-            ) {
+            if !validate_type_tree(&m.key, defined_types, is_last, kloc) {
                 return false;
             }
             let vloc = push_loc_path(&loc, "value");
-            validate_type_tree(
-                &m.value,
-                defined_types,
-                is_last,
-                vloc,
-                issues,
-            )
+            validate_type_tree(&m.value, defined_types, is_last, vloc)
         }
-        TypeNode::Option(o) => validate_type_tree(
-            &o.item,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
+        TypeNode::Option(o) => validate_type_tree(&o.item, defined_types, is_last, loc),
         TypeNode::Enum(e) => {
             for v in &e.variants {
                 match v {
@@ -240,7 +237,6 @@ fn validate_type_tree(
                                 defined_types,
                                 last_sib && is_last,
                                 floc,
-                                issues,
                             ) {
                                 return false;
                             }
@@ -258,7 +254,6 @@ fn validate_type_tree(
                                 defined_types,
                                 last_sib && is_last,
                                 iloc,
-                                issues,
                             ) {
                                 return false;
                             }
@@ -271,64 +266,28 @@ fn validate_type_tree(
         TypeNode::HiddenPrefix(h) => {
             for (i, c) in h.prefix.iter().enumerate() {
                 let ploc = push_loc_path(&loc, format!("prefix[{i}]"));
-                if !validate_type_tree(
-                    &c.r#type,
-                    defined_types,
-                    is_last,
-                    ploc,
-                    issues,
-                ) {
+                if !validate_type_tree(&c.r#type, defined_types, is_last, ploc) {
                     return false;
                 }
             }
-            validate_type_tree(&h.r#type, defined_types, is_last, loc, issues)
+            validate_type_tree(&h.r#type, defined_types, is_last, loc)
         }
         TypeNode::HiddenSuffix(h) => {
-            if !validate_type_tree(&h.r#type, defined_types, is_last, loc.clone(), issues) {
+            if !validate_type_tree(&h.r#type, defined_types, is_last, loc.clone()) {
                 return false;
             }
             for (i, c) in h.suffix.iter().enumerate() {
                 let sloc = push_loc_path(&loc, format!("suffix[{i}]"));
-                if !validate_type_tree(
-                    &c.r#type,
-                    defined_types,
-                    is_last,
-                    sloc,
-                    issues,
-                ) {
+                if !validate_type_tree(&c.r#type, defined_types, is_last, sloc) {
                     return false;
                 }
             }
             true
         }
-        TypeNode::FixedSize(f) => validate_type_tree(
-            &f.r#type,
-            defined_types,
-            true,
-            loc,
-            issues,
-        ),
-        TypeNode::SizePrefix(s) => validate_type_tree(
-            &s.r#type,
-            defined_types,
-            true,
-            loc,
-            issues,
-        ),
-        TypeNode::PostOffset(p) => validate_type_tree(
-            &p.r#type,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
-        TypeNode::PreOffset(p) => validate_type_tree(
-            &p.r#type,
-            defined_types,
-            is_last,
-            loc,
-            issues,
-        ),
+        TypeNode::FixedSize(f) => validate_type_tree(&f.r#type, defined_types, true, loc),
+        TypeNode::SizePrefix(s) => validate_type_tree(&s.r#type, defined_types, true, loc),
+        TypeNode::PostOffset(p) => validate_type_tree(&p.r#type, defined_types, is_last, loc),
+        TypeNode::PreOffset(p) => validate_type_tree(&p.r#type, defined_types, is_last, loc),
         TypeNode::Amount(_)
         | TypeNode::Boolean(_)
         | TypeNode::DateTime(_)
@@ -336,4 +295,3 @@ fn validate_type_tree(
         _ => true,
     }
 }
-

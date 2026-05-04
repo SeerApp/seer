@@ -2,23 +2,18 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use object::{
-    File as ObjectFile, Object, ObjectSection, ObjectSymbol, SymbolKind, SymbolSection,
-};
 use agave_syscalls::create_program_runtime_environment_v1;
+use anyhow::{Context, Result};
+use object::{File as ObjectFile, Object, ObjectSection, ObjectSymbol, SymbolKind, SymbolSection};
 use serde_json::{Map, Value};
 use solana_program_runtime::{
     execution_budget::SVMTransactionExecutionBudget,
     invoke_context::InvokeContext,
     solana_sbpf::{
-        ebpf,
-        elf::Executable,
-        program::BuiltinProgram,
-        static_analysis::Analysis,
+        ebpf, elf::Executable, program::BuiltinProgram, static_analysis::Analysis,
         vm::ContextObject,
     },
 };
@@ -176,8 +171,7 @@ fn call_imm_operand_name(line: &str) -> Option<&str> {
 /// Byte offset matching llvm-objdump: `text_section_vma + insn.ptr * INSN_SIZE`.
 fn instruction_objdump_byte_offset(text_section_vma: u64, insn: &ebpf::Insn) -> Result<u64> {
     let insn_offset = u64::try_from(
-        insn
-            .ptr
+        insn.ptr
             .checked_mul(ebpf::INSN_SIZE)
             .context("instruction slot offset overflow")?,
     )
@@ -207,10 +201,9 @@ fn call_imm_destination_byte_offset<C: ContextObject>(
     let key = ver.calculate_call_imm_target_pc(insn.ptr, insn.imm);
 
     let target_slot = if ver.static_syscalls() {
-        usize::try_from(u64::from(key)).map_err(|_| anyhow::anyhow!("CALL_IMM target PC overflow"))?
-    } else if let Some((_name, target_pc)) =
-        executable.get_function_registry().lookup_by_key(key)
-    {
+        usize::try_from(u64::from(key))
+            .map_err(|_| anyhow::anyhow!("CALL_IMM target PC overflow"))?
+    } else if let Some((_name, target_pc)) = executable.get_function_registry().lookup_by_key(key) {
         target_pc
     } else {
         return Ok(None);
@@ -229,10 +222,7 @@ fn call_imm_destination_byte_offset<C: ContextObject>(
     ))
 }
 
-fn loader_syscall_name<C: ContextObject>(
-    loader: &BuiltinProgram<C>,
-    key: u32,
-) -> Option<String> {
+fn loader_syscall_name<C: ContextObject>(loader: &BuiltinProgram<C>, key: u32) -> Option<String> {
     loader
         .get_function_registry()
         .lookup_by_key(key)
@@ -252,13 +242,9 @@ fn embellish_call_imm_line<C: ContextObject>(
     let ver = executable.get_sbpf_version();
     let trimmed = line.trim_end();
 
-    if let Some(dest_byte) = call_imm_destination_byte_offset(executable, insn, text_section_vma)?
-    {
+    if let Some(dest_byte) = call_imm_destination_byte_offset(executable, insn, text_section_vma)? {
         if trimmed.starts_with("syscall") {
-            if trimmed.ends_with("[invalid]")
-                || trimmed == "syscall"
-                || trimmed == "syscall "
-            {
+            if trimmed.ends_with("[invalid]") || trimmed == "syscall" || trimmed == "syscall " {
                 return Ok(format!("syscall 0x{dest_byte:x}"));
             }
             if trimmed.contains(" @ 0x") {
@@ -313,7 +299,10 @@ fn embellish_call_reg_line(line: &str) -> String {
     format!("{line}  [indirect callx; target in register at runtime]")
 }
 
-fn embellish_syscall_line<C: ContextObject>(executable: &Executable<C>, insn: &ebpf::Insn) -> String {
+fn embellish_syscall_line<C: ContextObject>(
+    executable: &Executable<C>,
+    insn: &ebpf::Insn,
+) -> String {
     let key = insn.imm as u32;
     match loader_syscall_name(executable.get_loader(), key) {
         Some(name) => format!("syscall {name} (key {key:#010x})"),
@@ -430,7 +419,9 @@ fn embellish_instruction_line<C: ContextObject>(
     line: &str,
 ) -> Result<String> {
     match insn.opc {
-        ebpf::CALL_IMM => embellish_call_imm_line(executable, insn, text_section_vma, text_syms, line),
+        ebpf::CALL_IMM => {
+            embellish_call_imm_line(executable, insn, text_section_vma, text_syms, line)
+        }
         ebpf::CALL_REG => Ok(embellish_call_reg_line(line)),
         ebpf::EXIT => Ok(line.to_string()),
         _ => embellish_pc_relative_jump_line(text_section_vma, insn, line),
@@ -452,10 +443,20 @@ fn is_unconditional_jump(opc: u8) -> bool {
 }
 
 fn is_any_jump(opc: u8) -> bool {
-    jmp_destination_byte_offset(0, &ebpf::Insn { ptr: 0, opc, dst: 0, src: 0, off: 0, imm: 0 })
-        .ok()
-        .flatten()
-        .is_some()
+    jmp_destination_byte_offset(
+        0,
+        &ebpf::Insn {
+            ptr: 0,
+            opc,
+            dst: 0,
+            src: 0,
+            off: 0,
+            imm: 0,
+        },
+    )
+    .ok()
+    .flatten()
+    .is_some()
 }
 
 fn jump_cmp(op: &str) -> Option<&'static str> {
@@ -647,26 +648,22 @@ pub fn run_cli() -> Result<()> {
         .nth(1)
         .context("usage: disasm <path-to-program.so>")?;
     let path = Path::new(&path);
-    let out_dir = path
+    let out_root = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    disassemble_to_json_chunks(path, out_dir)
+    let programs_out_dir = out_root.join("programs");
+    disassemble_to_json_chunks(path, &programs_out_dir)
 }
 
-pub fn disassemble_to_json_chunks(path: &Path, out_dir: &Path) -> Result<()> {
+pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Result<()> {
     let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
     let text_vma = text_section_vma_from_elf(&bytes)?;
     let text_syms = TextFnSymbols::build(&bytes)?;
     let feature_set = SVMFeatureSet::all_enabled();
     let compute_budget = SVMTransactionExecutionBudget::new_with_defaults(false);
-    let loader = create_program_runtime_environment_v1(
-        &feature_set,
-        &compute_budget,
-        false,
-        true,
-    )
-    .map_err(|e| anyhow::anyhow!("create_program_runtime_environment_v1: {e:?}"))?;
+    let loader = create_program_runtime_environment_v1(&feature_set, &compute_budget, false, true)
+        .map_err(|e| anyhow::anyhow!("create_program_runtime_environment_v1: {e:?}"))?;
     let loader = Arc::new(loader);
     let executable = Executable::<InvokeContext>::load(&bytes, loader)
         .map_err(|e| anyhow::anyhow!("ELF load failed: {e:?}"))?;
@@ -677,91 +674,135 @@ pub fn disassemble_to_json_chunks(path: &Path, out_dir: &Path) -> Result<()> {
         .file_stem()
         .and_then(|s| s.to_str())
         .context("input path must have a UTF-8 filename")?;
+    let (disasm_program_dir, lifted_program_dir) =
+        create_program_output_dirs(programs_out_dir, stem)?;
 
-    for (_chunk_idx, chunk) in analysis.instructions.chunks(CHUNK_INSTRUCTIONS).enumerate() {
-        let start_byte = instruction_objdump_byte_offset(text_vma, chunk.first().unwrap())?;
-        let end_byte = instruction_objdump_byte_offset(text_vma, chunk.last().unwrap())?;
+    for chunk in analysis.instructions.chunks(CHUNK_INSTRUCTIONS) {
+        let (start_byte, end_byte) = chunk_range(text_vma, chunk)?;
+        let (disasm_json, lift_rows) =
+            build_chunk_outputs(chunk, &analysis, &executable, text_vma, &text_syms)?;
+        let lifted_json = serde_json::json!({
+            "blocks": Value::Object(build_lifted_blocks_json(&lift_rows)),
+        });
 
-        let mut map = Map::new();
-        let mut lift_rows: Vec<LiftRow> = Vec::with_capacity(chunk.len());
-        for insn in chunk {
-            let byte_offset = instruction_objdump_byte_offset(text_vma, insn)?;
-            let line = analysis.disassemble_instruction(insn, insn.ptr);
-            let line = embellish_instruction_line(&executable, insn, text_vma, &text_syms, &line)?;
-            let rust_line = lift_rust_like_line(&line);
-            map.insert(byte_offset.to_string(), Value::String(line));
-            let jump_target = jmp_destination_byte_offset(text_vma, insn)?;
-            let is_jump = is_any_jump(insn.opc);
-            lift_rows.push(LiftRow {
-                pc: byte_offset,
-                rust_line,
-                jump_target,
-                is_cond_jump: is_jump && !is_unconditional_jump(insn.opc),
-                is_uncond_jump: is_unconditional_jump(insn.opc),
-                is_exit: insn.opc == ebpf::EXIT,
-            });
+        let file_name = format!("{start_byte}_{end_byte}.json");
+        write_json_file(
+            &disasm_program_dir.join(&file_name),
+            &Value::Object(disasm_json),
+        )?;
+        write_json_file(&lifted_program_dir.join(file_name), &lifted_json)?;
+    }
+
+    Ok(())
+}
+
+fn create_program_output_dirs(
+    programs_out_dir: &Path,
+    program_stem: &str,
+) -> Result<(PathBuf, PathBuf)> {
+    let program_dir = programs_out_dir.join(program_stem);
+    let disasm_program_dir = program_dir.join("disasm");
+    let lifted_program_dir = program_dir.join("lifted");
+    std::fs::create_dir_all(&disasm_program_dir)
+        .with_context(|| format!("create {}", disasm_program_dir.display()))?;
+    std::fs::create_dir_all(&lifted_program_dir)
+        .with_context(|| format!("create {}", lifted_program_dir.display()))?;
+    Ok((disasm_program_dir, lifted_program_dir))
+}
+
+fn chunk_range(text_vma: u64, chunk: &[ebpf::Insn]) -> Result<(u64, u64)> {
+    let first = chunk
+        .first()
+        .context("instruction chunk unexpectedly empty")?;
+    let last = chunk
+        .last()
+        .context("instruction chunk unexpectedly empty")?;
+    Ok((
+        instruction_objdump_byte_offset(text_vma, first)?,
+        instruction_objdump_byte_offset(text_vma, last)?,
+    ))
+}
+
+fn build_chunk_outputs(
+    chunk: &[ebpf::Insn],
+    analysis: &Analysis,
+    executable: &Executable<InvokeContext>,
+    text_vma: u64,
+    text_syms: &TextFnSymbols,
+) -> Result<(Map<String, Value>, Vec<LiftRow>)> {
+    let mut disasm_json = Map::new();
+    let mut lift_rows = Vec::with_capacity(chunk.len());
+
+    for insn in chunk {
+        let pc = instruction_objdump_byte_offset(text_vma, insn)?;
+        let line = analysis.disassemble_instruction(insn, insn.ptr);
+        let line = embellish_instruction_line(executable, insn, text_vma, text_syms, &line)?;
+        disasm_json.insert(pc.to_string(), Value::String(line.clone()));
+
+        let is_uncond_jump = is_unconditional_jump(insn.opc);
+        lift_rows.push(LiftRow {
+            pc,
+            rust_line: lift_rust_like_line(&line),
+            jump_target: jmp_destination_byte_offset(text_vma, insn)?,
+            is_cond_jump: is_any_jump(insn.opc) && !is_uncond_jump,
+            is_uncond_jump,
+            is_exit: insn.opc == ebpf::EXIT,
+        });
+    }
+
+    Ok((disasm_json, lift_rows))
+}
+
+fn build_lifted_blocks_json(lift_rows: &[LiftRow]) -> Map<String, Value> {
+    let mut blocks_json = Map::new();
+    let leaders = build_block_starts(lift_rows);
+
+    for (i, start) in leaders.iter().enumerate() {
+        let end_exclusive = leaders.get(i + 1).copied().unwrap_or(u64::MAX);
+        let block_rows: Vec<&LiftRow> = lift_rows
+            .iter()
+            .filter(|r| r.pc >= *start && r.pc < end_exclusive)
+            .collect();
+        if block_rows.is_empty() {
+            continue;
         }
 
-        let out_name = format!("{stem}_{start_byte}_{end_byte}.json");
-        let out_path = out_dir.join(out_name);
-        let file = File::create(&out_path)
-            .with_context(|| format!("create {}", out_path.display()))?;
-        let mut w = BufWriter::new(file);
-        serde_json::to_writer(&mut w, &Value::Object(map))
-            .with_context(|| format!("write {}", out_path.display()))?;
-        w.flush().with_context(|| format!("flush {}", out_path.display()))?;
-
-        let mut blocks_json = Map::<String, Value>::new();
-        let leaders = build_block_starts(&lift_rows);
-        for (i, start) in leaders.iter().enumerate() {
-            let end_exclusive = leaders.get(i + 1).copied().unwrap_or(u64::MAX);
-            let block_rows: Vec<&LiftRow> = lift_rows
-                .iter()
-                .filter(|r| r.pc >= *start && r.pc < end_exclusive)
-                .collect();
-            if block_rows.is_empty() {
-                continue;
+        let mut succ = Vec::new();
+        if let Some(last) = block_rows.last() {
+            if let Some(t) = last.jump_target {
+                succ.push(format!("bb_0x{t:x}"));
             }
-            let mut succ: Vec<String> = Vec::new();
-            if let Some(last) = block_rows.last() {
-                if let Some(t) = last.jump_target {
-                    succ.push(format!("bb_0x{t:x}"));
-                }
-                if (last.is_cond_jump || (!last.is_uncond_jump && !last.is_exit))
-                    && lift_rows.iter().any(|r| r.pc > last.pc)
+            if last.is_cond_jump || (!last.is_uncond_jump && !last.is_exit) {
+                if let Some(fallthrough_pc) =
+                    lift_rows.iter().find(|r| r.pc > last.pc).map(|r| r.pc)
                 {
-                    let f = lift_rows
-                        .iter()
-                        .find(|r| r.pc > last.pc)
-                        .map(|r| r.pc)
-                        .unwrap_or(last.pc);
-                    succ.push(format!("bb_0x{f:x}"));
+                    succ.push(format!("bb_0x{fallthrough_pc:x}"));
                 }
             }
-            blocks_json.insert(start.to_string(), serde_json::json!({
+        }
+
+        blocks_json.insert(
+            start.to_string(),
+            serde_json::json!({
                 "label": format!("bb_0x{start:x}"),
                 "start": start,
                 "end": block_rows.last().map(|r| r.pc).unwrap_or(*start),
                 "succ": succ,
                 "lines": block_rows.iter().map(|r| r.rust_line.clone()).collect::<Vec<_>>(),
                 "line_pcs": block_rows.iter().map(|r| r.pc).collect::<Vec<_>>(),
-            }));
-        }
-        let struct_out_name = format!("{stem}_rust_struct_{start_byte}_{end_byte}.json");
-        let struct_out_path = out_dir.join(struct_out_name);
-        let struct_file = File::create(&struct_out_path)
-            .with_context(|| format!("create {}", struct_out_path.display()))?;
-        let mut sw = BufWriter::new(struct_file);
-        serde_json::to_writer(
-            &mut sw,
-            &serde_json::json!({
-                "blocks": Value::Object(blocks_json),
             }),
-        )
-        .with_context(|| format!("write {}", struct_out_path.display()))?;
-        sw.flush()
-            .with_context(|| format!("flush {}", struct_out_path.display()))?;
+        );
     }
 
-    Ok(())
+    blocks_json
+}
+
+fn write_json_file(path: &Path, value: &Value) -> Result<()> {
+    let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, value)
+        .with_context(|| format!("write {}", path.display()))?;
+    writer
+        .flush()
+        .with_context(|| format!("flush {}", path.display()))
 }

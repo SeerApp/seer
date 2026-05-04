@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::{
     binary_lookup_tree::LookupNode,
     dwarf::source_die::{SourceDie, SourceDieType},
-    tree::nodes::{EntrypointChildren, TreeEntrypoint},
+    tree::nodes::entrypoint::{EntrypointChildren, TreeEntrypoint},
 };
 
 pub struct EntrypointLookup {

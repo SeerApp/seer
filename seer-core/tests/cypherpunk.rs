@@ -4,15 +4,13 @@ use std::str::FromStr;
 
 use seer_core::{
     init_seer_logger,
-    program_manager::program_manager::ProgramManager,
+    global_program_context::global_program_context::GlobalProgramContext,
     save::{load_trace_tree, save_trace_tree_to_dir},
     SeerLogger,
 };
 use solana_pubkey::Pubkey;
 
-use crate::common::{
-    get_analysis_directories, seer_test_save_enabled, _run_tx,
-};
+use crate::common::{_run_tx, get_analysis_directories, seer_test_save_enabled};
 
 #[test]
 fn test_instruction_context() {
@@ -28,15 +26,15 @@ fn test_instruction_context() {
         .ok()
         .unwrap();
 
-    let (program_manager, _warnings) = ProgramManager::init(&cwd, &source_project_root, None)
-        .expect("ProgramManager::init");
+    let (global_program_context, _warnings) =
+        GlobalProgramContext::init(&cwd, &source_project_root, None).expect("GlobalProgramContext::init");
 
     let sig =
         "JuiMHw4p3kgdBsgXK8134Vb4jaL8gfvsXYNvxfi6XgRRckZCugVNuReWUBpg1dTncXoEi8QmAz5fbHP1cvgb45Q"
             .to_string();
 
     for index in 0..=2 {
-        let result = _run_tx(&analysis_root, fee_payer, index, &sig, &program_manager);
+        let result = _run_tx(&analysis_root, fee_payer, index, &sig, &global_program_context);
         if seer_test_save_enabled() {
             save_trace_tree_to_dir(&canonical_result_root, &sig, index, result);
         } else {

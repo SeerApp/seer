@@ -1,18 +1,15 @@
 pub mod anchor;
 pub mod codama;
 pub mod cursor;
-pub mod issues;
 pub mod parsed_arg;
 pub mod types;
-
-pub use issues::{IdlIssue, IdlIssues, IdlLocation, IdlProgramContext};
 
 use crate::errors::IrrecoverableError;
 use crate::idl::anchor::AnchorIdlLookup;
 use crate::idl::codama::CodamaIdlLookup;
 use crate::idl::types::{ParsedAccount, ParsedInstruction};
 use crate::target_reader::Target;
-use crate::tree::nodes::{RootChildren, TreeRoot};
+use crate::tree::nodes::root::{RootChildren, TreeRoot};
 use solana_instruction_error::InstructionError;
 use std::{fs, path::PathBuf};
 use thiserror::Error;

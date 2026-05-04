@@ -17,7 +17,7 @@ pub struct ParsedAccount {
 }
 
 /// Identifier to inform UI. Used for special cases which require unique
-/// display options. 
+/// display options.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum ProgramIdentifier {
     Default,

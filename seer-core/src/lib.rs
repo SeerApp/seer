@@ -1,12 +1,10 @@
-pub mod account_read_trace;
 pub mod account_reads;
-pub mod account_reads_persist;
 pub mod analysis;
 pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
-pub mod errors;
 pub mod entrypoint_lookup;
+pub mod errors;
 pub mod idl;
 pub mod logger;
 pub mod meta;
@@ -17,6 +15,7 @@ pub mod runbook;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
+pub mod sysvar_accounts;
 pub mod target_reader;
 pub mod tree;
 
@@ -71,7 +70,10 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init(authority: Pubkey, network_rpc_url: Option<String>) -> Result<(), IrrecoverableError> {
+pub async fn init(
+    authority: Pubkey,
+    network_rpc_url: Option<String>,
+) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
     let ctx = SourcesContext::new(authority, network_rpc_url).await?;

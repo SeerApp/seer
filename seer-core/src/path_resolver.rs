@@ -23,12 +23,14 @@ impl PathResolver {
     pub fn dwarf_path_to_relative_path(&self, dwarf_path: &PathBuf) -> anyhow::Result<PathBuf> {
         Ok(dwarf_path
             .strip_prefix(self.compile_dir.clone())
-            .map_err(|e| anyhow::anyhow!(
-                "DWARF path {:?} does not correspond to compile directory {:?}: {}",
-                dwarf_path,
-                self.compile_dir,
-                e,
-            ))?
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "DWARF path {:?} does not correspond to compile directory {:?}: {}",
+                    dwarf_path,
+                    self.compile_dir,
+                    e,
+                )
+            })?
             .to_path_buf())
     }
 

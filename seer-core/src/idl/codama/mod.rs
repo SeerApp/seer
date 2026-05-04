@@ -1,4 +1,3 @@
-mod ctx;
 mod cursor;
 mod parsed_arg;
 mod schema;
@@ -8,7 +7,6 @@ use std::collections::HashSet;
 
 use crate::idl::{
     codama::{
-        ctx::{CodamaParseCtx, ParseSite},
         parsed_arg::{
             eq_instruciton_input_value_node, eq_value_node, get_parsed_arg_value,
             get_view_struct_type_node,
@@ -19,7 +17,7 @@ use crate::idl::{
     display_error_name,
     parsed_arg::{ParsedArg, ParsedArgValue},
     types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
-    issues::SpeculativeCandidateGuard, IdlIssue, IdlIssues, IdlProgramContext, IdlTreeParser,
+    IdlTreeParser,
 };
 use codama_nodes::{
     DefaultValueStrategy, DiscriminatorNode, InstructionNode, NestedTypeNodeTrait, RootNode,
@@ -29,7 +27,6 @@ use solana_instruction_error::InstructionError;
 
 pub struct CodamaIdlLookup {
     root_node: RootNode,
-    idl_issues: RefCell<IdlIssues>,
     skipped_instructions: RefCell<HashSet<String>>,
     skipped_accounts: RefCell<HashSet<String>>,
 }
@@ -37,14 +34,6 @@ pub struct CodamaIdlLookup {
 impl IdlTreeParser for CodamaIdlLookup {
     fn get_instruction(&self, data: &[u8]) -> Option<ParsedInstruction> {
         let ix = self.get_instruction_node(data)?;
-        let mut issues = self.idl_issues.borrow_mut();
-        let mut ctx = CodamaParseCtx {
-            issues: &mut *issues,
-            site: ParseSite::RuntimeInstruction {
-                name: ix.name.to_string(),
-            },
-            path: vec![],
-        };
 
         let mut parsed_args = vec![];
         let mut account_names = vec![];
@@ -56,9 +45,7 @@ impl IdlTreeParser for CodamaIdlLookup {
         let arg_count = ix.arguments.len();
         let mut cur = Cursor::new(data);
         for (idx, argument) in ix.arguments.iter().enumerate() {
-            ctx.path = vec![argument.name.to_string()];
             let parsed_arg_value = get_parsed_arg_value(
-                &mut ctx,
                 &argument.r#type,
                 &mut cur,
                 &self.root_node.program.defined_types,
@@ -91,40 +78,19 @@ impl IdlTreeParser for CodamaIdlLookup {
     fn get_account(&self, data: &[u8]) -> Option<ParsedAccount> {
         let program = &self.root_node.program;
         let data_len = data.len();
-        let mut best_match: Option<(bool, usize, ParsedAccount, Vec<IdlIssue>)> = None;
+        let mut best_match: Option<(bool, usize, ParsedAccount)> = None;
 
         for ax in &program.accounts {
             if !self.account_discriminators_match(ax, data) {
                 continue;
             }
 
-            // Speculative decode: many account types can match by size; decode issues go into
-            // the same [`IdlIssues`] scratch buffer until we pick a winner (see merge below).
-            let (parsed_struct, issues_for_candidate) = {
-                let mut issues = self.idl_issues.borrow_mut();
-                let mut guard = SpeculativeCandidateGuard::new(&mut *issues);
-                let parsed_struct = {
-                    let mut ctx = CodamaParseCtx {
-                        issues: guard.issues_mut(),
-                        site: ParseSite::RuntimeAccount {
-                            name: ax.name.to_string(),
-                        },
-                        path: vec![],
-                    };
-                    let mut cur = Cursor::new(data);
-                    let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
-                    let defined_types = &program.defined_types;
+            let parsed_struct = {
+                let mut cur = Cursor::new(data);
+                let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
+                let defined_types = &program.defined_types;
 
-                    get_view_struct_type_node(
-                        inner_struct,
-                        &mut cur,
-                        &mut ctx,
-                        defined_types,
-                        true,
-                    )
-                };
-                let issues_for_candidate = guard.finish();
-                (parsed_struct, issues_for_candidate)
+                get_view_struct_type_node(inner_struct, &mut cur, defined_types, true)
             };
 
             if let Some(parsed_struct) = parsed_struct {
@@ -139,38 +105,31 @@ impl IdlTreeParser for CodamaIdlLookup {
                 let size_hint = self.account_size_discriminator_hint(ax);
                 let exact_size_match = size_hint == data_len;
                 match &mut best_match {
-                    Some((best_exact, best_size, best_parsed, best_issues)) => {
+                    Some((best_exact, best_size, best_parsed)) => {
                         let should_replace = (exact_size_match && !*best_exact)
                             || (exact_size_match == *best_exact && size_hint > *best_size);
                         if should_replace {
                             *best_exact = exact_size_match;
                             *best_size = size_hint;
                             *best_parsed = parsed;
-                            *best_issues = issues_for_candidate;
                         }
                     }
                     None => {
-                        best_match = Some((
-                            exact_size_match,
-                            size_hint,
-                            parsed,
-                            issues_for_candidate,
-                        ));
+                        best_match = Some((exact_size_match, size_hint, parsed));
                     }
                 }
             }
         }
 
-        let mut issues = self.idl_issues.borrow_mut();
         match best_match {
-            Some((_, _, parsed, win_issues)) => {
-                for issue in win_issues {
-                    issues.note(issue);
-                }
+            Some((_, _, parsed)) => {
                 Some(parsed)
             }
             None => {
-                issues.note(IdlIssue::NoAccountTypeMatched { byte_len: data_len });
+                crate::seer_warn!(
+                    "Codama account decode: no account type matched ({} bytes)",
+                    data_len
+                );
                 None
             }
         }
@@ -199,10 +158,7 @@ impl CodamaIdlLookup {
                 .fields
                 .last()
                 .is_some_and(|field| Self::type_supports_remainder(&field.r#type)),
-            TypeNode::Tuple(t) => t
-                .items
-                .last()
-                .is_some_and(Self::type_supports_remainder),
+            TypeNode::Tuple(t) => t.items.last().is_some_and(Self::type_supports_remainder),
             TypeNode::Array(a) => Self::type_supports_remainder(&a.item),
             TypeNode::Set(s) => Self::type_supports_remainder(&s.item),
             TypeNode::Map(m) => Self::type_supports_remainder(&m.value),
@@ -244,30 +200,18 @@ impl CodamaIdlLookup {
 
     pub fn from_json_str(idl_json: &str) -> Result<Self, serde_json::Error> {
         let root_node: RootNode = serde_json::from_str(idl_json)?;
-        let ctx = IdlProgramContext::new(
-            root_node.program.name.to_string(),
-            root_node.program.public_key.clone(),
-        );
-        let mut issues = IdlIssues::new(ctx);
         let mut skipped_instructions = HashSet::new();
         let mut skipped_accounts = HashSet::new();
         analyze_codama_program(
             &root_node.program,
-            &mut issues,
             &mut skipped_instructions,
             &mut skipped_accounts,
         );
         Ok(Self {
             root_node,
-            idl_issues: RefCell::new(issues),
             skipped_instructions: RefCell::new(skipped_instructions),
             skipped_accounts: RefCell::new(skipped_accounts),
         })
-    }
-
-    /// Deterministic `IdlIssue` list for tests and diagnostics (includes schema-time issues).
-    pub fn sorted_idl_issues(&self) -> Vec<IdlIssue> {
-        self.idl_issues.borrow().sorted_issues()
     }
 
     fn parse_at_offset_matches<F>(
@@ -276,7 +220,6 @@ impl CodamaIdlLookup {
         offset: usize,
         is_last: bool,
         ty: &codama_nodes::TypeNode,
-        ctx: &mut CodamaParseCtx<'_>,
         cmp: F,
     ) -> bool
     where
@@ -290,7 +233,7 @@ impl CodamaIdlLookup {
 
         let slice = &data[offset..];
         let mut cur = Cursor::new(slice);
-        get_parsed_arg_value(ctx, ty, &mut cur, defined_types, is_last, None)
+        get_parsed_arg_value(ty, &mut cur, defined_types, is_last, None)
             .map_or(false, |parsed| cmp(&parsed))
     }
 
@@ -300,37 +243,28 @@ impl CodamaIdlLookup {
         is_last: bool,
         discriminator: &DiscriminatorNode,
         allow_size_extensions: bool,
-        ctx: &mut CodamaParseCtx<'_>,
         resolve_field: F,
     ) -> bool
     where
         F: FnOnce(&str) -> Option<(&'a TypeNode, Box<dyn Fn(&ParsedArgValue) -> bool + 'a>)>,
     {
         match discriminator {
-            DiscriminatorNode::Constant(node) => {
-                ctx.path.clear();
-                self.parse_at_offset_matches(
-                    data,
-                    node.offset,
-                    is_last,
-                    &node.constant.r#type,
-                    ctx,
-                    |parsed| eq_value_node(parsed, &node.constant.value, None),
-                )
-            }
+            DiscriminatorNode::Constant(node) => self.parse_at_offset_matches(
+                data,
+                node.offset,
+                is_last,
+                &node.constant.r#type,
+                |parsed| eq_value_node(parsed, &node.constant.value),
+            ),
             DiscriminatorNode::Field(node) => {
                 let field_name = node.name.to_string();
                 let (ty, cmp) = match resolve_field(&field_name) {
                     Some(v) => v,
                     None => return false,
                 };
-                let old_path =
-                    std::mem::replace(&mut ctx.path, vec![field_name]);
-                let out = self.parse_at_offset_matches(data, node.offset, is_last, ty, ctx, move |parsed| {
+                self.parse_at_offset_matches(data, node.offset, is_last, ty, move |parsed| {
                     cmp(parsed)
-                });
-                ctx.path = old_path;
-                out
+                })
             }
             DiscriminatorNode::Size(node) => {
                 data.len() == node.size || (allow_size_extensions && data.len() > node.size)
@@ -341,7 +275,6 @@ impl CodamaIdlLookup {
     fn get_instruction_node(&self, data: &[u8]) -> Option<&InstructionNode> {
         let program = &self.root_node.program;
         let skipped = self.skipped_instructions.borrow();
-        let mut issues = self.idl_issues.borrow_mut();
         let single_instruction_program = program.instructions.len() == 1;
 
         for ix in &program.instructions {
@@ -354,35 +287,21 @@ impl CodamaIdlLookup {
                 }
                 continue;
             }
-            let mut ctx = CodamaParseCtx {
-                issues: &mut *issues,
-                site: ParseSite::DiscriminatorInstruction {
-                    name: ix.name.to_string(),
-                },
-                path: vec![],
-            };
             let mut all_discriminators_match = true;
             for discriminator in &ix.discriminators {
-                if !self.discriminator_matches(
-                    data,
-                    true,
-                    discriminator,
-                    false,
-                    &mut ctx,
-                    |field_name| {
-                        let argument = ix
-                            .arguments
-                            .iter()
-                            .find(|arg| arg.name.to_string() == field_name)?;
-                        let default_value = argument.default_value.as_ref()?;
-                        Some((
-                            &argument.r#type,
-                            Box::new(move |parsed| {
-                                eq_instruciton_input_value_node(parsed, default_value, None)
-                            }),
-                        ))
-                    },
-                ) {
+                if !self.discriminator_matches(data, true, discriminator, false, |field_name| {
+                    let argument = ix
+                        .arguments
+                        .iter()
+                        .find(|arg| arg.name.to_string() == field_name)?;
+                    let default_value = argument.default_value.as_ref()?;
+                    Some((
+                        &argument.r#type,
+                        Box::new(move |parsed| {
+                            eq_instruciton_input_value_node(parsed, default_value)
+                        }),
+                    ))
+                }) {
                     all_discriminators_match = false;
                     break;
                 }
@@ -394,11 +313,7 @@ impl CodamaIdlLookup {
         None
     }
 
-    fn account_discriminators_match(
-        &self,
-        ax: &codama_nodes::AccountNode,
-        data: &[u8],
-    ) -> bool {
+    fn account_discriminators_match(&self, ax: &codama_nodes::AccountNode, data: &[u8]) -> bool {
         if self.skipped_accounts.borrow().contains(ax.name.as_ref()) {
             return false;
         }
@@ -406,14 +321,6 @@ impl CodamaIdlLookup {
             return false;
         }
 
-        let mut issues = self.idl_issues.borrow_mut();
-        let mut ctx = CodamaParseCtx {
-            issues: &mut *issues,
-            site: ParseSite::DiscriminatorAccount {
-                name: ax.name.to_string(),
-            },
-            path: vec![],
-        };
         let allow_size_extensions = self.account_supports_size_extensions(ax);
 
         for discriminator in &ax.discriminators {
@@ -422,7 +329,6 @@ impl CodamaIdlLookup {
                 true,
                 discriminator,
                 allow_size_extensions,
-                &mut ctx,
                 |field_name| {
                     let inner_struct: &StructTypeNode = ax.data.get_nested_type_node();
                     let field = inner_struct
@@ -432,7 +338,7 @@ impl CodamaIdlLookup {
                     let default_value: &ValueNode = field.default_value.as_ref()?;
                     Some((
                         &field.r#type,
-                        Box::new(move |parsed| eq_value_node(parsed, default_value, None)),
+                        Box::new(move |parsed| eq_value_node(parsed, default_value)),
                     ))
                 },
             );

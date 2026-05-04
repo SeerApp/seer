@@ -10,7 +10,7 @@ use common::{anchor_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
 use seer_core::idl::anchor::AnchorIdlLookup;
 use seer_core::idl::parsed_arg::ParsedArgValue;
 use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
-use seer_core::idl::{IdlIssue, IdlTreeParser};
+use seer_core::idl::IdlTreeParser;
 use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use solana_instruction_error::InstructionError;
@@ -29,8 +29,7 @@ fn mytest_lookup() -> AnchorIdlLookup {
         .expect("mytest Anchor IDL must parse")
 }
 
-// IdlIssue coverage (Anchor IDL): see `test_truncated_anchor_instruction_records_insufficient_bytes`
-// (`InsufficientBytes`) and `idl::issues` unit tests for dedup / non-unary helpers.
+// Anchor runtime decode emits `InsufficientBytes`-style diagnostics via `seer_warn!`.
 
 fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
     let dir = anchor_idl_golden_dir();
@@ -75,7 +74,7 @@ struct ErrorFixture {
 }
 
 #[test]
-fn test_truncated_anchor_instruction_records_insufficient_bytes() {
+fn test_truncated_anchor_instruction_parse_no_panic() {
     ensure_seer_logger();
     let idl = AnchorIdlLookup::from_json_str(include_tests_fixture!("idl/anchor/idls/mytest.json"))
         .expect("mytest Anchor IDL must parse");
@@ -85,13 +84,6 @@ fn test_truncated_anchor_instruction_records_insufficient_bytes() {
         0, 0, 0, 0,
     ];
     let _ = idl.get_instruction(&invoke_data);
-    let issues = idl.sorted_idl_issues();
-    assert!(
-        issues
-            .iter()
-            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
-        "expected InsufficientBytes, got {issues:?}"
-    );
 }
 
 #[test]
@@ -101,16 +93,20 @@ fn test_anchor_instruction_stops_on_malformed_arg_and_keeps_prefix_args() {
     // Truncate the final array element bytes so `random_seed` decodes and
     // `initializer_amount` fails.
     let invoke_data: Vec<u8> = vec![
-        175, 175, 109, 31, 13, 152, 155, 237, 161, 134, 1, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0,
-        0, 0, 200, 0, 0, 0, 0, 0, 0, 0, 0, 44, 1, 0, 0, 0, 0, 0, 0, 144, 1, 0, 0, 0, 0, 0, 0,
-        244, 1, 0, 0,
+        175, 175, 109, 31, 13, 152, 155, 237, 161, 134, 1, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0,
+        200, 0, 0, 0, 0, 0, 0, 0, 0, 44, 1, 0, 0, 0, 0, 0, 0, 144, 1, 0, 0, 0, 0, 0, 0, 244, 1, 0,
+        0,
     ];
 
     let parsed_ix = idl
         .get_instruction(&invoke_data)
         .expect("instruction discriminator should still match");
     assert_eq!(parsed_ix.name, "initialize");
-    assert_eq!(parsed_ix.args.len(), 1, "must keep only decoded prefix args");
+    assert_eq!(
+        parsed_ix.args.len(),
+        1,
+        "must keep only decoded prefix args"
+    );
     assert_eq!(parsed_ix.args[0].name, "random_seed");
     match &parsed_ix.args[0].value {
         ParsedArgValue::Number(v) => {
@@ -119,14 +115,6 @@ fn test_anchor_instruction_stops_on_malformed_arg_and_keeps_prefix_args() {
         }
         other => panic!("expected Number for random_seed, got {other:?}"),
     }
-
-    let issues = idl.sorted_idl_issues();
-    assert!(
-        issues
-            .iter()
-            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
-        "expected InsufficientBytes, got {issues:?}"
-    );
 }
 
 #[test]

@@ -10,7 +10,7 @@ use common::{codama_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
 use seer_core::idl::codama::CodamaIdlLookup;
 use seer_core::idl::parsed_arg::ParsedArgValue;
 use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
-use seer_core::idl::{IdlIssue, IdlTreeParser};
+use seer_core::idl::IdlTreeParser;
 use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use serde_json::Value;
@@ -26,14 +26,14 @@ fn ensure_seer_logger() {
 fn token_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/program_manager/known_programs/token_program.json"
+        "../../src/global_program_context/known_programs/token_program.json"
     ))
     .expect("token program Codama IDL must parse")
 }
 
 fn token_2022_json() -> Value {
     serde_json::from_str(include_str!(
-        "../../src/program_manager/known_programs/token_2022_program.json"
+        "../../src/global_program_context/known_programs/token_2022_program.json"
     ))
     .expect("token-2022 Codama JSON must parse")
 }
@@ -48,7 +48,7 @@ fn lookup_from_json_value(v: &Value) -> CodamaIdlLookup {
 fn system_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/program_manager/known_programs/system_program.json"
+        "../../src/global_program_context/known_programs/system_program.json"
     ))
     .expect("system program Codama IDL must parse")
 }
@@ -91,10 +91,7 @@ fn sentinel_lookup() -> CodamaIdlLookup {
     .expect("sentinel Codama IDL must parse")
 }
 
-// IdlIssue coverage (Codama IDL): integration tests below exercise these variants at least once:
-// - `InvalidLayoutBytesOrStringWithoutLength` — `test_bad_layout_instruction_skipped_and_issue_recorded`
-// - `InsufficientBytes` — `test_truncated_instruction_buffer_no_panic`
-// Dedup / non-unary logging — `idl::issues` unit tests (`note_*`, `note_generic_dedupes`).
+// Codama schema / runtime decode diagnostics are emitted via `seer_warn!` (not collected tests).
 
 fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
     let dir = codama_idl_golden_dir();
@@ -129,6 +126,16 @@ fn decode_hex(hex: &str) -> Vec<u8> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex byte"))
         .collect()
+}
+
+fn token_2022_read_411_bytes() -> Vec<u8> {
+    serde_json::from_str(include_tests_fixture!("idl/codama/samples/token_2022_read_411_bytes.json"))
+        .expect("token-2022 read sample bytes must parse")
+}
+
+fn set_token_2022_mint_extension_offset(root: &mut Value, offset: u64) {
+    root["program"]["accounts"][0]["data"]["fields"][5]["type"]["item"]["prefix"][0]["type"]
+        ["offset"] = Value::from(offset);
 }
 
 #[derive(Serialize)]
@@ -205,6 +212,36 @@ fn test_token_2022_account_parse_with_extensions_len_170() {
         parsed_ax.is_some(),
         "Token-2022 account parser should accept 165-byte base layout plus extension bytes",
     );
+}
+
+#[test]
+fn test_token_2022_len_411_playground_current_idl_fails_parse() {
+    ensure_seer_logger();
+    let token_2022_idl = lookup_from_json_value(&token_2022_json());
+    let data = token_2022_read_411_bytes();
+    assert_eq!(data.len(), 411, "expected 411-byte captured account payload");
+
+    let parsed_ax = token_2022_idl.get_account(&data);
+    assert!(
+        parsed_ax.is_none(),
+        "current token-2022 known-program IDL should fail this 411-byte sample; use this test as a baseline playground"
+    );
+}
+
+#[test]
+fn test_token_2022_len_411_playground_mutating_mint_extension_offset() {
+    ensure_seer_logger();
+    let data = token_2022_read_411_bytes();
+    assert_eq!(data.len(), 411, "expected 411-byte captured account payload");
+
+    let mut root = token_2022_json();
+    set_token_2022_mint_extension_offset(&mut root, 165);
+    let lookup = lookup_from_json_value(&root);
+    let parsed = lookup.get_account(&data);
+
+    // Playground guardrail: this mutation should not panic decode paths and makes it easy to
+    // iterate on Token-2022 mint extension assumptions in one place.
+    let _ = parsed;
 }
 
 #[test]
@@ -298,16 +335,8 @@ fn test_token_2022_instructions_allow_single_and_multiple_discriminators() {
         .expect("token-2022 must contain at least one multi-discriminator instruction")
         .to_string();
 
-    let lookup = lookup_from_json_value(&root);
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        !issues.iter().any(|i| matches!(
-            i,
-            IdlIssue::InstructionInvalidDiscriminatorLayout { instruction }
-                if instruction == &single || instruction == &multiple
-        )),
-        "single/multiple discriminator instructions should be considered valid layouts, got {issues:?}"
-    );
+    assert!(!single.is_empty() && !multiple.is_empty());
+    let _lookup = lookup_from_json_value(&root);
 }
 
 #[test]
@@ -329,17 +358,11 @@ fn test_token_2022_zero_discriminator_allowed_for_single_instruction_program() {
     *instructions = vec![first];
 
     let lookup = lookup_from_json_value(&root);
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        !issues.iter().any(|i| matches!(
-            i,
-            IdlIssue::InstructionInvalidDiscriminatorLayout { instruction }
-                if instruction == &instruction_name
-        )),
-        "zero discriminators should be valid for single-instruction program, got {issues:?}"
-    );
     assert_eq!(
-        lookup.get_instruction(&[]).as_ref().map(|ix| ix.name.as_str()),
+        lookup
+            .get_instruction(&[])
+            .as_ref()
+            .map(|ix| ix.name.as_str()),
         Some(instruction_name.as_str()),
         "single-instruction/zero-discriminator fallback should select the only instruction"
     );
@@ -392,10 +415,9 @@ fn test_sentinel_decodes_none_and_some() {
     assert_eq!(none_ix.name, "setSentinelValue");
     assert_eq!(none_ix.args.len(), 2);
     match &none_ix.args[1].value {
-        ParsedArgValue::Option(v) => assert!(
-            v.value.is_none(),
-            "sentinel value should decode as None"
-        ),
+        ParsedArgValue::Option(v) => {
+            assert!(v.value.is_none(), "sentinel value should decode as None")
+        }
         other => panic!("expected option argument, got {other:?}"),
     }
 
@@ -412,15 +434,8 @@ fn test_sentinel_decodes_none_and_some() {
 }
 
 #[test]
-fn test_bad_layout_instruction_skipped_and_issue_recorded() {
+fn test_bad_layout_instruction_skipped() {
     let lookup = bad_layout_instruction_lookup();
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        issues
-            .iter()
-            .any(|i| matches!(i, IdlIssue::InvalidLayoutBytesOrStringWithoutLength { .. })),
-        "expected invalid bytes/string layout issue, got {issues:?}"
-    );
     // Discriminator u32 = 0 / little-endian — would match `badIx` if it were not skipped.
     let data = vec![0u8, 0u8, 0u8, 0u8];
     assert!(
@@ -438,13 +453,6 @@ fn test_truncated_instruction_buffer_no_panic() {
         196, 232, 100, 78, 46, 201, 109, 241, 146, 1, 242, 62, 118, 123, 76,
     ];
     let _ = lookup.get_instruction(&full[..12]);
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        issues
-            .iter()
-            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
-        "truncated parse should record InsufficientBytes, got {issues:?}"
-    );
 }
 
 #[test]
@@ -453,14 +461,18 @@ fn test_codama_instruction_stops_on_malformed_arg_and_keeps_prefix_args() {
     // `createAccount`: discriminator(u32) + lamports(u64) + space(u64) + programAddress(pubkey).
     // Truncate pubkey bytes so first 2 args decode and third fails.
     let invoke_data: Vec<u8> = vec![
-        0, 0, 0, 0, 64, 41, 30, 0, 0, 0, 0, 0, 156, 0, 0, 0, 0, 0, 0, 0, 153, 75, 17, 83, 39,
-        24, 5, 235, 133, 88, 112, 6,
+        0, 0, 0, 0, 64, 41, 30, 0, 0, 0, 0, 0, 156, 0, 0, 0, 0, 0, 0, 0, 153, 75, 17, 83, 39, 24,
+        5, 235, 133, 88, 112, 6,
     ];
     let parsed_ix = lookup
         .get_instruction(&invoke_data)
         .expect("instruction discriminator should match");
     assert_eq!(parsed_ix.name, "createAccount");
-    assert_eq!(parsed_ix.args.len(), 2, "must keep only decoded prefix args");
+    assert_eq!(
+        parsed_ix.args.len(),
+        2,
+        "must keep only decoded prefix args"
+    );
     assert_eq!(parsed_ix.args[0].name, "lamports");
     assert_eq!(parsed_ix.args[1].name, "space");
     match &parsed_ix.args[0].value {
@@ -477,14 +489,6 @@ fn test_codama_instruction_stops_on_malformed_arg_and_keeps_prefix_args() {
         }
         other => panic!("expected Number for space, got {other:?}"),
     }
-
-    let issues = lookup.sorted_idl_issues();
-    assert!(
-        issues
-            .iter()
-            .any(|i| matches!(i, IdlIssue::InsufficientBytes { .. })),
-        "expected InsufficientBytes, got {issues:?}"
-    );
 }
 
 #[test]

@@ -1,5 +1,7 @@
 use seer_core::idl::IdlTreeParser;
-use seer_core::program_manager::known_programs::get_known_programs;
+use seer_core::program_manager::known_programs::{
+    get_known_programs, SYSTEM_PROGRAM_ADDRESS,
+};
 use seer_core::{init_seer_logger, SeerLogger};
 use solana_pubkey::Pubkey;
 use std::str::FromStr;
@@ -19,7 +21,7 @@ fn known_program_idls_can_instantiate_idl_lookup() {
     let known_programs = get_known_programs();
     let expected_program_ids = [
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "11111111111111111111111111111111",
+        SYSTEM_PROGRAM_ADDRESS,
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         "Stake11111111111111111111111111111111111111",
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
@@ -31,7 +33,10 @@ fn known_program_idls_can_instantiate_idl_lookup() {
     .map(|id| Pubkey::from_str(id).expect("known program id must be valid pubkey"))
     .collect::<Vec<_>>();
 
-    let actual_program_ids = known_programs.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+    let actual_program_ids = known_programs
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect::<Vec<_>>();
 
     assert_eq!(
         actual_program_ids, expected_program_ids,
@@ -51,8 +56,8 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 fn token_2022_account_parse_supports_extended_account_size() {
     ensure_seer_logger();
     let known_programs = get_known_programs();
-    let token_2022_program_id = Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-        .expect("valid pubkey");
+    let token_2022_program_id =
+        Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb").expect("valid pubkey");
     let token_2022_idl = known_programs
         .into_iter()
         .find(|(id, _)| *id == token_2022_program_id)
@@ -85,8 +90,8 @@ fn token_2022_account_parse_supports_extended_account_size() {
 fn token_program_rejects_zeroed_170_bytes_payload() {
     ensure_seer_logger();
     let known_programs = get_known_programs();
-    let token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-        .expect("valid pubkey");
+    let token_program_id =
+        Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").expect("valid pubkey");
     let token_idl = known_programs
         .into_iter()
         .find(|(id, _)| *id == token_program_id)

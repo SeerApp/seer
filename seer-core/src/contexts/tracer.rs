@@ -2,10 +2,12 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    account_reads::types::TreeAccountLoad,
     contexts::invoke::InvokeContext,
-    program_manager::program_manager::ProgramManager,
-    tree::nodes::{RootViewChildren, TreeAccount, TreeRoot},
+    program_manager::types::GlobalProgramContext,
+    tree::nodes::{
+        account::TreeAccount,
+        root::{RootViewChildren, TreeRoot},
+    },
 };
 
 /// Sender-preserving layer
@@ -22,11 +24,12 @@ impl Tracer {
         }
     }
 
-    pub fn current_tree_uid(&self) -> u64 {
+    pub fn get_current_program_address(&self) -> Pubkey {
         self.invoke_context
             .as_ref()
-            .expect("Tree uid requested before invoke context exists")
-            .current_tree_uid()
+            .expect("Get current program address before invoke context")
+            .get_last_receiver()
+            .clone()
     }
 
     /// True when a program is already running (next `start_program` is a CPI).
@@ -39,7 +42,6 @@ impl Tracer {
         accounts: Vec<Pubkey>,
         data: Vec<u8>,
         program_address: Pubkey,
-        tree_uid: u64,
         step_order: u64,
     ) {
         if let Some(invoke_context) = self.invoke_context.as_mut() {
@@ -48,19 +50,11 @@ impl Tracer {
                 data,
                 invoke_context.get_last_receiver(),
                 program_address,
-                tree_uid,
                 step_order,
             );
         } else {
             let mut invoke_context = InvokeContext::new();
-            invoke_context.start_program(
-                accounts,
-                data,
-                self.sender,
-                program_address,
-                tree_uid,
-                step_order,
-            );
+            invoke_context.start_program(accounts, data, self.sender, program_address, step_order);
             self.invoke_context = Some(invoke_context);
         };
     }
@@ -72,11 +66,11 @@ impl Tracer {
             .end_program(err, step_order);
     }
 
-    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, step_order: u64) {
+    pub fn step(&mut self, global_program_context: &GlobalProgramContext, i: u64, step_order: u64) {
         self.invoke_context
             .as_mut()
             .expect("Stepping before invoke context exists")
-            .step(program_manager, i, step_order);
+            .step(global_program_context, i, step_order);
     }
 
     pub fn log(&mut self, message: &str, step_order: u64) {
@@ -93,14 +87,7 @@ impl Tracer {
             .account_diff(data);
     }
 
-    pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
-        self.invoke_context
-            .as_mut()
-            .expect("Account load before invoke context")
-            .raw_account_load(data);
-    }
-
-    pub fn finalize_tree(&mut self, program_manager: &ProgramManager) {
+    pub fn finalize_tree(&mut self, global_program_context: &GlobalProgramContext) {
         let invoke_context = self
             .invoke_context
             .as_mut()
@@ -109,23 +96,10 @@ impl Tracer {
         invoke_context.flatten_account_diffs();
 
         for tree in invoke_context.trees_iter_mut() {
-            if let Some(idl_lookup) = program_manager.get_idl_lookup(&tree.receiver) {
+            if let Some(idl_lookup) = global_program_context.get_idl_lookup(&tree.receiver) {
                 idl_lookup.parse_tree(tree);
             }
         }
-    }
-
-    pub fn persist_account_read_sidecars(
-        &mut self,
-        signature: &str,
-        instruction: u8,
-        program_manager: &ProgramManager,
-    ) {
-        let Some(ic) = self.invoke_context.as_mut() else {
-            return;
-        };
-        let rows = ic.finalize_account_read_aggregates(Some(program_manager));
-        crate::account_reads_persist::persist_account_reads_chunks(signature, instruction, &rows);
     }
 }
 

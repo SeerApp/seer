@@ -1,10 +1,10 @@
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
 use std::{
     collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
 };
-use solana_pubkey::Pubkey;
-use solana_signer::Signer;
 
 use crate::errors::IrrecoverableError;
 
@@ -49,8 +49,12 @@ pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, Irre
     collect_target_bases(&target_dir.join("deploy"), &mut bases);
 
     for base in bases {
-        let keypair_path = target_dir.join("deploy").join(format!("{base}-keypair.json"));
-        let pubkey_path = target_dir.join("deploy").join(format!("{base}-pubkey.json"));
+        let keypair_path = target_dir
+            .join("deploy")
+            .join(format!("{base}-keypair.json"));
+        let pubkey_path = target_dir
+            .join("deploy")
+            .join(format!("{base}-pubkey.json"));
         let executable_path = target_dir.join("deploy").join(format!("{base}.so"));
         let dwarf_path = target_dir.join("deploy").join(format!("{base}.debug"));
         let idl_path = target_dir.join("idl").join(format!("{base}.json"));
@@ -64,24 +68,26 @@ pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, Irre
             })?;
             keypair.pubkey()
         } else if pubkey_path.exists() {
-            let pubkey_contents =
-                fs::read_to_string(&pubkey_path).map_err(|e| IrrecoverableError::TargetFileRead {
+            let pubkey_contents = fs::read_to_string(&pubkey_path).map_err(|e| {
+                IrrecoverableError::TargetFileRead {
                     filename: pubkey_path.display().to_string(),
                     detail: e.to_string(),
-                })?;
-            let pubkey_str: String =
-                serde_json::from_str(&pubkey_contents).map_err(|e| {
-                    IrrecoverableError::TargetFileParse {
-                        filename: pubkey_path.display().to_string(),
-                        detail: e.to_string(),
-                    }
-                })?;
-            pubkey_str.parse().map_err(|e: solana_pubkey::ParsePubkeyError| {
+                }
+            })?;
+            let pubkey_str: String = serde_json::from_str(&pubkey_contents).map_err(|e| {
                 IrrecoverableError::TargetFileParse {
                     filename: pubkey_path.display().to_string(),
-                    detail: format!("invalid pubkey string `{pubkey_str}`: {e}"),
+                    detail: e.to_string(),
                 }
-            })?
+            })?;
+            pubkey_str
+                .parse()
+                .map_err(|e: solana_pubkey::ParsePubkeyError| {
+                    IrrecoverableError::TargetFileParse {
+                        filename: pubkey_path.display().to_string(),
+                        detail: format!("invalid pubkey string `{pubkey_str}`: {e}"),
+                    }
+                })?
         } else {
             return Err(IrrecoverableError::TargetKeyMissing {
                 target: base.to_string(),

@@ -1,22 +1,56 @@
+//! Purpose: provide built-in immutable program IDL lookups.
+
 use std::{
     collections::{hash_map::Entry, HashMap},
     str::FromStr,
 };
 
+use once_cell::sync::Lazy;
 use solana_pubkey::Pubkey;
 
-use crate::{idl::IdlLookup, program_manager::program_manager::ProgramInfo};
+use crate::{idl::IdlLookup, program_manager::types::ProgramInfo};
 
+/// Base58 address of the native Solana system program (single source of truth for this string).
+pub const SYSTEM_PROGRAM_ADDRESS: &str = "11111111111111111111111111111111";
+
+/// Native system program id, parsed from [`SYSTEM_PROGRAM_ADDRESS`].
+pub static SYSTEM_PROGRAM_PUBKEY: Lazy<Pubkey> = Lazy::new(|| {
+    Pubkey::from_str(SYSTEM_PROGRAM_ADDRESS).expect("system program id")
+});
 
 const KNOWN_PROGRAMS: [(&str, &str); 8] = [
-    ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", include_str!("token_program.json")),
-    ("11111111111111111111111111111111", include_str!("system_program.json")),
-    ("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", include_str!("token_2022_program.json")),
-    ("Stake11111111111111111111111111111111111111", include_str!("stake_program.json")),
-    ("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", include_str!("spl_associated_token_account_program.json")),
-    ("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr", include_str!("memo_program.json")),
-    ("AddressLookupTab1e1111111111111111111111111", include_str!("adress_lookup_table_program.json")),
-    ("ComputeBudget111111111111111111111111111111", include_str!("compute_budget.json"))
+    (
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        include_str!("token_program.json"),
+    ),
+    (
+        SYSTEM_PROGRAM_ADDRESS,
+        include_str!("system_program.json"),
+    ),
+    (
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        include_str!("token_2022_program.json"),
+    ),
+    (
+        "Stake11111111111111111111111111111111111111",
+        include_str!("stake_program.json"),
+    ),
+    (
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        include_str!("spl_associated_token_account_program.json"),
+    ),
+    (
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+        include_str!("memo_program.json"),
+    ),
+    (
+        "AddressLookupTab1e1111111111111111111111111",
+        include_str!("adress_lookup_table_program.json"),
+    ),
+    (
+        "ComputeBudget111111111111111111111111111111",
+        include_str!("compute_budget.json"),
+    ),
 ];
 
 pub fn add_known_programs(inner: &mut HashMap<Pubkey, ProgramInfo>) {
@@ -50,7 +84,7 @@ pub fn build_idl_lookups(entries: &[(&str, &str)]) -> Vec<(Pubkey, IdlLookup)> {
 
 #[cfg(test)]
 mod test {
-    use crate::program_manager::known_programs::{get_known_programs, KNOWN_PROGRAMS};
+    use super::{get_known_programs, KNOWN_PROGRAMS};
 
     #[test]
     fn test_known_programs() {

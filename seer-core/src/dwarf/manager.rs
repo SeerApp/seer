@@ -1,8 +1,4 @@
-use std::{
-    collections::HashSet,
-    fs, io,
-    path::PathBuf,
-};
+use std::{collections::HashSet, fs, io, path::PathBuf};
 
 use gimli::{Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
@@ -17,9 +13,7 @@ pub struct DwarfManager {
 
 impl DwarfManager {
     pub fn new() -> Self {
-        Self {
-            sections: None,
-        }
+        Self { sections: None }
     }
 
     pub fn get_dwarf(&self) -> Option<Dwarf<impl Reader + use<'_>>> {
@@ -36,9 +30,7 @@ impl DwarfManager {
     }
 
     pub fn get_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
-        let dwarf = self
-            .get_dwarf()
-            .expect("Failed to fetch dwarf");
+        let dwarf = self.get_dwarf().expect("Failed to fetch dwarf");
 
         let mut units = dwarf.units();
 
@@ -117,19 +109,20 @@ impl DwarfManager {
             detail: e.to_string(),
         })?;
 
-        let sections: DwarfSections<Vec<u8>> = DwarfSections::load(|id: SectionId| -> io::Result<Vec<u8>> {
-            match obj.section_by_name(id.name()) {
-                Some(s) => Ok(s
-                    .uncompressed_data()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-                    .into_owned()),
-                None => Ok(Vec::new()),
-            }
-        })
-        .map_err(|e| IrrecoverableError::DwarfFileParse {
-            filename: path.to_string_lossy().to_string(),
-            detail: e.to_string(),
-        })?;
+        let sections: DwarfSections<Vec<u8>> =
+            DwarfSections::load(|id: SectionId| -> io::Result<Vec<u8>> {
+                match obj.section_by_name(id.name()) {
+                    Some(s) => Ok(s
+                        .uncompressed_data()
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                        .into_owned()),
+                    None => Ok(Vec::new()),
+                }
+            })
+            .map_err(|e| IrrecoverableError::DwarfFileParse {
+                filename: path.to_string_lossy().to_string(),
+                detail: e.to_string(),
+            })?;
 
         self.sections = Some(sections);
         Ok(())

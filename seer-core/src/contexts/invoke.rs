@@ -4,12 +4,15 @@ use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    program_manager::program_manager::ProgramManager,
-    account_reads::types::{TaggedAccountLoad, TaggedAccountLoadAggregated, TreeAccountLoad},
-    tree::{
+    program_manager::types::GlobalProgramContext, tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
-        nodes::{self, EntrypointChildren, RootChildren, RootViewChildren, TreeAccount, TreeEntrypoint, TreeLog, TreeRoot},
-    },
+        nodes::{
+            account::TreeAccount,
+            entrypoint::{EntrypointChildren, TreeEntrypoint},
+            log::TreeLog,
+            root::{RootChildren, RootViewChildren, TreeRoot},
+        },
+    }
 };
 
 enum Pushable {
@@ -29,7 +32,6 @@ struct LiveTrace {
 pub struct InvokeContext {
     live_trace: Vec<LiveTrace>,
     trees: Vec<TreeRoot<RootChildren>>,
-    account_reads: Vec<TaggedAccountLoad>,
 }
 
 impl InvokeContext {
@@ -37,16 +39,7 @@ impl InvokeContext {
         Self {
             live_trace: vec![],
             trees: vec![],
-            account_reads: vec![],
         }
-    }
-
-    pub fn current_tree_uid(&self) -> u64 {
-        let live_trace = self
-            .live_trace
-            .last()
-            .expect("Invoke context lacks live trace");
-        self.trees[live_trace.tree_index].uid
     }
 
     pub fn start_program(
@@ -55,7 +48,6 @@ impl InvokeContext {
         data: Vec<u8>,
         sender: Pubkey,
         receiver: Pubkey,
-        tree_uid: u64,
         step_order: u64,
     ) {
         let tree_len = self.trees.len();
@@ -85,7 +77,6 @@ impl InvokeContext {
         }
 
         self.trees.push(TreeRoot {
-            uid: tree_uid,
             step_order,
             sender,
             receiver,
@@ -124,7 +115,7 @@ impl InvokeContext {
         self.live_trace.pop();
     }
 
-    pub fn step(&mut self, program_manager: &ProgramManager, i: u64, step_order: u64) {
+    pub fn step(&mut self, global_program_context: &GlobalProgramContext, i: u64, step_order: u64) {
         let live_trace = self
             .live_trace
             .last_mut()
@@ -149,7 +140,7 @@ impl InvokeContext {
 
         let current_program = &self.trees[live_trace.tree_index].receiver;
 
-        if let Some(entrypoint_lookup) = program_manager.get_entrypoint_lookup(current_program) {
+        if let Some(entrypoint_lookup) = global_program_context.get_entrypoint_lookup(current_program) {
             if let Some(entrypoint) = entrypoint_lookup.get_entrypoint(i, step_order) {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);
@@ -169,16 +160,15 @@ impl InvokeContext {
             .log_hook(&mut live_trace.last_known_entrypoint);
 
         if live_trace.last_known_entrypoint.is_some() {
-            live_trace.pushables.push(Pushable::Log(TreeLog::new(
-                message.to_string(),
-                step_order,
-            )));
+            live_trace
+                .pushables
+                .push(Pushable::Log(TreeLog::new(message.to_string(), step_order)));
         } else {
             root.push_log(message.to_string(), step_order);
         }
     }
 
-    /// `TreeAccount::step_order` must be set by the producer (e.g. `StepMirror::check_diffs`).
+    /// `TreeAccount::step_order` must be set by the producer (e.g. `UnsafeAccountBackdoor::check_diffs`).
     pub fn account_diff(&mut self, data: TreeAccount) {
         let tree_index = self
             .live_trace
@@ -196,19 +186,6 @@ impl InvokeContext {
         }
 
         root.push_account_diff(data);
-    }
-
-    pub fn raw_account_load(&mut self, data: TreeAccountLoad) {
-        let tree_uid = self
-            .live_trace
-            .last()
-            .map(|lt| self.trees[lt.tree_index].uid)
-            .unwrap_or_else(|| self.trees.last().map(|t| t.uid).unwrap_or(0));
-
-        self.account_reads.push(TaggedAccountLoad {
-            tree_uid,
-            load: data,
-        });
     }
 
     pub fn get_last_receiver(&self) -> Pubkey {
@@ -230,28 +207,16 @@ impl InvokeContext {
         }
     }
 
-    pub fn flatten_account_loads(&mut self) {
-        for tree in self.trees.iter_mut() {
-            tree.flatten_account_loads();
-        }
-    }
-
-    pub fn flatten_account_loads_with_program_manager(&mut self, program_manager: &ProgramManager) {
-        for tree in self.trees.iter_mut() {
-            tree.flatten_account_loads_with_program_manager(program_manager);
-        }
-    }
-
-    pub fn finalize_account_read_aggregates(
-        &mut self,
-        program_manager: Option<&ProgramManager>,
-    ) -> Vec<TaggedAccountLoadAggregated> {
-        nodes::finalize_invoke_account_read_aggregates(
-            &self.trees[..],
-            &self.account_reads,
-            program_manager,
-        )
-    }
+    // pub fn finalize_account_read_aggregates(
+    //     &mut self,
+    //     global_program_context: Option<&GlobalProgramContext>,
+    // ) -> Vec<TaggedAccountLoadAggregated> {
+    //     nodes::finalize_invoke_account_read_aggregates(
+    //         &self.trees[..],
+    //         &self.account_reads,
+    //         global_program_context,
+    //     )
+    // }
 }
 
 impl From<InvokeContext> for TreeRoot<RootViewChildren> {

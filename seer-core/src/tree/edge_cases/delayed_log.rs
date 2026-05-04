@@ -1,4 +1,4 @@
-use crate::tree::{nodes::{EntrypointChildren, TreeEntrypoint}};
+use crate::tree::nodes::entrypoint::{EntrypointChildren, TreeEntrypoint};
 
 pub struct DelayedLogEdgeCase {
     memorised_entrypoint_tree: Option<TreeEntrypoint<EntrypointChildren>>,
@@ -7,7 +7,10 @@ pub struct DelayedLogEdgeCase {
 
 impl DelayedLogEdgeCase {
     pub fn new() -> Self {
-        Self { memorised_entrypoint_tree: None, last_known_entrypoint: None }
+        Self {
+            memorised_entrypoint_tree: None,
+            last_known_entrypoint: None,
+        }
     }
 
     pub fn met_hook(&mut self, memorised_entrypoint_tree: &TreeEntrypoint<EntrypointChildren>) {

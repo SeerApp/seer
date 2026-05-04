@@ -258,7 +258,11 @@ impl SourceDieTrace {
     }
 
     pub fn sizes(&self) -> (usize, usize, usize) {
-        (self.trace.len(), self.parents.len(), self.source_die_ranges.len())
+        (
+            self.trace.len(),
+            self.parents.len(),
+            self.source_die_ranges.len(),
+        )
     }
 }
 

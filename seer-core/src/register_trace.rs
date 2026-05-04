@@ -162,7 +162,11 @@ impl RegisterTraceCollector {
             self.last_hook_pc = None;
             return;
         };
-        if active.trace.last_key_value().is_some_and(|(_, e)| e.pc == pc) {
+        if active
+            .trace
+            .last_key_value()
+            .is_some_and(|(_, e)| e.pc == pc)
+        {
             self.last_hook_pc = None;
             return;
         }
@@ -188,19 +192,16 @@ impl RegisterTraceCollector {
             self.last_hook_pc = None;
         }
         self.records_this_chunk = 0;
-        self.active.take().map(ActiveRegisterTraceChunk::into_persisted)
+        self.active
+            .take()
+            .map(ActiveRegisterTraceChunk::into_persisted)
     }
 
     /// After a CPI boundary flush, open a chunk for the callee without a trace row yet.
     ///
     /// The first real `record` for this `tree_uid` appends the first trace line. This ensures
     /// callees with zero VM steps still produce a snapshot-only artifact with the correct uid.
-    pub fn open_chunk_eager(
-        &mut self,
-        tree_uid: u64,
-        order: u64,
-        reg: &[u64; REGISTER_COUNT],
-    ) {
+    pub fn open_chunk_eager(&mut self, tree_uid: u64, order: u64, reg: &[u64; REGISTER_COUNT]) {
         debug_assert!(
             self.active.is_none(),
             "open_chunk_eager expects no active chunk after flush_on_invocation_boundary"
@@ -225,10 +226,12 @@ impl RegisterTraceCollector {
 
         if let Some(active) = self.active.as_ref() {
             let uid_mismatch = active.tree_uid != tree_uid;
-            let step_bucket_full =
-                self.records_this_chunk >= REGISTER_TRACE_CHUNK_SIZE as u32;
+            let step_bucket_full = self.records_this_chunk >= REGISTER_TRACE_CHUNK_SIZE as u32;
             if uid_mismatch || step_bucket_full {
-                completed = self.active.take().map(ActiveRegisterTraceChunk::into_persisted);
+                completed = self
+                    .active
+                    .take()
+                    .map(ActiveRegisterTraceChunk::into_persisted);
                 if uid_mismatch {
                     self.last_hook_pc = None;
                 }
@@ -274,7 +277,9 @@ impl RegisterTraceCollector {
         self.drain_final_deferred_row();
         self.last_hook_pc = None;
         self.records_this_chunk = 0;
-        self.active.take().map(ActiveRegisterTraceChunk::into_persisted)
+        self.active
+            .take()
+            .map(ActiveRegisterTraceChunk::into_persisted)
     }
 }
 
@@ -313,7 +318,12 @@ fn changed_registers(
 fn serialize_registers(registers: &[u64; REGISTER_COUNT]) -> BTreeMap<usize, String> {
     let mut reg = BTreeMap::new();
 
-    for (index, value) in registers.iter().copied().enumerate().take(TRACE_REGISTER_COUNT) {
+    for (index, value) in registers
+        .iter()
+        .copied()
+        .enumerate()
+        .take(TRACE_REGISTER_COUNT)
+    {
         reg.insert(index, value.to_string());
     }
 
@@ -434,12 +444,11 @@ mod tests {
                 .map(|r| r.pc),
             Some(9000)
         );
-        assert!(
-            tail.chunk
-                .trace
-                .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
-                .is_some_and(|r| r.reg.is_none())
-        );
+        assert!(tail
+            .chunk
+            .trace
+            .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
+            .is_some_and(|r| r.reg.is_none()));
     }
 
     #[test]
@@ -447,7 +456,9 @@ mod tests {
         let mut collector = RegisterTraceCollector::new();
         let reg = regs(1);
         collector.record(0, 10, &reg, 1);
-        let done = collector.record(1, 11, &reg, 2).expect("flush on uid change");
+        let done = collector
+            .record(1, 11, &reg, 2)
+            .expect("flush on uid change");
         assert_eq!(done.tree_uid, 1);
         assert_eq!(done.min_order, 0);
         assert_eq!(done.max_order, 0);
@@ -511,9 +522,19 @@ mod tests {
 
         let chunk = collector.finalize().expect("final chunk");
         assert_eq!(chunk.chunk.snapshot.call_depth, Some(0));
-        assert_eq!(chunk.chunk.trace.get(&1).and_then(|r| r.call_depth), Some(1));
-        assert_eq!(chunk.chunk.trace.get(&2).and_then(|r| r.call_depth), Some(0));
-        assert!(chunk.chunk.trace.get(&3).is_some_and(|r| r.call_depth.is_none()));
+        assert_eq!(
+            chunk.chunk.trace.get(&1).and_then(|r| r.call_depth),
+            Some(1)
+        );
+        assert_eq!(
+            chunk.chunk.trace.get(&2).and_then(|r| r.call_depth),
+            Some(0)
+        );
+        assert!(chunk
+            .chunk
+            .trace
+            .get(&3)
+            .is_some_and(|r| r.call_depth.is_none()));
 
         let mut collector_no_depth = RegisterTraceCollector::new();
         let reg_static = regs(50);

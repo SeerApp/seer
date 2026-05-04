@@ -1,3 +1,5 @@
+//! Purpose: resolve DWARF data into entrypoint lookups.
+
 use crate::{
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
@@ -34,7 +36,13 @@ pub fn get_entrypoint(
 
     let sizes = source_die_trace.sizes();
 
-    seer_debug!("Assembled Source Die Trace for program {} with {} traces {} parents and {} die ranges", target.base, sizes.0, sizes.1, sizes.2);
+    seer_debug!(
+        "Assembled Source Die Trace for program {} with {} traces {} parents and {} die ranges",
+        target.base,
+        sizes.0,
+        sizes.1,
+        sizes.2
+    );
 
     if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
         seer_debug!("Saving source trace for program {}", target.base);

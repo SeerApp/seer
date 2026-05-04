@@ -13,7 +13,7 @@
 //! - **`tests/fixtures/idl/codama/canonical_result/`** — Codama parse goldens (`codama_idl` test).
 //! - **`tests/fixtures/idl/anchor/idls/`** — Anchor IDL JSON inputs (`anchor_idl` test).
 //! - **`tests/fixtures/idl/anchor/canonical_result/`** — Anchor parse goldens (`anchor_idl` test).
-//! - **`tests/fixtures/<scenario>/canonical_result/`** — trace tree goldens (`puppets`, `cypherpunk`, …).
+//! - **`tests/fixtures/<scenario>/canonical_result/tx/<signature>/<instruction>/trace.json`** — trace tree goldens (`puppets`, `cypherpunk`, …).
 
 #![allow(dead_code)]
 
@@ -22,8 +22,8 @@ use std::path::PathBuf;
 use seer_core::{
     analysis::{Analysis, ExecutionEvent},
     contexts::tracer::Tracer,
-    program_manager::program_manager::ProgramManager,
-    tree::nodes::{RootViewChildren, TreeRoot},
+    global_program_context::global_program_context::GlobalProgramContext,
+    tree::nodes::root::{RootViewChildren, TreeRoot},
 };
 use solana_pubkey::Pubkey;
 
@@ -71,7 +71,7 @@ pub fn _run_tx(
     fee_payer: Pubkey,
     index: u8,
     signature: &String,
-    program_manager: &ProgramManager,
+    global_program_context: &GlobalProgramContext,
 ) -> TreeRoot<RootViewChildren> {
     let mut tracer = Tracer::new(fee_payer);
 
@@ -99,7 +99,7 @@ pub fn _run_tx(
             }
             ExecutionEvent::Log(log) => tracer.log(&log, trace_order),
             ExecutionEvent::Step(step) => {
-                tracer.step(program_manager, step, trace_order);
+                tracer.step(global_program_context, step, trace_order);
                 trace_order += 1;
             }
         }
