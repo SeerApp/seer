@@ -1,6 +1,8 @@
 {
   "sender": "EmPkKuzAdBZRC4jH2N12D4HJS3TZTQ41c9NB5Gzzdqrq",
   "receiver": "4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc",
+  "accounts": [],
+  "data": [],
   "children": [
     {
       "Log": {
@@ -47,6 +49,8 @@
             "Invoke": {
               "sender": "4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc",
               "receiver": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
+              "accounts": [],
+              "data": [],
               "children": [
                 {
                   "Log": {
@@ -104,7 +108,8 @@
                       ],
                       "owner": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
                       "executable": false,
-                      "rent_epoch": 0
+                      "rent_epoch": 0,
+                      "parsed": null
                     },
                     "after": {
                       "lamports": 1002240,
@@ -128,11 +133,13 @@
                       ],
                       "owner": "51h1TJ9cjfKcA7LHxNnd9GPNKzovjTdCcVwXWZVi1ues",
                       "executable": false,
-                      "rent_epoch": 0
+                      "rent_epoch": 0,
+                      "parsed": null
                     }
                   }
                 }
-              ]
+              ],
+              "parsed": null
             }
           }
         ]
@@ -148,5 +155,6 @@
         "message": "Program 4BYy1uGKXD7kewhZCj2NFhvWqAiGUhFH6bcN1UWZyEgc success"
       }
     }
-  ]
+  ],
+  "parsed": null
 }

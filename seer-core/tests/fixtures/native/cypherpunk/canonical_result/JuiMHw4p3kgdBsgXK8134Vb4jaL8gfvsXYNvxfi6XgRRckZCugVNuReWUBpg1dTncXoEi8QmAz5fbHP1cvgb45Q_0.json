@@ -1,6 +1,8 @@
 {
   "sender": "J6X9c9BNoWFmE7RNa3qJ7kQ3e7JwJN63hjc2X1VdQGS9",
   "receiver": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
+  "accounts": [],
+  "data": [],
   "children": [
     {
       "Log": {
@@ -106,6 +108,8 @@
                   "Invoke": {
                     "sender": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
                     "receiver": "11111111111111111111111111111111",
+                    "accounts": [],
+                    "data": [],
                     "children": [
                       {
                         "Log": {
@@ -125,14 +129,16 @@
                             "data": [],
                             "owner": "11111111111111111111111111111111",
                             "executable": false,
-                            "rent_epoch": 0
+                            "rent_epoch": 0,
+                            "parsed": null
                           },
                           "after": {
                             "lamports": 9998864440,
                             "data": [],
                             "owner": "11111111111111111111111111111111",
                             "executable": false,
-                            "rent_epoch": 0
+                            "rent_epoch": 0,
+                            "parsed": null
                           }
                         }
                       },
@@ -144,7 +150,8 @@
                             "data": [],
                             "owner": "11111111111111111111111111111111",
                             "executable": false,
-                            "rent_epoch": 0
+                            "rent_epoch": 0,
+                            "parsed": null
                           },
                           "after": {
                             "lamports": 1120560,
@@ -185,11 +192,13 @@
                             ],
                             "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
                             "executable": false,
-                            "rent_epoch": 0
+                            "rent_epoch": 0,
+                            "parsed": null
                           }
                         }
                       }
-                    ]
+                    ],
+                    "parsed": null
                   }
                 },
                 {
@@ -355,7 +364,8 @@
           ],
           "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
           "executable": false,
-          "rent_epoch": 0
+          "rent_epoch": 0,
+          "parsed": null
         },
         "after": {
           "lamports": 1120560,
@@ -396,9 +406,11 @@
           ],
           "owner": "77HwdkkBCvZGVYWQHuPE63WVegnP6Unaq3DL7Du2ab5H",
           "executable": false,
-          "rent_epoch": 0
+          "rent_epoch": 0,
+          "parsed": null
         }
       }
     }
-  ]
+  ],
+  "parsed": null
 }

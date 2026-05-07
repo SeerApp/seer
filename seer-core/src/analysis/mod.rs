@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
-use crate::{save::save, tree::nodes::TreeAccount};
+use crate::{save::save, tree::nodes::account::TreeAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ExecutionEvent {
@@ -78,8 +78,7 @@ impl Analysis {
     pub fn end_program(&mut self, err: Option<InstructionError>) {
         self.is_writable();
 
-        self.events
-            .push(ExecutionEvent::EndProgram(err));
+        self.events.push(ExecutionEvent::EndProgram(err));
     }
 
     pub fn step(&mut self, i: u64) {

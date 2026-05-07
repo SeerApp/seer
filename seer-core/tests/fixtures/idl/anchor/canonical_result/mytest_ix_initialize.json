@@ -1,0 +1,75 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "initialize",
+    "account_names": [
+      "initializer",
+      "taker",
+      "admin_state",
+      "mint",
+      "vault",
+      "initializer_deposit_token_account",
+      "escrow_state",
+      "system_program",
+      "rent",
+      "token_program"
+    ],
+    "args": [
+      {
+        "name": "random_seed",
+        "value": {
+          "type": "Number",
+          "value": {
+            "value": "100001",
+            "format": "u64"
+          }
+        }
+      },
+      {
+        "name": "initializer_amount",
+        "value": {
+          "type": "Array",
+          "value": {
+            "values": [
+              {
+                "type": "Number",
+                "value": {
+                  "value": "100",
+                  "format": "u64"
+                }
+              },
+              {
+                "type": "Number",
+                "value": {
+                  "value": "200",
+                  "format": "u64"
+                }
+              },
+              {
+                "type": "Number",
+                "value": {
+                  "value": "76800",
+                  "format": "u64"
+                }
+              },
+              {
+                "type": "Number",
+                "value": {
+                  "value": "102400",
+                  "format": "u64"
+                }
+              },
+              {
+                "type": "Number",
+                "value": {
+                  "value": "128000",
+                  "format": "u64"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

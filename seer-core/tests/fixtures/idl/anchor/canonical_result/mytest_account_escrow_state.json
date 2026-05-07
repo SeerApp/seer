@@ -1,0 +1,135 @@
+{
+  "parsed": {
+    "id": "Default",
+    "data": {
+      "name": "EscrowState",
+      "value": {
+        "type": "Struct",
+        "value": {
+          "fields": [
+            {
+              "name": "random_seed",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "100001",
+                  "format": "u64"
+                }
+              }
+            },
+            {
+              "name": "initializer_key",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "AKfqTU9gGTCXoAjiZEpKt5x9fBwD3ZU4D3wCJ87KZqTu"
+                }
+              }
+            },
+            {
+              "name": "taker",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "CxKxGrTF81yFEFEbiedLYGmap5gwR11JFppDHKkxFVkq"
+                }
+              }
+            },
+            {
+              "name": "initializer_amount",
+              "value": {
+                "type": "Array",
+                "value": {
+                  "values": [
+                    {
+                      "type": "Number",
+                      "value": {
+                        "value": "100",
+                        "format": "u64"
+                      }
+                    },
+                    {
+                      "type": "Number",
+                      "value": {
+                        "value": "200",
+                        "format": "u64"
+                      }
+                    },
+                    {
+                      "type": "Number",
+                      "value": {
+                        "value": "300",
+                        "format": "u64"
+                      }
+                    },
+                    {
+                      "type": "Number",
+                      "value": {
+                        "value": "400",
+                        "format": "u64"
+                      }
+                    },
+                    {
+                      "type": "Number",
+                      "value": {
+                        "value": "500",
+                        "format": "u64"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "dispute_status",
+              "value": {
+                "type": "Boolean",
+                "value": {
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "refund_status",
+              "value": {
+                "type": "Boolean",
+                "value": {
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "mint",
+              "value": {
+                "type": "PublicKey",
+                "value": {
+                  "value": "HYTLyA85bXocKVYnQuNPFqCtF4xXfFSvC17awsonMfV9"
+                }
+              }
+            },
+            {
+              "name": "bump",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "255",
+                  "format": "u8"
+                }
+              }
+            },
+            {
+              "name": "vault_bump",
+              "value": {
+                "type": "Number",
+                "value": {
+                  "value": "253",
+                  "format": "u8"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,126 +1,86 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{env, path::PathBuf};
 
-use seer_interface::{GuestMemory, GuestStepMirror};
+use seer_interface::{GuestAccountBackdoor, GuestMemory};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    contexts::transaction::TransactionContext,
-    dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
-    entrypoint_lookup::EntrypointLookup,
+    account_reads::{
+        refresh_parsed_reads::refresh_account_reads_parsed_for_instruction,
+        scanner::AccountVmLayout,
+        utils::save_view_account_reads_chunks,
+    },
+    contexts::{
+        account::global::GlobalAccountContext, register::RegisterContext,
+        transaction::TransactionContext,
+    },
+    errors::IrrecoverableError,
     get_cwd,
-    path_resolver::PathResolver,
+    program_manager::types::GlobalProgramContext,
     runbook::{generate_runbooks, save_runbooks},
-    save::{save, save_meta, save_trace_tree},
-    seer_debug, seer_trace,
-    sources::Sources,
+    save::{save_meta, save_register_trace_chunk, save_trace_tree},
+    seer_debug,
 };
 
-pub fn get_lookups(
-    runtime_dir: &PathBuf,
-    dwarf_compile_dir: &PathBuf,
-) -> HashMap<Pubkey, EntrypointLookup> {
-    seer_debug!(
-        "Resolving paths\n\t{:?}\n\t{:?}",
-        runtime_dir,
-        dwarf_compile_dir
-    );
-    let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
-    seer_debug!("Assembling dwarf manager");
-    let dwarf_manager = DwarfManager::new(&runtime_dir.clone().join("target/deploy"));
-    seer_debug!("Fetching source files");
-    let source_files = dwarf_manager.get_all_source_files(&path_resolver);
-    seer_debug!("Found source files\n\t{:?}", source_files);
-    let sources = Sources::new(path_resolver, source_files);
-
-    seer_debug!("About to search for {} DWARF source(s)...", sources.len());
-
-    let mut lookups: HashMap<Pubkey, EntrypointLookup> = HashMap::new();
-
-    for program_address in dwarf_manager.get_pubkeys() {
-        seer_debug!("Building lookup for {:?}", program_address);
-        let dwarf = dwarf_manager.get_dwarf(program_address).unwrap();
-        let source_die_trace = SourceDieTrace::new(&dwarf, &sources);
-
-        let sizes = source_die_trace.sizes();
-
-        seer_debug!("Assembled Source Die Trace for program {:?} with {} traces {} parents and {} die ranges", program_address, sizes.0, sizes.1, sizes.2);
-
-        if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
-            seer_debug!("Saving source trace for program {}", program_address);
-            let _ = save(
-                serde_json::to_string_pretty(&source_die_trace)
-                    .ok()
-                    .unwrap(),
-                format!("{}", program_address),
-                "json",
-                false,
-            );
-        }
-
-        let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
-
-        lookups.insert(program_address.clone(), entrypoint_lookup);
-    }
-
-    seer_debug!("Successfully collected {} program source(s)", lookups.len());
-
-    lookups
-}
-
 pub struct SeerContext {
-    lookups: HashMap<Pubkey, EntrypointLookup>,
     pub transaction_context: Option<TransactionContext>,
+    pub register_context: RegisterContext,
+    pub global_program_context: GlobalProgramContext,
+    pub global_account_context: GlobalAccountContext,
 }
 
 impl SeerContext {
-    pub fn new(authority: Pubkey) -> Self {
+    pub fn new(
+        authority: Pubkey,
+        network_rpc_url: Option<String>,
+    ) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
 
-        let target_deploy_dir = env::var("SEER_DWARF_COMPILE_DIR")
+        let dwarf_compile_dir = env::var("SEER_DWARF_COMPILE_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
 
-        let (txtx, main) = generate_runbooks(authority, &runtime_dir);
-        save_runbooks(&runtime_dir, txtx, main);
+        if let Some((txtx, main)) = generate_runbooks(authority, &runtime_dir) {
+            save_runbooks(&runtime_dir, txtx, main);
+        } else {
+            seer_debug!("Starting without target.");
+        };
 
-        Self {
-            lookups: get_lookups(&runtime_dir, &target_deploy_dir),
+        let global_program_context =
+            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir, network_rpc_url)?;
+        let global_account_context = GlobalAccountContext::new();
+
+        Ok(Self {
             transaction_context: None,
-        }
-    }
-
-    pub fn add_lookups(&mut self, runtime_dir: &PathBuf, target_deploy_dir: &PathBuf) {
-        for (key, value) in get_lookups(runtime_dir, target_deploy_dir) {
-            if self.lookups.contains_key(&key) {
-                panic!("Collision detected for key: {:?}", key);
-            }
-            self.lookups.insert(key, value);
-        }
+            register_context: RegisterContext::new(),
+            global_program_context,
+            global_account_context,
+        })
     }
 
     pub fn set_current_tx(&mut self, tx: Signature) {
-        seer_trace!("New tx: {:?}", tx);
+        seer_debug!("New tx: {:?}", tx);
+
+        self.register_context.reset_for_new_transaction();
         self.transaction_context = Some(TransactionContext::new(tx));
     }
 
     pub fn unset_current_tx(&mut self) {
-        if let Some(txc) = &self.transaction_context.take() {
-            seer_trace!("Tx unset: {:?}", txc.signature);
+        if let Some(tx) = &self.transaction_context.take() {
+            seer_debug!("Tx unset: {:?}", tx.signature);
 
-            if *txc.executed() {
-                save_meta(&txc.signature.to_string(), &txc.meta);
-            }
+            save_meta(&tx.signature.to_string(), &tx.meta);
         }
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
-        seer_trace!("New instruction: {:?}", instruction);
+        seer_debug!("New instruction: {:?}", instruction);
+
         self.transaction_context
             .as_mut()
             .expect("Instruction called before transaction context")
@@ -128,57 +88,189 @@ impl SeerContext {
     }
 
     pub fn end_instruction(&mut self) {
-        seer_trace!("Ending instruction");
-        let txc = self
+        seer_debug!("Ending instruction");
+
+        let tx = self
             .transaction_context
             .as_mut()
             .expect("Instruction ended before transaction context exists");
 
-        if let Some((instruction, trace_tree)) = txc.end_instruction() {
-            save_trace_tree(&txc.signature.to_string(), instruction, trace_tree);
+        for acc in self
+            .global_account_context
+            .get_changed_accounts(tx.step_order)
+        {
+            tx.account_diff(acc);
+        }
+
+        if let Some((instruction, trace_tree)) = tx.end_instruction(&self.global_program_context) {
+            let receiver_by_account = trace_tree.account_pubkey_to_idl_receiver_map();
+            save_trace_tree(&tx.signature.to_string(), instruction, trace_tree);
+            refresh_account_reads_parsed_for_instruction(
+                &receiver_by_account,
+                &tx.signature.to_string(),
+                instruction,
+                &self.global_program_context,
+            );
         }
     }
 
-    pub unsafe fn end_transaction_context(&mut self) {
-        if let Some(txc) = self.transaction_context.as_mut() {
-            if let Some(mut step_mirror) = txc.step_mirror.take() {
-                step_mirror.clear();
-            }
-        }
+    pub fn close_account_backdoor(&mut self) {
+        seer_debug!("Closing account backdoor");
+
+        self.global_account_context
+            .close_account_backdoor_idempotent();
     }
 
     pub unsafe fn start_program(
         &mut self,
+        accounts: Vec<Pubkey>,
+        data: Vec<u8>,
         program_address: Pubkey,
-        step_mirror: &dyn GuestStepMirror,
+        bd: &dyn GuestAccountBackdoor,
     ) {
-        seer_trace!("Starting program: {:?}", program_address);
-        self.transaction_context
+        seer_debug!("Starting program: {:?}", program_address);
+
+        let tx = self
+            .transaction_context
             .as_mut()
-            .expect("Starting program before transaction context")
-            .start_program(program_address, step_mirror);
+            .expect("Starting program before transaction context");
+
+        self.global_program_context
+            .queue_disasm_if_needed(program_address);
+
+        self.global_account_context
+            .open_account_backdoor_idempotent(bd);
+
+        if tx.is_cpi() {
+            let view_reads = self
+                .global_account_context
+                .drain_parsed_view_accounts(
+                    &self.global_program_context,
+                    tx.get_current_program_address(),
+                );
+            save_view_account_reads_chunks(
+                &view_reads,
+                &tx.signature.to_string(),
+                tx.instruction(),
+                &tx.get_current_program_address(),
+            );
+
+            if let Some(rx) = self.register_context.flush_for_roll() {
+                save_register_trace_chunk(
+                    &tx.signature.to_string(),
+                    tx.instruction(),
+                    &tx.get_current_program_address(),
+                    &rx,
+                );
+            }
+            self.register_context.push_invocation();
+        }
+
+        tx.start_program(accounts, data, program_address);
     }
 
     pub fn end_program(&mut self, program_address: Pubkey, err: Option<InstructionError>) {
-        seer_trace!("Ending program: {:?}", program_address);
-        self.transaction_context
+        seer_debug!("Ending program: {:?}", program_address);
+
+        let tx = self
+            .transaction_context
             .as_mut()
-            .expect("Ending program before transaction context exists")
-            .end_program(err)
+            .expect("Ending program before transaction context exists");
+        let global_program_context = &self.global_program_context;
+
+        if let Some(err) = err.clone() {
+            let idl_lookup = global_program_context.get_idl_lookup(&program_address);
+            let idl = idl_lookup
+                .as_deref()
+                .map(|l| l as &dyn crate::idl::IdlTreeParser);
+            tx.meta.set_error(err, idl);
+        }
+
+        let view_reads = self
+            .global_account_context
+            .drain_parsed_view_accounts(&self.global_program_context, program_address);
+
+        if !view_reads.is_empty() {
+            save_view_account_reads_chunks(
+                &view_reads,
+                &tx.signature.to_string(),
+                tx.instruction(),
+                &program_address,
+            );
+        }
+
+        if let Some(rx) = self.register_context.flush_finalize() {
+            save_register_trace_chunk(
+                &tx.signature.to_string(),
+                tx.instruction(),
+                &program_address,
+                &rx,
+            );
+        }
+        self.register_context.pop_invocation_if_nested();
+
+        tx.end_program(err);
     }
 
-    pub fn step<M: GuestMemory>(&mut self, i: u64, mem: &mut M, reg: &[u64; 12]) {
-        self.transaction_context
+    pub fn step<M: GuestMemory>(&mut self, i: u64, _: &mut M, reg: &[u64; 12]) {
+        let tx = self
+            .transaction_context
             .as_mut()
-            .expect("Stepping before transaction context exists")
-            .step(&self.lookups, i, mem, reg);
+            .expect("Stepping before transaction context exists");
+
+        for acc in self
+            .global_account_context
+            .get_changed_accounts(tx.step_order)
+        {
+            tx.account_diff(acc);
+        }
+
+        if let Some(rx) = self.register_context.record(tx.step_order, i, reg) {
+            save_register_trace_chunk(
+                &tx.signature.to_string(),
+                tx.instruction(),
+                &tx.get_current_program_address(),
+                &rx,
+            );
+        }
+
+        tx.step(&self.global_program_context, i);
     }
 
     pub fn log(&mut self, message: &str) {
-        seer_trace!("Log: {:?}", message);
-        self.transaction_context
+        seer_debug!("Log: {:?}", message);
+
+        let tx = self
+            .transaction_context
             .as_mut()
-            .expect("Logging before transaction context exists")
-            .log(message);
+            .expect("Logging before transaction context exists");
+        tx.log(message);
+
+        for acc in self
+            .global_account_context
+            .get_changed_accounts(tx.step_order)
+        {
+            tx.account_diff(acc);
+        }
+    }
+
+    pub fn capture_vm_layout(
+        &mut self,
+        layouts: &[AccountVmLayout],
+        keys: Vec<Pubkey>,
+        data_growth: u64,
+    ) {
+        self.global_account_context
+            .capture_vm_layout(layouts, keys, data_growth);
+    }
+
+    pub fn capture_account_read(&mut self, vm_addr: u64, width: u64) {
+        let tx = self
+            .transaction_context
+            .as_mut()
+            .expect("Capturing account read before transaction context exists");
+
+        self.global_account_context
+            .capture_account_read(tx.step_order.saturating_sub(1), vm_addr, width);
     }
 }

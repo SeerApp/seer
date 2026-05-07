@@ -14,18 +14,18 @@ struct ProgramArtifact {
     so_rel_path: String,
 }
 
-pub fn generate_runbooks(authority: Pubkey, runtime_dir: &PathBuf) -> (String, String) {
+pub fn generate_runbooks(authority: Pubkey, runtime_dir: &PathBuf) -> Option<(String, String)> {
     let deploy_dir = runtime_dir.join("target").join("deploy");
 
     if !deploy_dir.is_dir() {
-        panic!("deploy directory does not exist: {}", deploy_dir.display());
+        return None;
     }
 
     let programs = discover_program_artifacts(runtime_dir, &deploy_dir);
     let txtx_yml = render_txtx_yml();
     let main_tx = render_main_tx(authority, &programs);
 
-    (txtx_yml, main_tx)
+    Some((txtx_yml, main_tx))
 }
 
 pub fn save_runbooks(runtime_dir: &PathBuf, txtx: String, main: String) {

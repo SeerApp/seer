@@ -1,16 +1,22 @@
+pub mod account_reads;
 pub mod analysis;
 pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
+pub mod errors;
+pub mod idl;
 pub mod logger;
 pub mod meta;
 pub mod path_resolver;
+pub mod program_manager;
+pub mod register_trace;
 pub mod runbook;
 pub mod save;
 pub mod sources;
 pub mod step_mirror;
-pub mod tracer;
+pub mod sysvar_accounts;
+pub mod target_reader;
 pub mod tree;
 
 use std::cell::RefCell;
@@ -21,7 +27,10 @@ use solana_signature::Signature;
 
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
-pub use crate::logger::{init_seer_logger, seer_logger, SeerLogger, SeerLoggerLevel};
+use crate::errors::IrrecoverableError;
+pub use crate::logger::{
+    init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
+};
 
 pub struct SeerSingleton {
     context: Option<SourcesContext>,
@@ -61,15 +70,20 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init(authority: Pubkey) {
+pub async fn init(
+    authority: Pubkey,
+    network_rpc_url: Option<String>,
+) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(authority).await;
+    let ctx = SourcesContext::new(authority, network_rpc_url).await?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
         seer.context = Some(ctx);
     });
+
+    Ok(())
 }
 
 pub fn get<F>(f: F)
@@ -102,4 +116,11 @@ pub fn unset() {
 
 pub fn get_cwd() -> PathBuf {
     env::current_dir().expect("env::curnet_dir failed!")
+}
+
+pub fn is_default<T>(value: &T) -> bool
+where
+    T: Default + PartialEq,
+{
+    value == &T::default()
 }

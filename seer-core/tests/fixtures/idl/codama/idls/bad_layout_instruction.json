@@ -1,0 +1,68 @@
+{
+  "kind": "rootNode",
+  "standard": "codama",
+  "version": "1.5.1",
+  "program": {
+    "kind": "programNode",
+    "name": "badLayoutTest",
+    "publicKey": "11111111111111111111111111111111",
+    "version": "1.0.0",
+    "origin": "anchor",
+    "docs": [],
+    "pdas": [],
+    "accounts": [],
+    "instructions": [
+      {
+        "kind": "instructionNode",
+        "name": "badIx",
+        "idlName": "BadIx",
+        "docs": [],
+        "accounts": [],
+        "arguments": [
+          {
+            "kind": "instructionArgumentNode",
+            "name": "discriminator",
+            "type": {
+              "kind": "numberTypeNode",
+              "format": "u32",
+              "endian": "le"
+            },
+            "docs": [],
+            "defaultValue": {
+              "kind": "numberValueNode",
+              "number": 0
+            },
+            "defaultValueStrategy": "omitted"
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "raw",
+            "type": { "kind": "bytesTypeNode" },
+            "docs": []
+          },
+          {
+            "kind": "instructionArgumentNode",
+            "name": "tail",
+            "type": {
+              "kind": "numberTypeNode",
+              "format": "u8",
+              "endian": "le"
+            },
+            "docs": []
+          }
+        ],
+        "discriminators": [
+          {
+            "kind": "fieldDiscriminatorNode",
+            "name": "discriminator",
+            "offset": 0
+          }
+        ],
+        "optionalAccountStrategy": "omitted"
+      }
+    ],
+    "definedTypes": [],
+    "errors": []
+  },
+  "additionalPrograms": []
+}

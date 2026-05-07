@@ -7,7 +7,7 @@ pub trait GuestMemory {
 
 pub type TransactionAccount = (Pubkey, AccountSharedData);
 
-pub trait GuestStepMirror {
+pub trait GuestAccountBackdoor {
     fn get_account_at_index(&self, index: usize) -> Option<AccountSharedData>;
 
     fn get_account_keys(&self) -> Vec<Pubkey>;

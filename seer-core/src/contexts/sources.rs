@@ -1,6 +1,6 @@
 use solana_pubkey::Pubkey;
 
-use crate::contexts::seer::SeerContext;
+use crate::{contexts::seer::SeerContext, errors::IrrecoverableError};
 
 pub struct SourcesContext {
     seer: SeerContext,
@@ -8,7 +8,10 @@ pub struct SourcesContext {
 }
 
 impl SourcesContext {
-    pub async fn new(authority: Pubkey) -> Self {
+    pub async fn new(
+        authority: Pubkey,
+        network_rpc_url: Option<String>,
+    ) -> Result<Self, IrrecoverableError> {
         // let eps = match Config::from_env().ok().expect("Error in parsing config") {
         //     Some(config) => Some(ExternalProgramService::new(config).await),
         //     None => {
@@ -16,10 +19,10 @@ impl SourcesContext {
         //     }
         // };
 
-        Self {
-            seer: SeerContext::new(authority),
+        Ok(Self {
+            seer: SeerContext::new(authority, network_rpc_url)?,
             // eps,
-        }
+        })
     }
 
     pub fn get_context(&mut self) -> &mut SeerContext {

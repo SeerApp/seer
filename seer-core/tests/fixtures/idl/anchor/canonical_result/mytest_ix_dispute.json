@@ -1,0 +1,11 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "dispute",
+    "account_names": [
+      "disputor",
+      "escrow_state"
+    ],
+    "args": []
+  }
+}

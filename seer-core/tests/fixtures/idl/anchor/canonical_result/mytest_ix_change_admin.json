@@ -1,0 +1,14 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "change_admin",
+    "account_names": [
+      "admin1",
+      "new_admin1",
+      "new_admin2",
+      "new_resolver",
+      "admin_state"
+    ],
+    "args": []
+  }
+}

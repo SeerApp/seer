@@ -1,0 +1,29 @@
+{
+  "instruction": {
+    "id": "Default",
+    "name": "approve",
+    "account_names": [
+      "initializer",
+      "taker_token_account",
+      "admin1_token_account",
+      "admin2_token_account",
+      "escrow_state",
+      "admin_state",
+      "vault",
+      "vault_authority",
+      "token_program"
+    ],
+    "args": [
+      {
+        "name": "milestone_idx",
+        "value": {
+          "type": "Number",
+          "value": {
+            "value": "76",
+            "format": "u64"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,6 +1,14 @@
-use std::{fmt, sync::OnceLock, thread};
+//! Seer application logging for CLI streaming and Loki/Grafana.
+//!
+//! Environment:
+//! - `SEER_LOG`: `debug`, `info`, or `warn` — minimum level to emit (`info` if unset).
+//! - `SEER_LOG_FORMAT`: `json` (default) or `pretty` — JSON lines vs colored human output.
+
+use std::fmt;
+use std::sync::{Mutex, OnceLock};
 
 static SEER_LOGGER: OnceLock<SeerLogger> = OnceLock::new();
+static LOG_LINE_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn init_seer_logger(logger: SeerLogger) {
     let _ = SEER_LOGGER.set(logger);
@@ -13,59 +21,84 @@ pub fn seer_logger() -> &'static SeerLogger {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SeerLoggerLevel {
-    Trace,
     Debug,
+    Info,
     Warn,
-    Error,
 }
 
 impl SeerLoggerLevel {
-    fn color_code(&self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
-            SeerLoggerLevel::Trace => "\x1b[36m", // Cyan
-            SeerLoggerLevel::Debug => "\x1b[34m", // Blue
-            SeerLoggerLevel::Warn => "\x1b[33m",  // Yellow
-            SeerLoggerLevel::Error => "\x1b[31m", // Red
+            SeerLoggerLevel::Debug => "debug",
+            SeerLoggerLevel::Info => "info",
+            SeerLoggerLevel::Warn => "warn",
         }
     }
 
-    fn label(&self) -> &'static str {
+    fn color_code(self) -> &'static str {
         match self {
-            SeerLoggerLevel::Trace => "TRACE",
+            SeerLoggerLevel::Debug => "\x1b[36m", // Cyan
+            SeerLoggerLevel::Info => "\x1b[32m",  // Green
+            SeerLoggerLevel::Warn => "\x1b[33m",  // Yellow
+        }
+    }
+
+    fn label_upper(self) -> &'static str {
+        match self {
             SeerLoggerLevel::Debug => "DEBUG",
+            SeerLoggerLevel::Info => "INFO",
             SeerLoggerLevel::Warn => "WARN",
-            SeerLoggerLevel::Error => "ERROR",
         }
     }
 }
 
-const RESET: &str = "\x1b[0m";
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SeerLogFormat {
+    Json,
+    Pretty,
+}
 
 pub struct SeerLogger {
     level: SeerLoggerLevel,
+    format: SeerLogFormat,
 }
+
+#[derive(serde::Serialize)]
+struct LogRecord<'a> {
+    ts: String,
+    level: &'a str,
+    target: &'a str,
+    message: String,
+}
+
+const RESET: &str = "\x1b[0m";
 
 impl SeerLogger {
     pub fn from_env() -> Self {
         let level = std::env::var("SEER_LOG")
             .ok()
-            .as_deref()
             .map(|v| v.to_lowercase())
             .as_deref()
             .and_then(|v| match v {
-                "trace" => Some(SeerLoggerLevel::Trace),
                 "debug" => Some(SeerLoggerLevel::Debug),
-                "warn"  => Some(SeerLoggerLevel::Warn),
-                "error" => Some(SeerLoggerLevel::Error),
+                "info" => Some(SeerLoggerLevel::Info),
+                "warn" => Some(SeerLoggerLevel::Warn),
                 _ => None,
             })
-            .unwrap_or(SeerLoggerLevel::Error);
+            .unwrap_or(SeerLoggerLevel::Info);
 
-        Self::new(level)
-    }
+        let format = std::env::var("SEER_LOG_FORMAT")
+            .ok()
+            .map(|v| v.to_lowercase())
+            .as_deref()
+            .and_then(|v| match v {
+                "pretty" => Some(SeerLogFormat::Pretty),
+                "json" => Some(SeerLogFormat::Json),
+                _ => None,
+            })
+            .unwrap_or(SeerLogFormat::Json);
 
-    fn new(level: SeerLoggerLevel) -> Self {
-        Self { level }
+        Self { level, format }
     }
 
     #[inline(always)]
@@ -73,56 +106,51 @@ impl SeerLogger {
         msg_level >= self.level
     }
 
-    fn log(&self, level: SeerLoggerLevel, module: &'static str, msg: fmt::Arguments) {
-        println!(
-            "{}[SEER {}]{} {:?} {} :: {}",
-            level.color_code(),
-            level.label(),
-            RESET,
-            thread::current().id(),
-            module,
-            msg
-        );
+    fn emit(&self, level: SeerLoggerLevel, target: &'static str, msg: fmt::Arguments<'_>) {
+        if !self.enabled(level) {
+            return;
+        }
+
+        let message = format!("{msg}");
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+        let _guard = LOG_LINE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+        match self.format {
+            SeerLogFormat::Json => {
+                let record = LogRecord {
+                    ts,
+                    level: level.as_str(),
+                    target,
+                    message,
+                };
+                let line = serde_json::to_string(&record).expect("log record serializes to JSON");
+                println!("{line}");
+            }
+            SeerLogFormat::Pretty => {
+                println!(
+                    "{}[SEER {}]{} {} :: {}",
+                    level.color_code(),
+                    level.label_upper(),
+                    RESET,
+                    target,
+                    message
+                );
+            }
+        }
     }
 
-    pub fn trace(&self, module: &'static str, msg: fmt::Arguments) {
-        if self.enabled(SeerLoggerLevel::Trace) {
-            self.log(SeerLoggerLevel::Trace, module, msg);
-        }
+    pub fn debug(&self, module: &'static str, msg: fmt::Arguments<'_>) {
+        self.emit(SeerLoggerLevel::Debug, module, msg);
     }
-    
-    pub fn debug(&self, module: &'static str, msg: fmt::Arguments) {
-        if self.enabled(SeerLoggerLevel::Debug) {
-            self.log(SeerLoggerLevel::Debug, module, msg);
-        }
-    }
-    
-    pub fn warn(&self, module: &'static str, msg: fmt::Arguments) {
-        if self.enabled(SeerLoggerLevel::Warn) {
-            self.log(SeerLoggerLevel::Warn, module, msg);
-        }
-    }
-    
-    pub fn error(&self, module: &'static str, msg: fmt::Arguments) {
-        eprintln!(
-            "{}[SEER ERROR]{} {:?} {} :: {}",
-            SeerLoggerLevel::Error.color_code(),
-            RESET,
-            thread::current().id(),
-            module,
-            msg
-        );
-    }    
-}
 
-#[macro_export]
-macro_rules! seer_trace {
-    ($($arg:tt)*) => {{
-        let logger = $crate::seer_logger();
-        if logger.enabled($crate::SeerLoggerLevel::Trace) {
-            logger.trace(module_path!(), format_args!($($arg)*));
-        }
-    }};
+    pub fn info(&self, module: &'static str, msg: fmt::Arguments<'_>) {
+        self.emit(SeerLoggerLevel::Info, module, msg);
+    }
+
+    pub fn warn(&self, module: &'static str, msg: fmt::Arguments<'_>) {
+        self.emit(SeerLoggerLevel::Warn, module, msg);
+    }
 }
 
 #[macro_export]
@@ -131,6 +159,26 @@ macro_rules! seer_debug {
         let logger = $crate::seer_logger();
         if logger.enabled($crate::SeerLoggerLevel::Debug) {
             logger.debug(module_path!(), format_args!($($arg)*));
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! seer_info {
+    ($($arg:tt)*) => {{
+        let logger = $crate::seer_logger();
+        if logger.enabled($crate::SeerLoggerLevel::Info) {
+            logger.info(module_path!(), format_args!($($arg)*));
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! seer_warn {
+    ($($arg:tt)*) => {{
+        let logger = $crate::seer_logger();
+        if logger.enabled($crate::SeerLoggerLevel::Warn) {
+            logger.warn(module_path!(), format_args!($($arg)*));
         }
     }};
 }
