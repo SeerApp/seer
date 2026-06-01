@@ -1,7 +1,8 @@
 //! Seer application logging for CLI streaming and Loki/Grafana.
 //!
 //! Environment:
-//! - `SEER_LOG`: `debug`, `info`, or `warn` — minimum level to emit (`info` if unset).
+//! - `SEER_LOG`: `debug`, `info`, `warn`, or `none` — minimum level to emit (`info` if unset).
+//!   `none` disables all Seer log output.
 //! - `SEER_LOG_FORMAT`: `json` (default) or `pretty` — JSON lines vs colored human output.
 
 use std::fmt;
@@ -59,7 +60,7 @@ pub enum SeerLogFormat {
 }
 
 pub struct SeerLogger {
-    level: SeerLoggerLevel,
+    level: Option<SeerLoggerLevel>,
     format: SeerLogFormat,
 }
 
@@ -75,17 +76,18 @@ const RESET: &str = "\x1b[0m";
 
 impl SeerLogger {
     pub fn from_env() -> Self {
-        let level = std::env::var("SEER_LOG")
+        let level = match std::env::var("SEER_LOG")
             .ok()
             .map(|v| v.to_lowercase())
             .as_deref()
-            .and_then(|v| match v {
-                "debug" => Some(SeerLoggerLevel::Debug),
-                "info" => Some(SeerLoggerLevel::Info),
-                "warn" => Some(SeerLoggerLevel::Warn),
-                _ => None,
-            })
-            .unwrap_or(SeerLoggerLevel::Info);
+        {
+            None => Some(SeerLoggerLevel::Info),
+            Some("none") => None,
+            Some("debug") => Some(SeerLoggerLevel::Debug),
+            Some("info") => Some(SeerLoggerLevel::Info),
+            Some("warn") => Some(SeerLoggerLevel::Warn),
+            Some(_) => Some(SeerLoggerLevel::Info),
+        };
 
         let format = std::env::var("SEER_LOG_FORMAT")
             .ok()
@@ -103,7 +105,10 @@ impl SeerLogger {
 
     #[inline(always)]
     pub fn enabled(&self, msg_level: SeerLoggerLevel) -> bool {
-        msg_level >= self.level
+        match self.level {
+            None => false,
+            Some(min) => msg_level >= min,
+        }
     }
 
     fn emit(&self, level: SeerLoggerLevel, target: &'static str, msg: fmt::Arguments<'_>) {
