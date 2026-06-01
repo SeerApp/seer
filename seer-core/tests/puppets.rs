@@ -5,10 +5,9 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use seer_core::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::{layout::load_trace_tree, AtomicFileWriter},
     init_seer_logger,
     program_manager::types::GlobalProgramContext,
-    save::load_trace_tree,
     SeerLogger,
 };
 use solana_pubkey::Pubkey;

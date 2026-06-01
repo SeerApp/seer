@@ -1,7 +1,7 @@
 //! Purpose: resolve DWARF data into entrypoint lookups.
 
 use crate::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
     errors::IrrecoverableError,

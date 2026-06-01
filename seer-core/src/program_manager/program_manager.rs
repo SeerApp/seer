@@ -9,7 +9,7 @@ use std::{
 use solana_pubkey::Pubkey;
 
 use crate::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     entrypoint_lookup::EntrypointLookup,
     errors::IrrecoverableError,
     idl::{parsed_arg::collect_parsed_arg_byte_offsets, IdlLoadError, IdlLookup, IdlTreeParser},

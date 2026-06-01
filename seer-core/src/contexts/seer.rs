@@ -11,7 +11,7 @@ use crate::{
         scanner::AccountVmLayout,
         utils::save_view_account_reads_chunks,
     },
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     contexts::{
         account::global::GlobalAccountContext, register::RegisterContext,
         transaction::TransactionContext,

@@ -5,7 +5,7 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     tree::nodes::account::TreeAccount,
 };
 

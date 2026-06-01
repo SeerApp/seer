@@ -3,7 +3,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     contexts::instruction::InstructionContext,
     meta::TxMetadata,
     program_manager::types::GlobalProgramContext,

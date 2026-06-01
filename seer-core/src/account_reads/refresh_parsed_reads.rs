@@ -8,8 +8,10 @@ use crate::{
         view::{ViewAccountRead, ViewAccountReadKind},
     },
     program_manager::types::GlobalProgramContext,
-    atomic_file_writer::AtomicFileWriter,
-    save::{account_reads_chunk_paths, account_reads_chunk_step_bounds_from_file_stem},
+    artifacts::{
+        layout::{account_reads_chunk_paths, account_reads_chunk_step_bounds_from_file_stem},
+        AtomicFileWriter,
+    },
 };
 
 pub fn load_account_reads_chunk_rows(json: &serde_json::Value) -> Option<Vec<(u64, ViewAccountRead)>> {
@@ -116,7 +118,7 @@ fn refresh_reads_chunk_file(
 /// finalized trace tree. Only fills `ReadData` when `parsed` is absent and `parsed_byte_offsets` is
 /// empty; IDL-only (no sysvar pass). Overwrites chunk JSON via [`AtomicFileWriter::save_account_reads_chunk`].
 ///
-/// All discovery of chunk paths uses [`crate::save::account_reads_chunk_paths`].
+/// All discovery of chunk paths uses [`crate::artifacts::layout::account_reads_chunk_paths`].
 pub fn refresh_account_reads_parsed_for_instruction(
     receiver_by_account: &HashMap<Pubkey, Pubkey>,
     signature: &str,

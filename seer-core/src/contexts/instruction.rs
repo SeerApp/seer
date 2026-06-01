@@ -4,7 +4,7 @@ use solana_signature::Signature;
 
 use crate::{
     analysis::Analysis,
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     contexts::tracer::Tracer,
     program_manager::types::GlobalProgramContext,
     tree::nodes::{

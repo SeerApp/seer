@@ -19,7 +19,7 @@ use solana_pubkey::Pubkey;
 use tempfile::tempdir;
 
 use crate::{
-    atomic_file_writer::AtomicFileWriter,
+    artifacts::AtomicFileWriter,
     idl::IdlLookup,
     seer_debug,
     seer_warn,
