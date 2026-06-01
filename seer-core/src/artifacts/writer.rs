@@ -1,4 +1,4 @@
-//! Staged file commits via temp write + `rename` (no fsync / crash durability).
+//! Staged file commits via temp write + same-directory `rename` (no fsync / crash durability).
 
 use std::{
     fs::{self, create_dir_all},
@@ -7,35 +7,31 @@ use std::{
 };
 
 use serde::Serialize;
-use tempfile::TempDir;
 
-/// Stages each write under a process-local temp directory, then publishes with `rename`.
+/// Stages each write as a hidden temp file in the destination's parent directory, then publishes
+/// with `rename` so source and target stay on the same filesystem.
 ///
 /// Owned by [`crate::contexts::seer::SeerContext`] (shared with the disasm worker via `Arc<Mutex<_>>`).
-pub struct AtomicFileWriter {
-    staging_dir: TempDir,
-}
+pub struct AtomicFileWriter;
 
 impl AtomicFileWriter {
     pub fn new() -> Self {
-        let staging_dir = tempfile::Builder::new()
-            .prefix(".seer-atomic-writes-")
-            .tempdir_in(std::env::temp_dir())
-            .expect("create seer atomic write staging directory");
-        Self { staging_dir }
+        Self
     }
 
     pub fn write_bytes(&self, dest: &Path, bytes: &[u8], overwrite: bool) {
         if !overwrite && dest.exists() {
             return;
         }
-        if let Some(parent) = dest.parent() {
-            create_dir_all(parent).expect("create parent directory for atomic write");
-        }
+
+        let parent = dest
+            .parent()
+            .expect("destination path must have a parent directory for atomic write");
+        create_dir_all(parent).expect("create parent directory for atomic write");
 
         let mut staging_file = tempfile::Builder::new()
             .prefix(".seer-write-")
-            .tempfile_in(self.staging_dir.path())
+            .tempfile_in(parent)
             .expect("create staging temp file for atomic write");
         staging_file
             .write_all(bytes)
