@@ -8,7 +8,7 @@ use crate::{
         view::{ViewAccountRead, ViewDataRead},
     },
     register_trace::REGISTER_TRACE_CHUNK_SIZE,
-    save::save_account_reads_chunk,
+    atomic_file_writer::AtomicFileWriter,
 };
 
 pub fn collect_sequential_data_reads(
@@ -97,6 +97,7 @@ pub fn save_view_account_reads_chunks(
     signature: &str,
     instruction: u8,
     key: &Pubkey,
+    file_writer: &AtomicFileWriter,
 ) {
     if reads.is_empty() {
         return;
@@ -127,7 +128,7 @@ pub fn save_view_account_reads_chunks(
             .max()
             .unwrap_or(0);
         let chunk = build_view_reads_chunk_json(&chunk_rows);
-        save_account_reads_chunk(
+        file_writer.save_account_reads_chunk(
             signature,
             instruction,
             key,

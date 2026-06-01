@@ -3,6 +3,7 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
+    atomic_file_writer::AtomicFileWriter,
     contexts::instruction::InstructionContext,
     meta::TxMetadata,
     program_manager::types::GlobalProgramContext,
@@ -62,6 +63,7 @@ impl TransactionContext {
     pub fn end_instruction(
         &mut self,
         global_program_context: &GlobalProgramContext,
+        file_writer: &AtomicFileWriter,
     ) -> Option<(u8, TreeRoot<RootViewChildren>)> {
         let mut ix = self
             .instruction_context
@@ -69,7 +71,7 @@ impl TransactionContext {
             .expect("Ending instruction before it exists");
 
         ix.finalize_tree(global_program_context);
-        ix.into()
+        ix.into_trace_tree(file_writer)
     }
 
     pub unsafe fn start_program(

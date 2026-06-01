@@ -28,19 +28,6 @@ pub fn generate_runbooks(authority: Pubkey, runtime_dir: &PathBuf) -> Option<(St
     Some((txtx_yml, main_tx))
 }
 
-pub fn save_runbooks(runtime_dir: &PathBuf, txtx: String, main: String) {
-    let txtx_yml_path = runtime_dir.join("txtx.yml");
-    let runbook_dir = runtime_dir.join("runbooks").join("deployment");
-    let main_tx_path = runbook_dir.join("main.tx");
-
-    fs::create_dir_all(&runbook_dir)
-        .unwrap_or_else(|e| panic!("failed to create {}: {e}", runbook_dir.display()));
-    fs::write(&txtx_yml_path, txtx)
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", txtx_yml_path.display()));
-    fs::write(&main_tx_path, main)
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", main_tx_path.display()));
-}
-
 fn discover_program_artifacts(runtime_dir: &Path, deploy_dir: &Path) -> Vec<ProgramArtifact> {
     let mut so_files: BTreeMap<String, PathBuf> = BTreeMap::new();
 

@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::{Arc, Mutex}};
 
 use seer_interface::{GuestAccountBackdoor, GuestMemory};
 use solana_instruction::error::InstructionError;
@@ -11,6 +11,7 @@ use crate::{
         scanner::AccountVmLayout,
         utils::save_view_account_reads_chunks,
     },
+    atomic_file_writer::AtomicFileWriter,
     contexts::{
         account::global::GlobalAccountContext, register::RegisterContext,
         transaction::TransactionContext,
@@ -18,12 +19,12 @@ use crate::{
     errors::IrrecoverableError,
     get_cwd,
     program_manager::types::GlobalProgramContext,
-    runbook::{generate_runbooks, save_runbooks},
-    save::{save_meta, save_register_trace_chunk, save_trace_tree},
+    runbook::generate_runbooks,
     seer_debug,
 };
 
 pub struct SeerContext {
+    pub file_writer: Arc<Mutex<AtomicFileWriter>>,
     pub transaction_context: Option<TransactionContext>,
     pub register_context: RegisterContext,
     pub global_program_context: GlobalProgramContext,
@@ -45,17 +46,24 @@ impl SeerContext {
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
 
+        let file_writer = AtomicFileWriter::new();
         if let Some((txtx, main)) = generate_runbooks(authority, &runtime_dir) {
-            save_runbooks(&runtime_dir, txtx, main);
+            file_writer.save_runbooks(&runtime_dir, txtx, main);
         } else {
             seer_debug!("Starting without target.");
-        };
+        }
 
-        let global_program_context =
-            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir, network_rpc_url)?;
+        let file_writer = Arc::new(Mutex::new(file_writer));
+        let global_program_context = GlobalProgramContext::init(
+            &runtime_dir,
+            &dwarf_compile_dir,
+            network_rpc_url,
+            file_writer.clone(),
+        )?;
         let global_account_context = GlobalAccountContext::new();
 
         Ok(Self {
+            file_writer,
             transaction_context: None,
             register_context: RegisterContext::new(),
             global_program_context,
@@ -71,10 +79,14 @@ impl SeerContext {
     }
 
     pub fn unset_current_tx(&mut self) {
-        if let Some(tx) = &self.transaction_context.take() {
+        if let Some(tx) = self.transaction_context.take() {
             seer_debug!("Tx unset: {:?}", tx.signature);
 
-            save_meta(&tx.signature.to_string(), &tx.meta);
+            let file_writer = self
+                .file_writer
+                .lock()
+                .expect("file writer lock should not be poisoned");
+            file_writer.save_meta(&tx.signature.to_string(), &tx.meta);
         }
     }
 
@@ -102,14 +114,22 @@ impl SeerContext {
             tx.account_diff(acc);
         }
 
-        if let Some((instruction, trace_tree)) = tx.end_instruction(&self.global_program_context) {
+        let file_writer = self
+            .file_writer
+            .lock()
+            .expect("file writer lock should not be poisoned");
+        if let Some((instruction, trace_tree)) =
+            tx.end_instruction(&self.global_program_context, &file_writer)
+        {
+            let signature = tx.signature.to_string();
             let receiver_by_account = trace_tree.account_pubkey_to_idl_receiver_map();
-            save_trace_tree(&tx.signature.to_string(), instruction, trace_tree);
+            file_writer.save_trace_tree(&signature, instruction, trace_tree);
             refresh_account_reads_parsed_for_instruction(
                 &receiver_by_account,
-                &tx.signature.to_string(),
+                &signature,
                 instruction,
                 &self.global_program_context,
+                &file_writer,
             );
         }
     }
@@ -142,6 +162,10 @@ impl SeerContext {
             .open_account_backdoor_idempotent(bd);
 
         if tx.is_cpi() {
+            let file_writer = self
+                .file_writer
+                .lock()
+                .expect("file writer lock should not be poisoned");
             let view_reads = self
                 .global_account_context
                 .drain_parsed_view_accounts(
@@ -153,10 +177,11 @@ impl SeerContext {
                 &tx.signature.to_string(),
                 tx.instruction(),
                 &tx.get_current_program_address(),
+                &file_writer,
             );
 
             if let Some(rx) = self.register_context.flush_for_roll() {
-                save_register_trace_chunk(
+                file_writer.save_register_trace_chunk(
                     &tx.signature.to_string(),
                     tx.instruction(),
                     &tx.get_current_program_address(),
@@ -186,9 +211,13 @@ impl SeerContext {
             tx.meta.set_error(err, idl);
         }
 
+        let file_writer = self
+            .file_writer
+            .lock()
+            .expect("file writer lock should not be poisoned");
         let view_reads = self
             .global_account_context
-            .drain_parsed_view_accounts(&self.global_program_context, program_address);
+            .drain_parsed_view_accounts(global_program_context, program_address);
 
         if !view_reads.is_empty() {
             save_view_account_reads_chunks(
@@ -196,11 +225,12 @@ impl SeerContext {
                 &tx.signature.to_string(),
                 tx.instruction(),
                 &program_address,
+                &file_writer,
             );
         }
 
         if let Some(rx) = self.register_context.flush_finalize() {
-            save_register_trace_chunk(
+            file_writer.save_register_trace_chunk(
                 &tx.signature.to_string(),
                 tx.instruction(),
                 &program_address,
@@ -226,7 +256,11 @@ impl SeerContext {
         }
 
         if let Some(rx) = self.register_context.record(tx.step_order, i, reg) {
-            save_register_trace_chunk(
+            let file_writer = self
+                .file_writer
+                .lock()
+                .expect("file writer lock should not be poisoned");
+            file_writer.save_register_trace_chunk(
                 &tx.signature.to_string(),
                 tx.instruction(),
                 &tx.get_current_program_address(),

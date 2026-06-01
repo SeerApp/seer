@@ -18,7 +18,13 @@ use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
 use tempfile::tempdir;
 
-use crate::{idl::IdlLookup, seer_debug, seer_warn, target_reader::Target};
+use crate::{
+    atomic_file_writer::AtomicFileWriter,
+    idl::IdlLookup,
+    seer_debug,
+    seer_warn,
+    target_reader::Target,
+};
 
 use super::types::{DisasmStatus, RpcAccountInfo};
 
@@ -26,6 +32,7 @@ pub(super) fn preload_local_disasm_for_targets(
     targets: &HashMap<Pubkey, Target>,
     disasm_status: &Arc<Mutex<HashMap<Pubkey, DisasmStatus>>>,
     programs_output_dir: &PathBuf,
+    file_writer: &AtomicFileWriter,
 ) {
     if let Err(err) = ensure_programs_output_dir(programs_output_dir) {
         seer_warn!(
@@ -45,6 +52,7 @@ pub(super) fn preload_local_disasm_for_targets(
             program_id,
             local_executable_path,
             programs_output_dir,
+            file_writer,
         );
         set_disasm_status(disasm_status, *program_id, result.is_ok());
         if let Err(err) = result {
@@ -87,14 +95,21 @@ pub(super) fn start_disasm_worker(
     disasm_status: Arc<Mutex<HashMap<Pubkey, DisasmStatus>>>,
     network_rpc_url: Option<String>,
     programs_output_dir: PathBuf,
+    file_writer: Arc<Mutex<AtomicFileWriter>>,
 ) {
     thread::spawn(move || {
         for program_id in disasm_requests_rx {
-            let result = maybe_download_and_disassemble(
-                &program_id,
-                network_rpc_url.as_deref(),
-                &programs_output_dir,
-            );
+            let result = {
+                let file_writer = file_writer
+                    .lock()
+                    .expect("file writer lock should not be poisoned");
+                maybe_download_and_disassemble(
+                    &program_id,
+                    network_rpc_url.as_deref(),
+                    &programs_output_dir,
+                    &file_writer,
+                )
+            };
             set_disasm_status(&disasm_status, program_id, result.is_ok());
             if let Err(err) = result {
                 seer_warn!("background disasm failed for {}: {}", program_id, err);
@@ -179,6 +194,7 @@ fn maybe_download_and_disassemble(
     program_id: &Pubkey,
     network_rpc_url: Option<&str>,
     programs_output_dir: &PathBuf,
+    file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     let Some(rpc_url) = network_rpc_url else {
         return Err("network RPC URL not configured".to_string());
@@ -189,13 +205,14 @@ fn maybe_download_and_disassemble(
     if elf_bytes.is_empty() {
         return Ok(());
     }
-    disassemble_elf_bytes_for_program(program_id, &elf_bytes, programs_output_dir)
+    disassemble_elf_bytes_for_program(program_id, &elf_bytes, programs_output_dir, file_writer)
 }
 
 fn disassemble_local_elf_for_program(
     program_id: &Pubkey,
     local_executable_path: &PathBuf,
     programs_output_dir: &PathBuf,
+    file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     ensure_programs_output_dir(programs_output_dir)?;
     let elf_bytes = fs::read(local_executable_path)
@@ -206,13 +223,14 @@ fn disassemble_local_elf_for_program(
             local_executable_path.display()
         ));
     }
-    disassemble_elf_bytes_for_program(program_id, &elf_bytes, programs_output_dir)
+    disassemble_elf_bytes_for_program(program_id, &elf_bytes, programs_output_dir, file_writer)
 }
 
 fn disassemble_elf_bytes_for_program(
     program_id: &Pubkey,
     elf_bytes: &[u8],
     programs_output_dir: &PathBuf,
+    file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     let temp_dir = tempdir().map_err(|e| {
         format!(
@@ -221,7 +239,7 @@ fn disassemble_elf_bytes_for_program(
         )
     })?;
     let so_path = temp_dir.path().join(format!("{program_id}.so"));
-    fs::write(&so_path, elf_bytes).map_err(|e| format!("write {}: {}", so_path.display(), e))?;
+    file_writer.write_bytes(&so_path, elf_bytes, true);
 
     disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
         .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))

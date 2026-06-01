@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
-use crate::{save::save, tree::nodes::account::TreeAccount};
+use crate::{
+    atomic_file_writer::AtomicFileWriter,
+    tree::nodes::account::TreeAccount,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ExecutionEvent {
@@ -32,13 +35,10 @@ impl Analysis {
         }
     }
 
-    pub fn save(self) {
-        save(
-            serde_json::to_string_pretty(&self.events).ok().unwrap(),
-            format!("analysis_{}_{}", self.sig, self.instruction),
-            "json",
-            false,
-        );
+    pub fn save(self, file_writer: &AtomicFileWriter) {
+        let data = serde_json::to_string_pretty(&self.events).ok().unwrap();
+        let filename = format!("analysis_{}_{}", self.sig, self.instruction);
+        file_writer.save_loose_file(&data, &filename, "json", false, false);
     }
 
     pub fn load(folder: &PathBuf, sig: String, instruction: u8) -> Self {

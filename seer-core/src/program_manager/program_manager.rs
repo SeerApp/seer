@@ -9,6 +9,7 @@ use std::{
 use solana_pubkey::Pubkey;
 
 use crate::{
+    atomic_file_writer::AtomicFileWriter,
     entrypoint_lookup::EntrypointLookup,
     errors::IrrecoverableError,
     idl::{parsed_arg::collect_parsed_arg_byte_offsets, IdlLoadError, IdlLookup, IdlTreeParser},
@@ -28,6 +29,7 @@ impl super::types::GlobalProgramContext {
         runtime_dir: &PathBuf,
         dwarf_compile_dir: &PathBuf,
         network_rpc_url: Option<String>,
+        file_writer: Arc<Mutex<AtomicFileWriter>>,
     ) -> Result<Self, IrrecoverableError> {
         let mut inner: HashMap<Pubkey, ProgramInfo> = HashMap::new();
 
@@ -36,6 +38,9 @@ impl super::types::GlobalProgramContext {
         let target_dir = runtime_dir.join("target");
         let targets = get_targets(&target_dir)?;
         let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
+        let file_writer_guard = file_writer
+            .lock()
+            .expect("file writer lock should not be poisoned");
 
         for (key, target) in &targets {
             let key_str = key.to_string();
@@ -43,6 +48,7 @@ impl super::types::GlobalProgramContext {
             let (new_entrypoint_lookup, entrypoint_detail) = match super::entrypoints::get_entrypoint(
                 target,
                 path_resolver.clone(),
+                &file_writer_guard,
             ) {
                 Ok(entrypoint_lookup) => (
                     entrypoint_lookup,
@@ -94,19 +100,28 @@ impl super::types::GlobalProgramContext {
             }
         }
 
+        drop(file_writer_guard);
+
         let disasm_status = Arc::new(Mutex::new(HashMap::new()));
         let (disasm_requests_tx, disasm_requests_rx) = mpsc::channel::<Pubkey>();
         let programs_output_dir = runtime_dir.join("seer").join("programs");
-        super::utils::preload_local_disasm_for_targets(
-            &targets,
-            &disasm_status,
-            &programs_output_dir,
-        );
+        {
+            let file_writer_guard = file_writer
+                .lock()
+                .expect("file writer lock should not be poisoned");
+            super::utils::preload_local_disasm_for_targets(
+                &targets,
+                &disasm_status,
+                &programs_output_dir,
+                &file_writer_guard,
+            );
+        }
         super::utils::start_disasm_worker(
             disasm_requests_rx,
             disasm_status.clone(),
             network_rpc_url.clone(),
             programs_output_dir,
+            file_writer,
         );
 
         Ok(Self {
