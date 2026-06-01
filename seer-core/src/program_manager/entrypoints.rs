@@ -50,7 +50,7 @@ pub fn get_entrypoint(
         let data = serde_json::to_string_pretty(&source_die_trace)
             .ok()
             .unwrap();
-        file_writer.save_loose_file(&data, &target.base, "json", false, false);
+        file_writer.save_loose_json_if_missing(&data, &target.base, "json", false);
     }
 
     let entrypoint_lookup: EntrypointLookup = source_die_trace.into();

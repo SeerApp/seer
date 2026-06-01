@@ -38,7 +38,7 @@ impl Analysis {
     pub fn save(self, file_writer: &AtomicFileWriter) {
         let data = serde_json::to_string_pretty(&self.events).ok().unwrap();
         let filename = format!("analysis_{}_{}", self.sig, self.instruction);
-        file_writer.save_loose_file(&data, &filename, "json", false, false);
+        file_writer.save_loose_json_if_missing(&data, &filename, "json", false);
     }
 
     pub fn load(folder: &PathBuf, sig: String, instruction: u8) -> Self {

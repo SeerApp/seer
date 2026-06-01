@@ -100,8 +100,7 @@ fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
 
     if seer_test_save_enabled() {
         fs::create_dir_all(&dir).expect("create fixture dir");
-        seer_core::artifacts::AtomicFileWriter::new()
-            .write_bytes(&path, pretty.as_bytes(), true);
+        seer_core::artifacts::AtomicFileWriter::new().replace_bytes(&path, pretty.as_bytes());
         return;
     }
 

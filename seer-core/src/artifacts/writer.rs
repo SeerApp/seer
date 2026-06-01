@@ -19,7 +19,8 @@ impl AtomicFileWriter {
         Self
     }
 
-    pub fn write_bytes(&self, dest: &Path, bytes: &[u8], overwrite: bool) {
+    /// Low-level commit. Prefer [`Self::replace_bytes`] / [`Self::write_bytes_if_missing`] at call sites.
+    pub(crate) fn write_bytes(&self, dest: &Path, bytes: &[u8], overwrite: bool) {
         if !overwrite && dest.exists() {
             return;
         }
@@ -48,8 +49,26 @@ impl AtomicFileWriter {
         }
     }
 
-    pub fn write_json<T: Serialize + ?Sized>(&self, dest: &Path, value: &T, overwrite: bool) {
+    pub(crate) fn write_json<T: Serialize + ?Sized>(&self, dest: &Path, value: &T, overwrite: bool) {
         let json = serde_json::to_string_pretty(value).expect("serialize json for atomic write");
         self.write_bytes(dest, json.as_bytes(), overwrite);
+    }
+
+    /// Replace `dest` if it already exists.
+    pub fn replace_bytes(&self, dest: &Path, bytes: &[u8]) {
+        self.write_bytes(dest, bytes, true);
+    }
+
+    /// Write only when `dest` is absent (no-op otherwise).
+    pub fn write_bytes_if_missing(&self, dest: &Path, bytes: &[u8]) {
+        self.write_bytes(dest, bytes, false);
+    }
+
+    pub(crate) fn replace_json<T: Serialize + ?Sized>(&self, dest: &Path, value: &T) {
+        self.write_json(dest, value, true);
+    }
+
+    pub(crate) fn write_json_if_missing<T: Serialize + ?Sized>(&self, dest: &Path, value: &T) {
+        self.write_json(dest, value, false);
     }
 }

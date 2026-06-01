@@ -239,7 +239,7 @@ fn disassemble_elf_bytes_for_program(
         )
     })?;
     let so_path = temp_dir.path().join(format!("{program_id}.so"));
-    file_writer.write_bytes(&so_path, elf_bytes, true);
+    file_writer.replace_bytes(&so_path, elf_bytes);
 
     disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
         .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))

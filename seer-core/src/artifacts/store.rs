@@ -26,7 +26,7 @@ impl AtomicFileWriter {
     pub fn save_meta(&self, signature: &str, meta: &TxMetadata) {
         let output_path = path_meta_json(signature);
         seer_debug!("Creating meta file: {}", output_path.to_string_lossy());
-        self.write_json(&output_path, meta, true);
+        self.replace_json(&output_path, meta);
     }
 
     pub fn save_trace_tree(
@@ -37,13 +37,15 @@ impl AtomicFileWriter {
     ) {
         let output_path = path_trace_json(signature, instruction);
         seer_debug!("Creating new file: {}", output_path.to_string_lossy());
-        self.write_json(&output_path, &trace_tree, true);
+        self.replace_json(&output_path, &trace_tree);
     }
 
     /// Persists `{first_step}_{last_step}.json` where bounds equal the min/max **`trace`** map keys on
     /// disk. Using the VM counter (`step_order`) for the suffix was incorrect: CPI and chunk rollover
     /// strip an empty trailing frontier row into the next chunk, so the serialized max key can lag the
     /// live VM counter; filenames use actual map bounds so adjacent program chunks cannot collide.
+    ///
+    /// Skips the write when the chunk file already exists.
     pub fn save_register_trace_chunk(
         &self,
         signature: &str,
@@ -54,10 +56,9 @@ impl AtomicFileWriter {
         let (min_order, max_order) = register_trace_steps_on_disk(trace_chunk);
         let reg_dir = path_register_dir(signature, instruction, key);
         create_dir_all(&reg_dir).expect("create reg output dir");
-        self.write_json(
+        self.write_json_if_missing(
             &path_register_chunk_file(signature, instruction, key, min_order, max_order),
             trace_chunk,
-            false,
         );
     }
 
@@ -72,10 +73,9 @@ impl AtomicFileWriter {
     ) {
         let reads_dir = account_reads_dir(signature, instruction, key);
         create_dir_all(&reads_dir).expect("create reads output dir");
-        self.write_json(
+        self.replace_json(
             &reads_dir.join(register_trace_chunk_filename(min_order, max_order)),
             chunk,
-            true,
         );
     }
 
@@ -91,16 +91,16 @@ impl AtomicFileWriter {
         let base = path_instruction_under_folder(folder, signature, instruction);
         create_dir_all(&base).expect("create trace tree output dir");
         let output_path = base.join(layout::disk::TRACE_JSON);
-        self.write_json(&output_path, &trace_tree, true);
+        self.replace_json(&output_path, &trace_tree);
     }
 
-    pub fn save_loose_file(
+    /// JSON under the cwd `seer/` root; writes only if the target file is not already present.
+    pub fn save_loose_json_if_missing(
         &self,
         data: &str,
         filename: &str,
         extension: &str,
         timestamp: bool,
-        overwrite: bool,
     ) {
         let mut final_filename = filename.to_string();
         if timestamp {
@@ -108,7 +108,7 @@ impl AtomicFileWriter {
         }
         let output_path = path_seer_root_file(&format!("{}.{}", final_filename, extension));
         seer_debug!("Creating new file: {}", output_path.to_string_lossy());
-        self.write_bytes(&output_path, data.as_bytes(), overwrite);
+        self.write_bytes_if_missing(&output_path, data.as_bytes());
     }
 
     pub fn save_runbooks(&self, runtime_dir: &Path, txtx: String, main: String) {
@@ -118,8 +118,8 @@ impl AtomicFileWriter {
 
         create_dir_all(&runbook_dir)
             .unwrap_or_else(|e| panic!("failed to create {}: {e}", runbook_dir.display()));
-        self.write_bytes(&txtx_yml_path, txtx.as_bytes(), true);
-        self.write_bytes(&main_tx_path, main.as_bytes(), true);
+        self.replace_bytes(&txtx_yml_path, txtx.as_bytes());
+        self.replace_bytes(&main_tx_path, main.as_bytes());
     }
 }
 
