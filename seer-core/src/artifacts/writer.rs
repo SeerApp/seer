@@ -1,15 +1,17 @@
-//! Staged file commits via temp write + same-directory `rename` (no fsync / crash durability).
+//! Staged file commits via `<dest>.tmp` in the same directory + `rename` (no fsync / crash durability).
 
 use std::{
-    fs::{self, create_dir_all},
+    fs::{self, create_dir_all, File},
     io::Write,
     path::Path,
 };
 
 use serde::Serialize;
 
-/// Stages each write as a hidden temp file in the destination's parent directory, then publishes
-/// with `rename` so source and target stay on the same filesystem.
+use super::layout::staging_path_for;
+
+/// Stages each write as `<filename>.tmp` beside the final path, then publishes with `rename`
+/// so source and target stay on the same filesystem.
 ///
 /// Owned by [`crate::contexts::seer::SeerContext`] (shared with the disasm worker via `Arc<Mutex<_>>`).
 pub struct AtomicFileWriter;
@@ -30,14 +32,14 @@ impl AtomicFileWriter {
             .expect("destination path must have a parent directory for atomic write");
         create_dir_all(parent).expect("create parent directory for atomic write");
 
-        let mut staging_file = tempfile::Builder::new()
-            .prefix(".seer-write-")
-            .tempfile_in(parent)
-            .expect("create staging temp file for atomic write");
-        staging_file
-            .write_all(bytes)
-            .expect("write staging temp file");
-        let staging_path = staging_file.into_temp_path();
+        let staging_path = staging_path_for(dest);
+        {
+            let mut staging_file =
+                File::create(&staging_path).expect("create staging .tmp file for atomic write");
+            staging_file
+                .write_all(bytes)
+                .expect("write staging .tmp file");
+        }
 
         if let Err(e) = fs::rename(&staging_path, dest) {
             let _ = fs::remove_file(&staging_path);
@@ -70,5 +72,21 @@ impl AtomicFileWriter {
 
     pub(crate) fn write_json_if_missing<T: Serialize + ?Sized>(&self, dest: &Path, value: &T) {
         self.write_json(dest, value, false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AtomicFileWriter;
+    use std::fs;
+
+    #[test]
+    fn replace_bytes_publishes_via_rename() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dest = dir.path().join("artifact.json");
+        AtomicFileWriter::new().replace_bytes(&dest, br#"{"ok":true}"#);
+        assert_eq!(fs::read(&dest).expect("read artifact"), br#"{"ok":true}"#);
+        let staging = dir.path().join("artifact.json.tmp");
+        assert!(!staging.exists());
     }
 }

@@ -1,6 +1,7 @@
-//! Path layout and read-side helpers (no writes).
+//! Path layout, atomic-write staging paths, and read-side helpers (no writes).
 
 use std::{
+    ffi::OsStr,
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
@@ -23,6 +24,28 @@ pub mod disk {
     pub const META_JSON: &str = "meta.json";
     pub const TRACE_JSON: &str = "trace.json";
     pub const JSON_EXT: &str = "json";
+    /// In-progress atomic write beside the final file (`meta.json.tmp` → `meta.json`).
+    pub const STAGING_TMP_SUFFIX: &str = ".tmp";
+}
+
+/// `meta.json` → `meta.json.tmp` in the same directory as `dest`.
+pub(crate) fn staging_path_for(dest: &Path) -> PathBuf {
+    let parent = dest
+        .parent()
+        .expect("destination path must have a parent directory for atomic write");
+    let file_name = dest
+        .file_name()
+        .expect("destination path must have a file name for atomic write");
+    let mut staging_name = file_name.to_os_string();
+    staging_name.push(disk::STAGING_TMP_SUFFIX);
+    parent.join(staging_name)
+}
+
+/// True when `path` is an in-progress atomic write (`*.tmp` beside its final name).
+pub fn is_staging_tmp_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(OsStr::to_str)
+        .is_some_and(|name| name.ends_with(disk::STAGING_TMP_SUFFIX))
 }
 
 pub(crate) fn seer_root_from_cwd() -> PathBuf {
@@ -169,7 +192,29 @@ pub fn load_trace_tree(
 
 #[cfg(test)]
 mod tests {
-    use super::account_reads_chunk_step_bounds_from_file_stem;
+    use super::{
+        account_reads_chunk_step_bounds_from_file_stem, disk, is_staging_tmp_path,
+        staging_path_for,
+    };
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn staging_path_appends_tmp_suffix() {
+        let dest = PathBuf::from("/work/seer/tx/sig/meta.json");
+        assert_eq!(
+            staging_path_for(&dest),
+            PathBuf::from("/work/seer/tx/sig/meta.json.tmp")
+        );
+        assert_eq!(disk::STAGING_TMP_SUFFIX, ".tmp");
+    }
+
+    #[test]
+    fn is_staging_tmp_path_matches_suffix() {
+        assert!(is_staging_tmp_path(Path::new("meta.json.tmp")));
+        assert!(is_staging_tmp_path(Path::new("0_42.json.tmp")));
+        assert!(!is_staging_tmp_path(Path::new("meta.json")));
+        assert!(!is_staging_tmp_path(Path::new("file.tmporarily")));
+    }
 
     #[test]
     fn account_reads_chunk_stem_round_trip_bounds() {
