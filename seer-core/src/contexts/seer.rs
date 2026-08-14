@@ -112,6 +112,12 @@ impl SeerContext {
         }
     }
 
+    pub fn push_warning(&mut self, warning: impl Into<String>) {
+        if let Some(tx) = self.transaction_context.as_mut() {
+            tx.meta.push_warning(warning);
+        }
+    }
+
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
         seer_debug!("New instruction: {:?}", instruction);
 

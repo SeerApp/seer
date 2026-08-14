@@ -145,6 +145,14 @@ pub fn record_execution_failure_if_empty(
     });
 }
 
+/// Append a warning to the active tx's `meta.json` notes. No-op if no tx is active.
+pub fn push_warning(warning: impl Into<String>) {
+    let warning = warning.into();
+    get(|ctx| {
+        ctx.push_warning(warning.clone());
+    });
+}
+
 pub fn get_cwd() -> PathBuf {
     env::current_dir().expect("env::curnet_dir failed!")
 }
