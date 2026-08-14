@@ -22,6 +22,7 @@ pub mod disk {
     pub const READS: &str = "reads";
     pub const REG: &str = "reg";
     pub const META_JSON: &str = "meta.json";
+    pub const FAILURE_JSON: &str = "failure.json";
     pub const TRACE_JSON: &str = "trace.json";
     pub const JSON_EXT: &str = "json";
     /// In-progress atomic write beside the final file (`meta.json.tmp` → `meta.json`).
@@ -78,6 +79,14 @@ pub(crate) fn path_program(signature: &str, instruction: u8, program_pubkey: &Pu
 
 pub(crate) fn path_meta_json(signature: &str) -> PathBuf {
     path_tx_under_cwd(signature).join(disk::META_JSON)
+}
+
+pub(crate) fn path_tx_failure_json(signature: &str) -> PathBuf {
+    path_tx_under_cwd(signature).join(disk::FAILURE_JSON)
+}
+
+pub(crate) fn path_run_failure_json() -> PathBuf {
+    path_seer_root_file(disk::FAILURE_JSON)
 }
 
 pub(crate) fn path_trace_json(signature: &str, instruction: u8) -> PathBuf {

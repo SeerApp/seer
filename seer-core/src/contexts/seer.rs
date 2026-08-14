@@ -92,8 +92,23 @@ impl SeerContext {
         if let Some(tx) = self.transaction_context.take() {
             seer_debug!("Tx unset: {:?}", tx.signature);
 
-            Self::lock_file_writer(&self.file_writer)
-                .save_meta(&tx.signature.to_string(), &tx.meta);
+            let writer = Self::lock_file_writer(&self.file_writer);
+            let signature = tx.signature.to_string();
+            writer.save_meta(&signature, &tx.meta);
+            if let Some(failure) = &tx.failure {
+                writer.save_tx_failure(&signature, failure);
+            }
+        }
+    }
+
+    pub fn record_execution_failure_if_empty(
+        &mut self,
+        code: &str,
+        message: impl Into<String>,
+        component: &str,
+    ) {
+        if let Some(tx) = self.transaction_context.as_mut() {
+            tx.set_execution_failure_if_empty(code, message, component);
         }
     }
 
@@ -207,7 +222,7 @@ impl SeerContext {
             let idl = idl_lookup
                 .as_deref()
                 .map(|l| l as &dyn crate::idl::IdlTreeParser);
-            tx.meta.set_error(err, idl);
+            tx.set_execution_error(err, idl);
         }
 
         let w = Self::lock_file_writer(&self.file_writer);

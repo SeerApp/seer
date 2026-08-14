@@ -5,6 +5,8 @@ use solana_signature::Signature;
 use crate::{
     artifacts::AtomicFileWriter,
     contexts::instruction::InstructionContext,
+    failure::Failure,
+    idl::IdlTreeParser,
     meta::TxMetadata,
     program_manager::types::GlobalProgramContext,
     tree::nodes::{
@@ -15,6 +17,7 @@ use crate::{
 
 pub struct TransactionContext {
     pub meta: TxMetadata,
+    pub failure: Option<Failure>,
     pub signature: Signature,
     instruction_context: Option<InstructionContext>,
     pub step_order: u64,
@@ -24,10 +27,42 @@ impl TransactionContext {
     pub fn new(signature: Signature) -> Self {
         Self {
             meta: TxMetadata::default(),
+            failure: None,
             signature,
             instruction_context: None,
             step_order: 0,
         }
+    }
+
+    /// Keep the first observed program error as the canonical tx failure.
+    pub fn set_execution_error(
+        &mut self,
+        err: InstructionError,
+        idl: Option<&dyn IdlTreeParser>,
+    ) {
+        if self.failure.is_some() {
+            return;
+        }
+        let message = idl
+            .map(|parser| parser.get_error(err.clone()))
+            .unwrap_or_else(|| err.to_string());
+        self.failure = Some(Failure::execution(
+            "instruction_error",
+            message,
+            "debugger",
+        ));
+    }
+
+    pub fn set_execution_failure_if_empty(
+        &mut self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        component: impl Into<String>,
+    ) {
+        if self.failure.is_some() {
+            return;
+        }
+        self.failure = Some(Failure::execution(code, message, component));
     }
 
     pub fn get_current_program_address(&self) -> Pubkey {

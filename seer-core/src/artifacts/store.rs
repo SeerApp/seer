@@ -7,6 +7,7 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     contexts::register::TransactionRegisterContext,
+    failure::Failure,
     meta::TxMetadata,
     seer_debug,
     tree::nodes::root::{RootViewChildren, TreeRoot},
@@ -16,8 +17,8 @@ use super::{
     layout::{
         self,
         account_reads_dir, path_instruction_under_folder, path_meta_json, path_register_chunk_file,
-        path_register_dir, path_seer_root_file, path_trace_json, register_trace_chunk_filename,
-        register_trace_steps_on_disk,
+        path_register_dir, path_run_failure_json, path_seer_root_file, path_trace_json,
+        path_tx_failure_json, register_trace_chunk_filename, register_trace_steps_on_disk,
     },
     writer::AtomicFileWriter,
 };
@@ -27,6 +28,21 @@ impl AtomicFileWriter {
         let output_path = path_meta_json(signature);
         seer_debug!("Creating meta file: {}", output_path.to_string_lossy());
         self.replace_json(&output_path, meta);
+    }
+
+    pub fn save_tx_failure(&self, signature: &str, failure: &Failure) {
+        let output_path = path_tx_failure_json(signature);
+        seer_debug!("Creating tx failure file: {}", output_path.to_string_lossy());
+        self.replace_json(&output_path, failure);
+    }
+
+    pub fn save_run_failure_if_missing(&self, failure: &Failure) {
+        let output_path = path_run_failure_json();
+        seer_debug!(
+            "Creating run failure file: {}",
+            output_path.to_string_lossy()
+        );
+        self.write_json_if_missing(&output_path, failure);
     }
 
     pub fn save_trace_tree(

@@ -5,6 +5,7 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod errors;
+pub mod failure;
 pub mod idl;
 pub mod logger;
 pub mod meta;
@@ -25,9 +26,11 @@ use std::{env, path::PathBuf};
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
+use crate::artifacts::AtomicFileWriter;
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
 use crate::errors::IrrecoverableError;
+pub use crate::failure::{Failure, FailureKind};
 pub use crate::logger::{
     init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
 };
@@ -59,6 +62,10 @@ impl SeerSingleton {
                 self.active = false;
             }
         }
+    }
+
+    pub fn is_inited(&self) -> bool {
+        self.context.is_some()
     }
 
     pub fn is_active(&self) -> bool {
@@ -112,6 +119,30 @@ pub fn unset() {
         let mut seer = seer.borrow_mut();
         seer.unset();
     })
+}
+
+/// Persist a run-scoped internal failure (`seer/failure.json`) if none exists yet.
+/// No-op when Seer is not initialized (unit tests hitting the SVM without a workspace).
+pub fn write_run_failure_if_missing(failure: &Failure) {
+    let inited = SEER.with(|seer| seer.borrow().is_inited());
+    if !inited {
+        return;
+    }
+    AtomicFileWriter::new().save_run_failure_if_missing(failure);
+}
+
+/// Record a tx-scoped execution failure if the active tx does not already have one.
+pub fn record_execution_failure_if_empty(
+    code: impl Into<String>,
+    message: impl Into<String>,
+    component: impl Into<String>,
+) {
+    let code = code.into();
+    let message = message.into();
+    let component = component.into();
+    get(|ctx| {
+        ctx.record_execution_failure_if_empty(&code, message.clone(), &component);
+    });
 }
 
 pub fn get_cwd() -> PathBuf {
