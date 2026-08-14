@@ -38,9 +38,7 @@ fn assert_or_update_fixture(name: &str, value: &impl Serialize) {
 
     if seer_test_save_enabled() {
         fs::create_dir_all(&dir).expect("create fixture dir");
-        fs::write(&path, pretty).unwrap_or_else(|e| {
-            panic!("write fixture {}: {e}", path.display());
-        });
+        seer_core::artifacts::AtomicFileWriter::new().replace_bytes(&path, pretty.as_bytes());
         return;
     }
 

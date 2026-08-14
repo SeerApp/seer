@@ -2,10 +2,12 @@ mod common;
 
 use std::str::FromStr;
 
+use std::sync::{Arc, Mutex};
+
 use seer_core::{
+    artifacts::{layout::load_trace_tree, AtomicFileWriter},
     init_seer_logger,
-    global_program_context::global_program_context::GlobalProgramContext,
-    save::{load_trace_tree, save_trace_tree_to_dir},
+    program_manager::types::GlobalProgramContext,
     SeerLogger,
 };
 use solana_pubkey::Pubkey;
@@ -26,8 +28,14 @@ fn test_instruction_context() {
         .ok()
         .unwrap();
 
-    let (global_program_context, _warnings) =
-        GlobalProgramContext::init(&cwd, &source_project_root, None).expect("GlobalProgramContext::init");
+    let file_writer = Arc::new(Mutex::new(AtomicFileWriter::new()));
+    let (global_program_context, _warnings) = GlobalProgramContext::init(
+        &cwd,
+        &source_project_root,
+        None,
+        file_writer.clone(),
+    )
+    .expect("GlobalProgramContext::init");
 
     let sig =
         "JuiMHw4p3kgdBsgXK8134Vb4jaL8gfvsXYNvxfi6XgRRckZCugVNuReWUBpg1dTncXoEi8QmAz5fbHP1cvgb45Q"
@@ -36,7 +44,10 @@ fn test_instruction_context() {
     for index in 0..=2 {
         let result = _run_tx(&analysis_root, fee_payer, index, &sig, &global_program_context);
         if seer_test_save_enabled() {
-            save_trace_tree_to_dir(&canonical_result_root, &sig, index, result);
+            file_writer
+                .lock()
+                .expect("file writer lock")
+                .save_trace_tree_to_dir(&canonical_result_root, &sig, index, result);
         } else {
             let expected = load_trace_tree(&canonical_result_root, index, &sig);
             assert!(expected == result, "Trace tree mismatch at index {}", index);

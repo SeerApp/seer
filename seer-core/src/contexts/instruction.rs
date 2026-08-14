@@ -4,6 +4,7 @@ use solana_signature::Signature;
 
 use crate::{
     analysis::Analysis,
+    artifacts::AtomicFileWriter,
     contexts::tracer::Tracer,
     program_manager::types::GlobalProgramContext,
     tree::nodes::{
@@ -126,17 +127,20 @@ impl InstructionContext {
     }
 }
 
-impl From<InstructionContext> for Option<(u8, TreeRoot<RootViewChildren>)> {
-    fn from(value: InstructionContext) -> Self {
-        let InstructionContext {
+impl InstructionContext {
+    pub fn into_trace_tree(
+        self,
+        file_writer: &AtomicFileWriter,
+    ) -> Option<(u8, TreeRoot<RootViewChildren>)> {
+        let Self {
             index,
             tracer,
             analysis,
-        } = value;
+        } = self;
 
         Into::<Option<TreeRoot<RootViewChildren>>>::into(tracer).map(|tracer| {
             if let Some(analysis) = analysis {
-                analysis.save();
+                analysis.save(file_writer);
             }
             (index, tracer)
         })

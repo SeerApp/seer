@@ -8,9 +8,9 @@ use crate::{
         view::{ViewAccountRead, ViewAccountReadKind},
     },
     program_manager::types::GlobalProgramContext,
-    save::{
-        account_reads_chunk_paths, account_reads_chunk_step_bounds_from_file_stem,
-        save_account_reads_chunk,
+    artifacts::{
+        layout::{account_reads_chunk_paths, account_reads_chunk_step_bounds_from_file_stem},
+        AtomicFileWriter,
     },
 };
 
@@ -85,6 +85,7 @@ fn refresh_reads_chunk_file(
     instruction: u8,
     receiver_by_account: &HashMap<Pubkey, Pubkey>,
     program_context: &GlobalProgramContext,
+    file_writer: &AtomicFileWriter,
 ) -> Option<()> {
     let stem = chunk_path.file_stem()?.to_str()?;
     let (min_order, max_order) = account_reads_chunk_step_bounds_from_file_stem(stem)?;
@@ -101,7 +102,7 @@ fn refresh_reads_chunk_file(
 
     let refs: Vec<&ViewAccountRead> = rows.iter().map(|(_, r)| r).collect();
     let chunk = build_view_reads_chunk_json(&refs);
-    save_account_reads_chunk(
+    file_writer.save_account_reads_chunk(
         signature,
         instruction,
         &program_pubkey,
@@ -115,14 +116,15 @@ fn refresh_reads_chunk_file(
 
 /// Re-parses on-disk account read chunks for this instruction using `receiver_by_account` from the
 /// finalized trace tree. Only fills `ReadData` when `parsed` is absent and `parsed_byte_offsets` is
-/// empty; IDL-only (no sysvar pass). Overwrites chunk JSON via [`save_account_reads_chunk`].
+/// empty; IDL-only (no sysvar pass). Overwrites chunk JSON via [`AtomicFileWriter::save_account_reads_chunk`].
 ///
-/// All discovery of chunk paths uses [`crate::save::account_reads_chunk_paths`].
+/// All discovery of chunk paths uses [`crate::artifacts::layout::account_reads_chunk_paths`].
 pub fn refresh_account_reads_parsed_for_instruction(
     receiver_by_account: &HashMap<Pubkey, Pubkey>,
     signature: &str,
     instruction: u8,
     program_context: &GlobalProgramContext,
+    file_writer: &AtomicFileWriter,
 ) {
     for (program_pubkey, chunk_path) in account_reads_chunk_paths(signature, instruction) {
         let _ = refresh_reads_chunk_file(
@@ -132,6 +134,7 @@ pub fn refresh_account_reads_parsed_for_instruction(
             instruction,
             receiver_by_account,
             program_context,
+            file_writer,
         );
     }
 }
