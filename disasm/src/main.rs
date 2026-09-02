@@ -13,8 +13,8 @@ use solana_program_runtime::{
     execution_budget::SVMTransactionExecutionBudget,
     invoke_context::InvokeContext,
     solana_sbpf::{
-        ebpf, elf::Executable, program::BuiltinProgram, static_analysis::Analysis,
-        vm::ContextObject,
+        disassembler::disassemble_instruction, ebpf, elf::Executable, program::BuiltinProgram,
+        static_analysis::CfgNode, vm::ContextObject,
     },
 };
 use solana_svm_feature_set::SVMFeatureSet;
@@ -653,10 +653,60 @@ pub fn run_cli() -> Result<()> {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let programs_out_dir = out_root.join("programs");
-    disassemble_to_json_chunks(path, &programs_out_dir)
+    let stats = disassemble_to_json_chunks(path, &programs_out_dir)?;
+    match stats.peak_rss_bytes {
+        Some(rss) => eprintln!("disasm insns={} peak_rss_bytes={rss}", stats.insn_count),
+        None => eprintln!("disasm insns={}", stats.insn_count),
+    }
+    Ok(())
 }
 
-pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Result<()> {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DisasmStats {
+    pub insn_count: usize,
+    pub peak_rss_bytes: Option<u64>,
+}
+
+/// Decode `.text` the same way `Analysis::from_executable` does, without building CFG/DFG.
+fn decode_text_instructions(program: &[u8]) -> Result<Vec<ebpf::Insn>> {
+    match program.len().checked_rem(ebpf::INSN_SIZE) {
+        Some(0) => {}
+        _ => anyhow::bail!(
+            "eBPF program length {} is not a multiple of {}",
+            program.len(),
+            ebpf::INSN_SIZE
+        ),
+    }
+    let insn_slots = program
+        .len()
+        .checked_div(ebpf::INSN_SIZE)
+        .context("INSN_SIZE is zero")?;
+    let mut instructions = Vec::with_capacity(insn_slots);
+    let mut insn_ptr: usize = 0;
+    while insn_ptr
+        .checked_mul(ebpf::INSN_SIZE)
+        .is_some_and(|off| off < program.len())
+    {
+        let mut insn = ebpf::get_insn_unchecked(program, insn_ptr);
+        if insn.opc == ebpf::LD_DW_IMM {
+            insn_ptr = insn_ptr
+                .checked_add(1)
+                .context("LD_DW_IMM insn_ptr overflow")?;
+            let next_off = insn_ptr
+                .checked_mul(ebpf::INSN_SIZE)
+                .context("LD_DW_IMM offset overflow")?;
+            if next_off >= program.len() {
+                break;
+            }
+            ebpf::augment_lddw_unchecked(program, &mut insn);
+        }
+        instructions.push(insn);
+        insn_ptr = insn_ptr.checked_add(1).context("insn_ptr overflow")?;
+    }
+    Ok(instructions)
+}
+
+pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Result<DisasmStats> {
     let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
     let text_vma = text_section_vma_from_elf(&bytes)?;
     let text_syms = TextFnSymbols::build(&bytes)?;
@@ -667,8 +717,11 @@ pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Resul
     let loader = Arc::new(loader);
     let executable = Executable::<InvokeContext>::load(&bytes, loader)
         .map_err(|e| anyhow::anyhow!("ELF load failed: {e:?}"))?;
-    let analysis = Analysis::from_executable(&executable)
-        .map_err(|e| anyhow::anyhow!("analysis failed: {e:?}"))?;
+    // Skip `Analysis::from_executable`: it builds a full CFG + bidirectional DFG we never
+    // read. Jump labels from that CFG (`lbb_*`) are overwritten with VMAs in embellish.
+    let (_program_vm_addr, program) = executable.get_text_bytes();
+    let instructions = decode_text_instructions(program)?;
+    let cfg_nodes = BTreeMap::<usize, CfgNode>::new();
 
     let stem = path
         .file_stem()
@@ -677,10 +730,10 @@ pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Resul
     let (disasm_program_dir, lifted_program_dir) =
         create_program_output_dirs(programs_out_dir, stem)?;
 
-    for chunk in analysis.instructions.chunks(CHUNK_INSTRUCTIONS) {
+    for chunk in instructions.chunks(CHUNK_INSTRUCTIONS) {
         let (start_byte, end_byte) = chunk_range(text_vma, chunk)?;
         let (disasm_json, lift_rows) =
-            build_chunk_outputs(chunk, &analysis, &executable, text_vma, &text_syms)?;
+            build_chunk_outputs(chunk, &executable, text_vma, &text_syms, &cfg_nodes)?;
         let lifted_json = serde_json::json!({
             "blocks": Value::Object(build_lifted_blocks_json(&lift_rows)),
         });
@@ -693,7 +746,10 @@ pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Resul
         write_json_file(&lifted_program_dir.join(file_name), &lifted_json)?;
     }
 
-    Ok(())
+    Ok(DisasmStats {
+        insn_count: instructions.len(),
+        peak_rss_bytes: peak_rss_bytes(),
+    })
 }
 
 fn create_program_output_dirs(
@@ -725,17 +781,24 @@ fn chunk_range(text_vma: u64, chunk: &[ebpf::Insn]) -> Result<(u64, u64)> {
 
 fn build_chunk_outputs(
     chunk: &[ebpf::Insn],
-    analysis: &Analysis,
     executable: &Executable<InvokeContext>,
     text_vma: u64,
     text_syms: &TextFnSymbols,
+    cfg_nodes: &BTreeMap<usize, CfgNode>,
 ) -> Result<(Map<String, Value>, Vec<LiftRow>)> {
     let mut disasm_json = Map::new();
     let mut lift_rows = Vec::with_capacity(chunk.len());
 
     for insn in chunk {
         let pc = instruction_objdump_byte_offset(text_vma, insn)?;
-        let line = analysis.disassemble_instruction(insn, insn.ptr);
+        let line = disassemble_instruction(
+            insn,
+            insn.ptr,
+            cfg_nodes,
+            executable.get_function_registry(),
+            executable.get_loader(),
+            executable.get_sbpf_version(),
+        );
         let line = embellish_instruction_line(executable, insn, text_vma, text_syms, &line)?;
         disasm_json.insert(pc.to_string(), Value::String(line.clone()));
 
@@ -805,4 +868,27 @@ fn write_json_file(path: &Path, value: &Value) -> Result<()> {
     writer
         .flush()
         .with_context(|| format!("flush {}", path.display()))
+}
+
+/// Peak RSS of this process. `ru_maxrss` is bytes on macOS and kilobytes on Linux.
+fn peak_rss_bytes() -> Option<u64> {
+    #[cfg(unix)]
+    {
+        let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+        let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+        if rc != 0 {
+            return None;
+        }
+        let usage = unsafe { usage.assume_init() };
+        let raw = u64::try_from(usage.ru_maxrss).ok()?;
+        if cfg!(target_os = "macos") {
+            Some(raw)
+        } else {
+            raw.checked_mul(1024)
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
 }

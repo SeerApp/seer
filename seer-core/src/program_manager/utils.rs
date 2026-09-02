@@ -19,11 +19,7 @@ use solana_pubkey::Pubkey;
 use tempfile::tempdir;
 
 use crate::{
-    artifacts::AtomicFileWriter,
-    idl::IdlLookup,
-    seer_debug,
-    seer_warn,
-    target_reader::Target,
+    artifacts::AtomicFileWriter, idl::IdlLookup, seer_debug, seer_warn, target_reader::Target,
 };
 
 use super::types::{DisasmStatus, RpcAccountInfo};
@@ -215,8 +211,13 @@ fn disassemble_local_elf_for_program(
     file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     ensure_programs_output_dir(programs_output_dir)?;
-    let elf_bytes = fs::read(local_executable_path)
-        .map_err(|e| format!("read local executable {}: {}", local_executable_path.display(), e))?;
+    let elf_bytes = fs::read(local_executable_path).map_err(|e| {
+        format!(
+            "read local executable {}: {}",
+            local_executable_path.display(),
+            e
+        )
+    })?;
     if elf_bytes.is_empty() {
         return Err(format!(
             "local executable {} is empty",
@@ -241,8 +242,15 @@ fn disassemble_elf_bytes_for_program(
     let so_path = temp_dir.path().join(format!("{program_id}.so"));
     file_writer.replace_bytes(&so_path, elf_bytes);
 
-    disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
-        .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))
+    let stats = disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
+        .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))?;
+    seer_debug!(
+        "disasm {} insns={} peak_rss_bytes={:?}",
+        program_id,
+        stats.insn_count,
+        stats.peak_rss_bytes
+    );
+    Ok(())
 }
 
 fn ensure_programs_output_dir(programs_output_dir: &PathBuf) -> Result<(), String> {
