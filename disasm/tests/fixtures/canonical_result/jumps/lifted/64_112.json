@@ -1,0 +1,65 @@
+{
+  "blocks": {
+    "64": {
+      "label": "bb_0x40",
+      "start": 64,
+      "end": 72,
+      "succ": [
+        "bb_0x68",
+        "bb_0x50"
+      ],
+      "lines": [
+        "r0 = 1;",
+        "if (r0 == 1) { goto 0x68; }"
+      ],
+      "line_pcs": [
+        64,
+        72
+      ]
+    },
+    "80": {
+      "label": "bb_0x50",
+      "start": 80,
+      "end": 88,
+      "succ": [
+        "bb_0x68"
+      ],
+      "lines": [
+        "syscall(/* 1740791543 @ 0x68 */);",
+        "goto 0x68;"
+      ],
+      "line_pcs": [
+        80,
+        88
+      ]
+    },
+    "96": {
+      "label": "bb_0x60",
+      "start": 96,
+      "end": 96,
+      "succ": [
+        "bb_0x68"
+      ],
+      "lines": [
+        "r0 = 0;"
+      ],
+      "line_pcs": [
+        96
+      ]
+    },
+    "104": {
+      "label": "bb_0x68",
+      "start": 104,
+      "end": 112,
+      "succ": [],
+      "lines": [
+        "r0 = r0.wrapping_add(1);",
+        "return;"
+      ],
+      "line_pcs": [
+        104,
+        112
+      ]
+    }
+  }
+}
