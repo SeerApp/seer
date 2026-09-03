@@ -32,13 +32,9 @@ fn test_instruction_context() {
             .to_string();
 
     let file_writer = Arc::new(Mutex::new(AtomicFileWriter::new()));
-    let (global_program_context, _warnings) = GlobalProgramContext::init(
-        &cwd,
-        &source_project_root,
-        None,
-        file_writer.clone(),
-    )
-    .expect("GlobalProgramContext::init");
+    let (global_program_context, _warnings) =
+        GlobalProgramContext::init(&cwd, &source_project_root, None, file_writer.clone())
+            .expect("GlobalProgramContext::init");
 
     let result = _run_tx(&analysis_root, fee_payer, 0, &sig, &global_program_context);
     if seer_test_save_enabled() {

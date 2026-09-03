@@ -41,7 +41,10 @@ mod tests {
         let meta = TxMetadata::default();
         let json = serde_json::to_value(&meta).unwrap();
         assert_eq!(json["version"], 1);
-        assert!(json["data"]["notes"]["warnings"].as_array().unwrap().is_empty());
+        assert!(json["data"]["notes"]["warnings"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         assert!(json["data"].get("success").is_none());
         assert!(json["data"].get("output").is_none());
     }

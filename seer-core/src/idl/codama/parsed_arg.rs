@@ -36,26 +36,16 @@ pub fn get_parsed_arg_value(
                 );
                 return None;
             };
-            get_parsed_arg_value(
-                &resolved.r#type,
-                cur,
-                defined_types,
-                is_last,
-                passed_len,
-            )
+            get_parsed_arg_value(&resolved.r#type, cur, defined_types, is_last, passed_len)
         }
-        TypeNode::Amount(a) => Some(ParsedArgValue::Amount(get_view_amount_type_node(
-            a, cur,
-        )?)),
+        TypeNode::Amount(a) => Some(ParsedArgValue::Amount(get_view_amount_type_node(a, cur)?)),
         TypeNode::Array(a) => Some(ParsedArgValue::Array(get_view_array_type_node(
             a,
             cur,
             defined_types,
             is_last,
         )?)),
-        TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(
-            b, cur,
-        )?)),
+        TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(b, cur)?)),
         TypeNode::Bytes(_) => {
             if !is_last && passed_len.is_none() {
                 crate::seer_warn!(
@@ -63,7 +53,9 @@ pub fn get_parsed_arg_value(
                 );
                 return None;
             }
-            Some(ParsedArgValue::Bytes(get_view_bytes_type_node(cur, passed_len)?))
+            Some(ParsedArgValue::Bytes(get_view_bytes_type_node(
+                cur, passed_len,
+            )?))
         }
         TypeNode::DateTime(d) => Some(ParsedArgValue::DateTime(get_view_date_time_type_node(
             d, cur,
@@ -86,9 +78,7 @@ pub fn get_parsed_arg_value(
             defined_types,
             is_last,
         )?)),
-        TypeNode::Number(n) => Some(ParsedArgValue::Number(get_view_number_type_node(
-            n, cur,
-        )?)),
+        TypeNode::Number(n) => Some(ParsedArgValue::Number(get_view_number_type_node(n, cur)?)),
         TypeNode::Struct(s) => Some(ParsedArgValue::Struct(get_view_struct_type_node(
             s,
             cur,
@@ -117,7 +107,9 @@ pub fn get_parsed_arg_value(
                 );
                 return None;
             }
-            Some(ParsedArgValue::String(get_view_string_type_node(s, cur, passed_len)?))
+            Some(ParsedArgValue::String(get_view_string_type_node(
+                s, cur, passed_len,
+            )?))
         }
         TypeNode::FixedSize(f) => cur.get_fixed_size_value(f, defined_types),
         TypeNode::PostOffset(p) => cur.get_post_offset_value(p, defined_types, is_last),
@@ -161,10 +153,7 @@ pub fn get_parsed_arg_value(
     }
 }
 
-pub fn eq_value_node(
-    parsed_arg_value: &ParsedArgValue,
-    value: &ValueNode,
-) -> bool {
+pub fn eq_value_node(parsed_arg_value: &ParsedArgValue, value: &ValueNode) -> bool {
     match (parsed_arg_value, value) {
         (ParsedArgValue::Number(arg), ValueNode::Number(node)) => {
             let node: &NumberValueNode = node;
@@ -329,9 +318,7 @@ fn is_default_zero_value(value: &ParsedArgValue) -> bool {
     }
 }
 
-pub fn get_view_public_key_type_node<'a>(
-    cur: &mut Cursor<'a>,
-) -> Option<ViewPublicKeyTypeNode> {
+pub fn get_view_public_key_type_node<'a>(cur: &mut Cursor<'a>) -> Option<ViewPublicKeyTypeNode> {
     Some(ViewPublicKeyTypeNode {
         value: cur.get_pubkey_value()?,
     })

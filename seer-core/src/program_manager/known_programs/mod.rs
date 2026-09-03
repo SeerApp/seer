@@ -14,19 +14,15 @@ use crate::{idl::IdlLookup, program_manager::types::ProgramInfo};
 pub const SYSTEM_PROGRAM_ADDRESS: &str = "11111111111111111111111111111111";
 
 /// Native system program id, parsed from [`SYSTEM_PROGRAM_ADDRESS`].
-pub static SYSTEM_PROGRAM_PUBKEY: Lazy<Pubkey> = Lazy::new(|| {
-    Pubkey::from_str(SYSTEM_PROGRAM_ADDRESS).expect("system program id")
-});
+pub static SYSTEM_PROGRAM_PUBKEY: Lazy<Pubkey> =
+    Lazy::new(|| Pubkey::from_str(SYSTEM_PROGRAM_ADDRESS).expect("system program id"));
 
 const KNOWN_PROGRAMS: [(&str, &str); 8] = [
     (
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         include_str!("token_program.json"),
     ),
-    (
-        SYSTEM_PROGRAM_ADDRESS,
-        include_str!("system_program.json"),
-    ),
+    (SYSTEM_PROGRAM_ADDRESS, include_str!("system_program.json")),
     (
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         include_str!("token_2022_program.json"),

@@ -51,7 +51,12 @@ impl AtomicFileWriter {
         }
     }
 
-    pub(crate) fn write_json<T: Serialize + ?Sized>(&self, dest: &Path, value: &T, overwrite: bool) {
+    pub(crate) fn write_json<T: Serialize + ?Sized>(
+        &self,
+        dest: &Path,
+        value: &T,
+        overwrite: bool,
+    ) {
         let json = serde_json::to_string_pretty(value).expect("serialize json for atomic write");
         self.write_bytes(dest, json.as_bytes(), overwrite);
     }

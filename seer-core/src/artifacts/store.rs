@@ -15,10 +15,10 @@ use crate::{
 
 use super::{
     layout::{
-        self,
-        account_reads_dir, path_instruction_under_folder, path_meta_json, path_register_chunk_file,
-        path_register_dir, path_run_failure_json, path_seer_root_file, path_trace_json,
-        path_tx_failure_json, register_trace_chunk_filename, register_trace_steps_on_disk,
+        self, account_reads_dir, path_instruction_under_folder, path_meta_json,
+        path_register_chunk_file, path_register_dir, path_run_failure_json, path_seer_root_file,
+        path_trace_json, path_tx_failure_json, register_trace_chunk_filename,
+        register_trace_steps_on_disk,
     },
     writer::AtomicFileWriter,
 };
@@ -32,7 +32,10 @@ impl AtomicFileWriter {
 
     pub fn save_tx_failure(&self, signature: &str, failure: &Failure) {
         let output_path = path_tx_failure_json(signature);
-        seer_debug!("Creating tx failure file: {}", output_path.to_string_lossy());
+        seer_debug!(
+            "Creating tx failure file: {}",
+            output_path.to_string_lossy()
+        );
         self.replace_json(&output_path, failure);
     }
 

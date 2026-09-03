@@ -1,5 +1,6 @@
 pub mod account_reads;
 pub mod analysis;
+pub mod artifacts;
 pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
@@ -12,7 +13,6 @@ pub mod meta;
 pub mod path_resolver;
 pub mod program_manager;
 pub mod register_trace;
-pub mod artifacts;
 pub mod runbook;
 pub mod sources;
 pub mod step_mirror;

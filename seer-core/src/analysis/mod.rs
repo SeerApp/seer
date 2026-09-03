@@ -4,10 +4,7 @@ use serde::{Deserialize, Serialize};
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
-use crate::{
-    artifacts::AtomicFileWriter,
-    tree::nodes::account::TreeAccount,
-};
+use crate::{artifacts::AtomicFileWriter, tree::nodes::account::TreeAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ExecutionEvent {

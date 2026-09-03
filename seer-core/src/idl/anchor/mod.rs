@@ -72,12 +72,9 @@ impl IdlTreeParser for AnchorIdlLookup {
                 continue;
             };
 
-            if let Some(value) = get_idl_type_def_ty(
-                &self.idl.types,
-                &mut c,
-                &HashMap::new(),
-                &ty_def.ty,
-            ) {
+            if let Some(value) =
+                get_idl_type_def_ty(&self.idl.types, &mut c, &HashMap::new(), &ty_def.ty)
+            {
                 return Some(ParsedAccount {
                     id: ProgramIdentifier::Default,
                     data: ParsedArg {

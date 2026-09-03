@@ -92,7 +92,12 @@ impl RegisterContext {
             .expect("register trace: invariant at least one invocation layer")
     }
 
-    pub fn record(&mut self, order: u64, pc: u64, reg: &[u64; 12]) -> Option<TransactionRegisterContext> {
+    pub fn record(
+        &mut self,
+        order: u64,
+        pc: u64,
+        reg: &[u64; 12],
+    ) -> Option<TransactionRegisterContext> {
         let layer = self.active_mut();
         let current = trace_regs(reg);
 
@@ -118,8 +123,7 @@ impl RegisterContext {
             let mut trace = BTreeMap::new();
 
             if let Some((stub_order, stub_pc)) = layer.cross_chunk_stub.take() {
-                let stub_reg_delta =
-                    layer.previous.and_then(|p| changed_registers(&p, &current));
+                let stub_reg_delta = layer.previous.and_then(|p| changed_registers(&p, &current));
                 trace.insert(
                     stub_order,
                     RegisterTraceEntry {
@@ -165,9 +169,7 @@ impl RegisterContext {
                 entry.call_depth = call_depth_entry;
             } else {
                 #[cfg(debug_assertions)]
-                panic!(
-                    "register trace missing attribution row {prev_key} for hook order {order}"
-                );
+                panic!("register trace missing attribution row {prev_key} for hook order {order}");
                 #[cfg(not(debug_assertions))]
                 rx.trace.insert(
                     prev_key,
@@ -192,9 +194,10 @@ impl RegisterContext {
             let layer = self.active_mut();
             layer.last_trace_call_depth = Some(call_depth);
             layer.previous = Some(current);
-            layer.rx.as_ref().is_some_and(|rx| {
-                rx.trace.len() >= (REGISTER_TRACE_CHUNK_SIZE as usize) + 1
-            })
+            layer
+                .rx
+                .as_ref()
+                .is_some_and(|rx| rx.trace.len() >= (REGISTER_TRACE_CHUNK_SIZE as usize) + 1)
         };
         if roll {
             self.flush_for_roll()

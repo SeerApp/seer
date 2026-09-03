@@ -92,12 +92,7 @@ impl InstructionContext {
         }
     }
 
-    pub fn step(
-        &mut self,
-        global_program_context: &GlobalProgramContext,
-        order: u64,
-        i: u64,
-    ) {
+    pub fn step(&mut self, global_program_context: &GlobalProgramContext, order: u64, i: u64) {
         self.tracer.step(global_program_context, i, order);
 
         if let Some(analysis) = self.analysis.as_mut() {

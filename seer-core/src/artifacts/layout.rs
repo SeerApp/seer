@@ -73,8 +73,7 @@ pub(crate) fn path_instruction(signature: &str, instruction: u8) -> PathBuf {
 }
 
 pub(crate) fn path_program(signature: &str, instruction: u8, program_pubkey: &Pubkey) -> PathBuf {
-    path_instruction(signature, instruction)
-        .join(program_pubkey.to_string())
+    path_instruction(signature, instruction).join(program_pubkey.to_string())
 }
 
 pub(crate) fn path_meta_json(signature: &str) -> PathBuf {
@@ -93,7 +92,11 @@ pub(crate) fn path_trace_json(signature: &str, instruction: u8) -> PathBuf {
     path_instruction(signature, instruction).join(disk::TRACE_JSON)
 }
 
-pub(crate) fn path_register_dir(signature: &str, instruction: u8, program_pubkey: &Pubkey) -> PathBuf {
+pub(crate) fn path_register_dir(
+    signature: &str,
+    instruction: u8,
+    program_pubkey: &Pubkey,
+) -> PathBuf {
     path_program(signature, instruction, program_pubkey).join(disk::REG)
 }
 
@@ -180,7 +183,11 @@ pub fn account_reads_chunk_paths(signature: &str, instruction: u8) -> Vec<(Pubke
     out
 }
 
-pub(crate) fn path_instruction_under_folder(folder: &Path, signature: &str, instruction: u8) -> PathBuf {
+pub(crate) fn path_instruction_under_folder(
+    folder: &Path,
+    signature: &str,
+    instruction: u8,
+) -> PathBuf {
     path_tx_signature(folder, signature).join(instruction.to_string())
 }
 
@@ -202,8 +209,7 @@ pub fn load_trace_tree(
 #[cfg(test)]
 mod tests {
     use super::{
-        account_reads_chunk_step_bounds_from_file_stem, disk, is_staging_tmp_path,
-        staging_path_for,
+        account_reads_chunk_step_bounds_from_file_stem, disk, is_staging_tmp_path, staging_path_for,
     };
     use std::path::{Path, PathBuf};
 

@@ -468,12 +468,14 @@ impl<'a> CodamaCursor for Cursor<'a> {
     ) -> Option<ParsedArgValue> {
         match origin.strategy {
             PostOffsetStrategy::Absolute => {
-                let value = get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
+                let value =
+                    get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
                 self.set_pos_absolute(origin.offset);
                 value
             }
             PostOffsetStrategy::Padded | PostOffsetStrategy::Relative => {
-                let value = get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
+                let value =
+                    get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
                 if !self.set_pos_relative(origin.offset) {
                     crate::seer_warn!("Codama decode: cursor offset out of bounds");
                 }
@@ -481,7 +483,8 @@ impl<'a> CodamaCursor for Cursor<'a> {
             }
             PostOffsetStrategy::PreOffset => {
                 let start_pos = self.pos();
-                let value = get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
+                let value =
+                    get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
                 if !self.set_pos_relative_from(origin.offset, start_pos) {
                     crate::seer_warn!("Codama decode: cursor offset out of bounds");
                 }

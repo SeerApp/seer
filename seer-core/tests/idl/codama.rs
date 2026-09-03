@@ -127,8 +127,10 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 }
 
 fn token_2022_read_411_bytes() -> Vec<u8> {
-    serde_json::from_str(include_tests_fixture!("idl/codama/samples/token_2022_read_411_bytes.json"))
-        .expect("token-2022 read sample bytes must parse")
+    serde_json::from_str(include_tests_fixture!(
+        "idl/codama/samples/token_2022_read_411_bytes.json"
+    ))
+    .expect("token-2022 read sample bytes must parse")
 }
 
 fn set_token_2022_mint_extension_offset(root: &mut Value, offset: u64) {
@@ -217,7 +219,11 @@ fn test_token_2022_len_411_playground_current_idl_fails_parse() {
     ensure_seer_logger();
     let token_2022_idl = lookup_from_json_value(&token_2022_json());
     let data = token_2022_read_411_bytes();
-    assert_eq!(data.len(), 411, "expected 411-byte captured account payload");
+    assert_eq!(
+        data.len(),
+        411,
+        "expected 411-byte captured account payload"
+    );
 
     let parsed_ax = token_2022_idl.get_account(&data);
     assert!(
@@ -230,7 +236,11 @@ fn test_token_2022_len_411_playground_current_idl_fails_parse() {
 fn test_token_2022_len_411_playground_mutating_mint_extension_offset() {
     ensure_seer_logger();
     let data = token_2022_read_411_bytes();
-    assert_eq!(data.len(), 411, "expected 411-byte captured account payload");
+    assert_eq!(
+        data.len(),
+        411,
+        "expected 411-byte captured account payload"
+    );
 
     let mut root = token_2022_json();
     set_token_2022_mint_extension_offset(&mut root, 165);

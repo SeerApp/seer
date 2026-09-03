@@ -7,14 +7,16 @@ use crate::{
         utils::build_view_reads_chunk_json,
         view::{ViewAccountRead, ViewAccountReadKind},
     },
-    program_manager::types::GlobalProgramContext,
     artifacts::{
         layout::{account_reads_chunk_paths, account_reads_chunk_step_bounds_from_file_stem},
         AtomicFileWriter,
     },
+    program_manager::types::GlobalProgramContext,
 };
 
-pub fn load_account_reads_chunk_rows(json: &serde_json::Value) -> Option<Vec<(u64, ViewAccountRead)>> {
+pub fn load_account_reads_chunk_rows(
+    json: &serde_json::Value,
+) -> Option<Vec<(u64, ViewAccountRead)>> {
     let obj = json.as_object()?;
     let mut rows: Vec<(u64, ViewAccountRead)> = Vec::with_capacity(obj.len());
     for (step_key, row_val) in obj {

@@ -7,10 +7,13 @@ use std::str::FromStr;
 use crate::{
     idl::{
         parsed_arg::{
-            ParsedArg, ParsedArgValue, ViewArrayTypeNode, ViewBooleanTypeNode, ViewBytesTypeNode, ViewNumberTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, collect_parsed_arg_byte_offsets
+            collect_parsed_arg_byte_offsets, ParsedArg, ParsedArgValue, ViewArrayTypeNode,
+            ViewBooleanTypeNode, ViewBytesTypeNode, ViewNumberTypeNode, ViewPublicKeyTypeNode,
+            ViewStructFieldTypeNode, ViewStructTypeNode,
         },
         types::{ParsedAccount, ProgramIdentifier},
-    }, program_manager::types::AccountIdlParseResult,
+    },
+    program_manager::types::AccountIdlParseResult,
 };
 
 const SYSVAR_RENT_PUBKEY: &str = "SysvarRent111111111111111111111111111111111";
@@ -26,6 +29,11 @@ const SYSVAR_LAST_RESTART_SLOT_LEN: usize = 8;
 const SYSVAR_STAKE_HISTORY_PUBKEY: &str = "SysvarStakeHistory1111111111111111111111111";
 const SYSVAR_STAKE_HISTORY_VEC_LEN_PREFIX: usize = 8;
 const STAKE_HISTORY_ENTRY_LEN: usize = 8 + 8 + 8 + 8;
+const SYSVAR_INSTRUCTIONS_PUBKEY: &str = "Sysvar1nstructions1111111111111111111111111";
+const INSTRUCTIONS_CURRENT_INDEX_LEN: usize = 2;
+const INSTRUCTIONS_ACCOUNT_META_LEN: usize = 1 + 32;
+const INSTRUCTIONS_IS_SIGNER: u8 = 0b0000_0001;
+const INSTRUCTIONS_IS_WRITABLE: u8 = 0b0000_0010;
 
 pub fn parse_sysvar_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlParseResult> {
     parse_sysvar_rent_account(key, bytes)
@@ -34,6 +42,7 @@ pub fn parse_sysvar_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlPars
         .or_else(|| parse_sysvar_epoch_rewards_account(key, bytes))
         .or_else(|| parse_sysvar_last_restart_slot_account(key, bytes))
         .or_else(|| parse_sysvar_stake_history_account(key, bytes))
+        .or_else(|| parse_sysvar_instructions_account(key, bytes))
 }
 
 fn parse_sysvar_rent_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlParseResult> {
@@ -131,7 +140,10 @@ fn parse_sysvar_clock_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlPa
     parsed_result(parsed)
 }
 
-fn parse_sysvar_epoch_schedule_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlParseResult> {
+fn parse_sysvar_epoch_schedule_account(
+    key: &Pubkey,
+    bytes: &[u8],
+) -> Option<AccountIdlParseResult> {
     let epoch_schedule_key =
         Pubkey::from_str(SYSVAR_EPOCH_SCHEDULE_PUBKEY).expect("valid sysvar epoch schedule pubkey");
     if *key != epoch_schedule_key || bytes.len() < SYSVAR_EPOCH_SCHEDULE_LEN {
@@ -169,7 +181,12 @@ fn parse_sysvar_epoch_schedule_account(key: &Pubkey, bytes: &[u8]) -> Option<Acc
                         first_normal_epoch,
                         NumberFormat::U64,
                     ),
-                    number_field("first_normal_slot", 25, first_normal_slot, NumberFormat::U64),
+                    number_field(
+                        "first_normal_slot",
+                        25,
+                        first_normal_slot,
+                        NumberFormat::U64,
+                    ),
                 ],
             }),
         },
@@ -234,7 +251,10 @@ fn parse_sysvar_epoch_rewards_account(key: &Pubkey, bytes: &[u8]) -> Option<Acco
     parsed_result(parsed)
 }
 
-fn parse_sysvar_last_restart_slot_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlParseResult> {
+fn parse_sysvar_last_restart_slot_account(
+    key: &Pubkey,
+    bytes: &[u8],
+) -> Option<AccountIdlParseResult> {
     let last_restart_slot_key = Pubkey::from_str(SYSVAR_LAST_RESTART_SLOT_PUBKEY)
         .expect("valid sysvar last restart slot pubkey");
     if *key != last_restart_slot_key || bytes.len() < SYSVAR_LAST_RESTART_SLOT_LEN {
@@ -315,6 +335,158 @@ fn parse_sysvar_stake_history_account(key: &Pubkey, bytes: &[u8]) -> Option<Acco
     parsed_result(parsed)
 }
 
+/// Instructions sysvar: u16 count, u16[N] offsets, serialized top-level ixs, u16 current index.
+/// Inner `data` is the raw compiled-instruction payload (same bytes as the tx message).
+fn parse_sysvar_instructions_account(key: &Pubkey, bytes: &[u8]) -> Option<AccountIdlParseResult> {
+    let instructions_key =
+        Pubkey::from_str(SYSVAR_INSTRUCTIONS_PUBKEY).expect("valid sysvar instructions pubkey");
+    if *key != instructions_key {
+        return None;
+    }
+    if bytes.len() < 2 + INSTRUCTIONS_CURRENT_INDEX_LEN {
+        return None;
+    }
+
+    let num_instructions = read_u16(bytes, 0)?;
+    let n = usize::from(num_instructions);
+    let header_len = 2usize.checked_add(n.checked_mul(2)?)?;
+    let body_end = bytes.len().checked_sub(INSTRUCTIONS_CURRENT_INDEX_LEN)?;
+    if header_len > body_end {
+        return None;
+    }
+
+    let mut instructions = Vec::with_capacity(n);
+    for i in 0..n {
+        let start = usize::from(read_u16(bytes, 2 + i * 2)?);
+        if start < header_len || start >= body_end {
+            return None;
+        }
+        instructions.push(parse_serialized_instruction(bytes, start, body_end)?);
+    }
+
+    let current_index = read_u16(bytes, body_end)?;
+    let parsed = ParsedAccount {
+        id: ProgramIdentifier::Default,
+        data: ParsedArg {
+            name: "instructions".to_string(),
+            value: ParsedArgValue::Struct(ViewStructTypeNode {
+                fields: vec![
+                    number_field("num_instructions", 0, num_instructions, NumberFormat::U16),
+                    ViewStructFieldTypeNode {
+                        name: "instructions".to_string(),
+                        docs: Docs::default(),
+                        byte_offset: None,
+                        value: ParsedArgValue::Array(ViewArrayTypeNode {
+                            values: instructions,
+                        }),
+                    },
+                    number_field("current_index", body_end, current_index, NumberFormat::U16),
+                ],
+            }),
+        },
+    };
+    parsed_result(parsed)
+}
+
+fn parse_serialized_instruction(
+    bytes: &[u8],
+    start: usize,
+    body_end: usize,
+) -> Option<ParsedArgValue> {
+    let mut cur = start;
+    let num_accounts = read_u16(bytes, cur)?;
+    cur += 2;
+    let account_count = usize::from(num_accounts);
+
+    let mut accounts = Vec::with_capacity(account_count);
+    for _ in 0..account_count {
+        if cur + INSTRUCTIONS_ACCOUNT_META_LEN > body_end {
+            return None;
+        }
+        let flags = *bytes.get(cur)?;
+        let pubkey = read_pubkey(bytes, cur + 1)?;
+        accounts.push(ParsedArgValue::Struct(ViewStructTypeNode {
+            fields: vec![
+                ViewStructFieldTypeNode {
+                    name: "is_signer".to_string(),
+                    docs: Docs::default(),
+                    byte_offset: Some(cur),
+                    value: ParsedArgValue::Boolean(ViewBooleanTypeNode {
+                        value: flags & INSTRUCTIONS_IS_SIGNER != 0,
+                    }),
+                },
+                ViewStructFieldTypeNode {
+                    name: "is_writable".to_string(),
+                    docs: Docs::default(),
+                    byte_offset: Some(cur),
+                    value: ParsedArgValue::Boolean(ViewBooleanTypeNode {
+                        value: flags & INSTRUCTIONS_IS_WRITABLE != 0,
+                    }),
+                },
+                pubkey_field("pubkey", cur + 1, pubkey),
+            ],
+        }));
+        cur += INSTRUCTIONS_ACCOUNT_META_LEN;
+    }
+
+    if cur + 32 + 2 > body_end {
+        return None;
+    }
+    let program_id = read_pubkey(bytes, cur)?;
+    let program_id_off = cur;
+    cur += 32;
+    let data_len = read_u16(bytes, cur)?;
+    let data_len_off = cur;
+    cur += 2;
+    let data_end = cur.checked_add(usize::from(data_len))?;
+    if data_end > body_end {
+        return None;
+    }
+    let data = hex::encode(&bytes[cur..data_end]);
+
+    Some(ParsedArgValue::Struct(ViewStructTypeNode {
+        fields: vec![
+            number_field("num_accounts", start, num_accounts, NumberFormat::U16),
+            ViewStructFieldTypeNode {
+                name: "accounts".to_string(),
+                docs: Docs::default(),
+                byte_offset: Some(start + 2),
+                value: ParsedArgValue::Array(ViewArrayTypeNode { values: accounts }),
+            },
+            pubkey_field("program_id", program_id_off, program_id),
+            number_field("data_len", data_len_off, data_len, NumberFormat::U16),
+            ViewStructFieldTypeNode {
+                name: "data".to_string(),
+                docs: Docs::default(),
+                byte_offset: Some(cur),
+                value: ParsedArgValue::Bytes(ViewBytesTypeNode { value: data }),
+            },
+        ],
+    }))
+}
+
+fn read_u16(bytes: &[u8], off: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(
+        bytes.get(off..off + 2)?.try_into().ok()?,
+    ))
+}
+
+fn read_pubkey(bytes: &[u8], off: usize) -> Option<Pubkey> {
+    let slice = bytes.get(off..off + 32)?;
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(slice);
+    Some(Pubkey::new_from_array(arr))
+}
+
+fn pubkey_field(name: &str, byte_offset: usize, value: Pubkey) -> ViewStructFieldTypeNode {
+    ViewStructFieldTypeNode {
+        name: name.to_string(),
+        docs: Docs::default(),
+        byte_offset: Some(byte_offset),
+        value: ParsedArgValue::PublicKey(ViewPublicKeyTypeNode { value }),
+    }
+}
+
 fn number_field<T: ToString>(
     name: &str,
     byte_offset: usize,
@@ -344,11 +516,42 @@ fn parsed_result(parsed: ParsedAccount) -> Option<AccountIdlParseResult> {
 mod tests {
     use super::{
         parse_sysvar_account, SYSVAR_CLOCK_PUBKEY, SYSVAR_EPOCH_REWARDS_PUBKEY,
-        SYSVAR_EPOCH_SCHEDULE_PUBKEY, SYSVAR_LAST_RESTART_SLOT_PUBKEY, SYSVAR_RENT_PUBKEY,
-        SYSVAR_STAKE_HISTORY_PUBKEY,
+        SYSVAR_EPOCH_SCHEDULE_PUBKEY, SYSVAR_INSTRUCTIONS_PUBKEY, SYSVAR_LAST_RESTART_SLOT_PUBKEY,
+        SYSVAR_RENT_PUBKEY, SYSVAR_STAKE_HISTORY_PUBKEY,
     };
+    use crate::idl::parsed_arg::{ParsedArgValue, ViewBytesTypeNode, ViewPublicKeyTypeNode};
     use solana_pubkey::Pubkey;
     use std::str::FromStr;
+
+    fn pk(fill: u8) -> Pubkey {
+        Pubkey::new_from_array([fill; 32])
+    }
+
+    fn construct_instructions_sysvar(
+        ixs: &[(Pubkey, Vec<(u8, Pubkey)>, Vec<u8>)],
+        current_index: u16,
+    ) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&(ixs.len() as u16).to_le_bytes());
+        for _ in ixs {
+            data.extend_from_slice(&0u16.to_le_bytes());
+        }
+        for (i, (program_id, accounts, ix_data)) in ixs.iter().enumerate() {
+            let start = u16::try_from(data.len()).expect("instruction offset fits u16");
+            let off = 2 + 2 * i;
+            data[off..off + 2].copy_from_slice(&start.to_le_bytes());
+            data.extend_from_slice(&(accounts.len() as u16).to_le_bytes());
+            for (flags, pubkey) in accounts {
+                data.push(*flags);
+                data.extend_from_slice(pubkey.as_ref());
+            }
+            data.extend_from_slice(program_id.as_ref());
+            data.extend_from_slice(&(ix_data.len() as u16).to_le_bytes());
+            data.extend_from_slice(ix_data);
+        }
+        data.extend_from_slice(&current_index.to_le_bytes());
+        data
+    }
 
     #[test]
     fn parses_sysvar_rent() {
@@ -418,7 +621,8 @@ mod tests {
             .expect("sysvar last restart slot pubkey must parse");
         let data = 999_u64.to_le_bytes();
 
-        let parsed = parse_sysvar_account(&key, &data).expect("sysvar last restart slot should parse");
+        let parsed =
+            parse_sysvar_account(&key, &data).expect("sysvar last restart slot should parse");
         assert_eq!(parsed.parsed.data.name, "last_restart_slot");
         assert_eq!(parsed.parsed_byte_offsets.len(), 1);
     }
@@ -441,5 +645,101 @@ mod tests {
         let parsed = parse_sysvar_account(&key, &data).expect("sysvar stake history should parse");
         assert_eq!(parsed.parsed.data.name, "stake_history");
         assert_eq!(parsed.parsed_byte_offsets.len(), 8);
+    }
+
+    #[test]
+    fn parses_sysvar_instructions() {
+        let key = Pubkey::from_str(SYSVAR_INSTRUCTIONS_PUBKEY)
+            .expect("sysvar instructions pubkey must parse");
+        let program_a = pk(1);
+        let program_b = pk(2);
+        let acct = pk(3);
+        let data = construct_instructions_sysvar(
+            &[
+                (program_a, vec![], vec![2, 0, 1, 0, 0]),
+                (program_b, vec![(0b0000_0011, acct)], vec![229, 23]),
+            ],
+            1,
+        );
+
+        let parsed = parse_sysvar_account(&key, &data).expect("sysvar instructions should parse");
+        assert_eq!(parsed.parsed.data.name, "instructions");
+        let ParsedArgValue::Struct(root) = &parsed.parsed.data.value else {
+            panic!("expected struct");
+        };
+        assert_eq!(root.fields[0].name, "num_instructions");
+        assert_eq!(root.fields[2].name, "current_index");
+        let ParsedArgValue::Array(ixs) = &root.fields[1].value else {
+            panic!("expected instructions array");
+        };
+        assert_eq!(ixs.values.len(), 2);
+
+        let ParsedArgValue::Struct(ix0) = &ixs.values[0] else {
+            panic!("expected ix struct");
+        };
+        assert_eq!(
+            ix0.fields
+                .iter()
+                .find(|f| f.name == "program_id")
+                .map(|f| &f.value),
+            Some(&ParsedArgValue::PublicKey(ViewPublicKeyTypeNode {
+                value: program_a
+            }))
+        );
+        assert_eq!(
+            ix0.fields
+                .iter()
+                .find(|f| f.name == "data")
+                .map(|f| &f.value),
+            Some(&ParsedArgValue::Bytes(ViewBytesTypeNode {
+                value: "0200010000".into()
+            }))
+        );
+
+        let ParsedArgValue::Struct(ix1) = &ixs.values[1] else {
+            panic!("expected ix struct");
+        };
+        let ParsedArgValue::Array(accounts) = &ix1
+            .fields
+            .iter()
+            .find(|f| f.name == "accounts")
+            .expect("accounts")
+            .value
+        else {
+            panic!("expected accounts array");
+        };
+        let ParsedArgValue::Struct(acct0) = &accounts.values[0] else {
+            panic!("expected account meta");
+        };
+        assert!(matches!(
+            acct0.fields.iter().find(|f| f.name == "is_signer").map(|f| &f.value),
+            Some(ParsedArgValue::Boolean(b)) if b.value
+        ));
+        assert!(matches!(
+            acct0.fields.iter().find(|f| f.name == "is_writable").map(|f| &f.value),
+            Some(ParsedArgValue::Boolean(b)) if b.value
+        ));
+
+        assert!(parsed.parsed_byte_offsets.iter().any(|o| {
+            o.path == "instructions.current_index" && o.byte_offset == data.len() - 2
+        }));
+        assert!(parsed
+            .parsed_byte_offsets
+            .iter()
+            .any(|o| o.path == "instructions.instructions[0].data"));
+    }
+
+    #[test]
+    fn rejects_truncated_sysvar_instructions() {
+        let key = Pubkey::from_str(SYSVAR_INSTRUCTIONS_PUBKEY)
+            .expect("sysvar instructions pubkey must parse");
+        assert!(parse_sysvar_account(&key, &[1, 0]).is_none());
+        assert!(parse_sysvar_account(&key, &[1, 0, 12, 0]).is_none());
+    }
+
+    #[test]
+    fn ignores_instructions_layout_on_other_keys() {
+        let data = construct_instructions_sysvar(&[(pk(1), vec![], vec![1])], 0);
+        assert!(parse_sysvar_account(&pk(9), &data).is_none());
     }
 }

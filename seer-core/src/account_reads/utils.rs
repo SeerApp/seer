@@ -7,8 +7,8 @@ use crate::{
         raw::{RawAccountRead, RawAccountReadKind},
         view::{ViewAccountRead, ViewDataRead},
     },
-    register_trace::REGISTER_TRACE_CHUNK_SIZE,
     artifacts::AtomicFileWriter,
+    register_trace::REGISTER_TRACE_CHUNK_SIZE,
 };
 
 pub fn collect_sequential_data_reads(

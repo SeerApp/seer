@@ -35,22 +35,14 @@ impl TransactionContext {
     }
 
     /// Keep the first observed program error as the canonical tx failure.
-    pub fn set_execution_error(
-        &mut self,
-        err: InstructionError,
-        idl: Option<&dyn IdlTreeParser>,
-    ) {
+    pub fn set_execution_error(&mut self, err: InstructionError, idl: Option<&dyn IdlTreeParser>) {
         if self.failure.is_some() {
             return;
         }
         let message = idl
             .map(|parser| parser.get_error(err.clone()))
             .unwrap_or_else(|| err.to_string());
-        self.failure = Some(Failure::execution(
-            "instruction_error",
-            message,
-            "debugger",
-        ));
+        self.failure = Some(Failure::execution("instruction_error", message, "debugger"));
     }
 
     pub fn set_execution_failure_if_empty(

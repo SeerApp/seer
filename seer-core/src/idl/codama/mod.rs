@@ -122,9 +122,7 @@ impl IdlTreeParser for CodamaIdlLookup {
         }
 
         match best_match {
-            Some((_, _, parsed)) => {
-                Some(parsed)
-            }
+            Some((_, _, parsed)) => Some(parsed),
             None => {
                 crate::seer_warn!(
                     "Codama account decode: no account type matched ({} bytes)",

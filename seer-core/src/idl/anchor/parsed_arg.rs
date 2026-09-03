@@ -180,12 +180,8 @@ fn get_parsed_arg_value_from_ty<'a>(
                     value: Box::new(None),
                 }))
             } else {
-                let inner = get_parsed_arg_value_from_ty(
-                    types,
-                    o.as_ref(),
-                    cursor,
-                    generics_maps.clone(),
-                );
+                let inner =
+                    get_parsed_arg_value_from_ty(types, o.as_ref(), cursor, generics_maps.clone());
                 if inner.is_none() {
                     crate::seer_warn!("Anchor decode: failed to decode option some payload");
                 }
@@ -197,13 +193,8 @@ fn get_parsed_arg_value_from_ty<'a>(
         IdlType::Vec(v) => {
             let len_bytes = take_bytes(cursor, 4, "vec length u32")?;
             let length_prefix = LittleEndian::read_u32(len_bytes) as usize;
-            let values = get_listed_values(
-                types,
-                cursor,
-                &generics_maps,
-                v.as_ref(),
-                length_prefix,
-            )?;
+            let values =
+                get_listed_values(types, cursor, &generics_maps, v.as_ref(), length_prefix)?;
             Some(ParsedArgValue::Array(ViewArrayTypeNode { values }))
         }
         IdlType::Array(a, l) => {
@@ -332,8 +323,7 @@ fn get_listed_values<'a>(
 ) -> Option<Vec<ParsedArgValue>> {
     let mut values = vec![];
     for _ in 0..length {
-        let parsed_arg =
-            get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone())?;
+        let parsed_arg = get_parsed_arg_value_from_ty(types, ty, cursor, generics_maps.clone())?;
         values.push(parsed_arg);
     }
     Some(values)
@@ -465,12 +455,8 @@ fn get_struct<'a>(
                 let mut return_struct = ViewStructTypeNode { fields: vec![] };
                 for f in named_fields {
                     let field_byte_offset = cursor.absolute_pos();
-                    let value = get_parsed_arg_value_from_ty(
-                        types,
-                        &f.ty,
-                        cursor,
-                        generics_maps.clone(),
-                    )?;
+                    let value =
+                        get_parsed_arg_value_from_ty(types, &f.ty, cursor, generics_maps.clone())?;
                     return_struct.fields.push(ViewStructFieldTypeNode {
                         name: f.name.clone(),
                         docs: f.docs.clone().into(),

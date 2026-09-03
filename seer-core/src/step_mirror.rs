@@ -30,7 +30,9 @@ impl UnsafeAccountBackdoor {
     /// `step_order` is stamped on each returned [`TreeAccount`] (single source of truth for the
     /// trace; `InvokeContext::account_diff` forwards it unchanged).
     pub fn check_diffs(&mut self, step_order: u64) -> Vec<TreeAccount> {
-        let mirror_ptr = self.mirror_ptr.expect("UnsafeAccountBackdoor has been cleared");
+        let mirror_ptr = self
+            .mirror_ptr
+            .expect("UnsafeAccountBackdoor has been cleared");
         let mirror = unsafe { &*mirror_ptr };
 
         let accounts = mirror.get_accounts();

@@ -29,20 +29,22 @@ fn test_instruction_context() {
         .unwrap();
 
     let file_writer = Arc::new(Mutex::new(AtomicFileWriter::new()));
-    let (global_program_context, _warnings) = GlobalProgramContext::init(
-        &cwd,
-        &source_project_root,
-        None,
-        file_writer.clone(),
-    )
-    .expect("GlobalProgramContext::init");
+    let (global_program_context, _warnings) =
+        GlobalProgramContext::init(&cwd, &source_project_root, None, file_writer.clone())
+            .expect("GlobalProgramContext::init");
 
     let sig =
         "JuiMHw4p3kgdBsgXK8134Vb4jaL8gfvsXYNvxfi6XgRRckZCugVNuReWUBpg1dTncXoEi8QmAz5fbHP1cvgb45Q"
             .to_string();
 
     for index in 0..=2 {
-        let result = _run_tx(&analysis_root, fee_payer, index, &sig, &global_program_context);
+        let result = _run_tx(
+            &analysis_root,
+            fee_payer,
+            index,
+            &sig,
+            &global_program_context,
+        );
         if seer_test_save_enabled() {
             file_writer
                 .lock()

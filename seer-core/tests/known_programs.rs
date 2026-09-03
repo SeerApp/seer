@@ -1,7 +1,5 @@
 use seer_core::idl::IdlTreeParser;
-use seer_core::program_manager::known_programs::{
-    get_known_programs, SYSTEM_PROGRAM_ADDRESS,
-};
+use seer_core::program_manager::known_programs::{get_known_programs, SYSTEM_PROGRAM_ADDRESS};
 use seer_core::{init_seer_logger, SeerLogger};
 use solana_pubkey::Pubkey;
 use std::str::FromStr;

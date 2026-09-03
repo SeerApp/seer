@@ -6,9 +6,7 @@ use crate::account_reads::{
     view::{ViewAccountRead, ViewAccountReadKind, ViewDataRead},
 };
 
-pub fn raw_to_view(
-    raw_reads: Vec<RawAccountRead>,
-) -> Vec<ViewAccountRead> {
+pub fn raw_to_view(raw_reads: Vec<RawAccountRead>) -> Vec<ViewAccountRead> {
     let mut out = vec![];
     let mut i = 0usize;
 
@@ -39,19 +37,16 @@ pub fn raw_to_view(
                 i += 1;
             }
             RawAccountReadKind::Key { .. } => {
-                if let Some(run) = collect_pubkey_coverage_run(
-                    &raw_reads,
-                    i,
-                    raw_read.key,
-                    |kind| match kind {
+                if let Some(run) =
+                    collect_pubkey_coverage_run(&raw_reads, i, raw_read.key, |kind| match kind {
                         RawAccountReadKind::Key {
                             bytes,
                             offset,
                             bytes_width,
                         } => Some((*offset, *bytes_width, bytes.as_slice())),
                         _ => None,
-                    },
-                ) {
+                    })
+                {
                     let key = raw_read.key;
                     out.push(ViewAccountRead {
                         key,
@@ -66,19 +61,16 @@ pub fn raw_to_view(
                 i += 1;
             }
             RawAccountReadKind::Owner { .. } => {
-                if let Some(run) = collect_pubkey_coverage_run(
-                    &raw_reads,
-                    i,
-                    raw_read.owner,
-                    |kind| match kind {
+                if let Some(run) =
+                    collect_pubkey_coverage_run(&raw_reads, i, raw_read.owner, |kind| match kind {
                         RawAccountReadKind::Owner {
                             bytes,
                             offset,
                             bytes_width,
                         } => Some((*offset, *bytes_width, bytes.as_slice())),
                         _ => None,
-                    },
-                ) {
+                    })
+                {
                     let key = raw_read.key;
                     let owner = raw_read.owner;
                     out.push(ViewAccountRead {

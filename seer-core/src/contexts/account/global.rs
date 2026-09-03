@@ -105,8 +105,7 @@ impl GlobalAccountContext {
                     let mut parsed_out = parse_sysvar_account(&key, bytes.as_slice());
 
                     if parsed_out.is_none() {
-                        if let Some(idl_lookup) =
-                            program_context.get_idl_lookup(&receiver_program)
+                        if let Some(idl_lookup) = program_context.get_idl_lookup(&receiver_program)
                         {
                             parsed_out = GlobalProgramContext::parse_account_with_idl(
                                 &idl_lookup,

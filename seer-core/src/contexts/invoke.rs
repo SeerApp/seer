@@ -4,7 +4,8 @@ use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    program_manager::types::GlobalProgramContext, tree::{
+    program_manager::types::GlobalProgramContext,
+    tree::{
         edge_cases::delayed_log::DelayedLogEdgeCase,
         nodes::{
             account::TreeAccount,
@@ -12,7 +13,7 @@ use crate::{
             log::TreeLog,
             root::{RootChildren, RootViewChildren, TreeRoot},
         },
-    }
+    },
 };
 
 enum Pushable {
@@ -140,7 +141,9 @@ impl InvokeContext {
 
         let current_program = &self.trees[live_trace.tree_index].receiver;
 
-        if let Some(entrypoint_lookup) = global_program_context.get_entrypoint_lookup(current_program) {
+        if let Some(entrypoint_lookup) =
+            global_program_context.get_entrypoint_lookup(current_program)
+        {
             if let Some(entrypoint) = entrypoint_lookup.get_entrypoint(i, step_order) {
                 live_trace.delayed_log_edge_case.lke_hook(&entrypoint);
                 live_trace.last_known_entrypoint = Some(entrypoint);

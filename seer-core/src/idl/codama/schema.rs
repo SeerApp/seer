@@ -54,7 +54,10 @@ impl fmt::Display for SchemaLoc {
 fn push_loc_path(loc: &SchemaLoc, segment: impl Into<String>) -> SchemaLoc {
     let seg = segment.into();
     match loc.clone() {
-        SchemaLoc::Instruction { instruction, mut path } => {
+        SchemaLoc::Instruction {
+            instruction,
+            mut path,
+        } => {
             path.push(seg);
             SchemaLoc::Instruction { instruction, path }
         }
@@ -62,7 +65,10 @@ fn push_loc_path(loc: &SchemaLoc, segment: impl Into<String>) -> SchemaLoc {
             path.push(seg);
             SchemaLoc::Account { account, path }
         }
-        SchemaLoc::DefinedType { type_name, mut path } => {
+        SchemaLoc::DefinedType {
+            type_name,
+            mut path,
+        } => {
             path.push(seg);
             SchemaLoc::DefinedType { type_name, path }
         }
@@ -180,20 +186,13 @@ fn validate_type_tree(
             false
         }
         TypeNode::Sentinel(s) => validate_type_tree(&s.r#type, defined_types, is_last, loc),
-        TypeNode::ZeroableOption(z) => {
-            validate_type_tree(&z.item, defined_types, is_last, loc)
-        }
+        TypeNode::ZeroableOption(z) => validate_type_tree(&z.item, defined_types, is_last, loc),
         TypeNode::Struct(s) => {
             let n = s.fields.len();
             for (i, field) in s.fields.iter().enumerate() {
                 let last_sib = i + 1 == n;
                 let floc = push_loc_path(&loc, field.name.to_string());
-                if !validate_type_tree(
-                    &field.r#type,
-                    defined_types,
-                    last_sib && is_last,
-                    floc,
-                ) {
+                if !validate_type_tree(&field.r#type, defined_types, last_sib && is_last, floc) {
                     return false;
                 }
             }
@@ -249,12 +248,7 @@ fn validate_type_tree(
                         for (i, item) in tup.items.iter().enumerate() {
                             let last_sib = i + 1 == n;
                             let iloc = push_loc_path(&variant_loc, i.to_string());
-                            if !validate_type_tree(
-                                item,
-                                defined_types,
-                                last_sib && is_last,
-                                iloc,
-                            ) {
+                            if !validate_type_tree(item, defined_types, last_sib && is_last, iloc) {
                                 return false;
                             }
                         }

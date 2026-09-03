@@ -12,8 +12,7 @@ use solana_signature::Signature;
 use crate::{
     account_reads::{
         refresh_parsed_reads::refresh_account_reads_parsed_for_instruction,
-        scanner::AccountVmLayout,
-        utils::save_view_account_reads_chunks,
+        scanner::AccountVmLayout, utils::save_view_account_reads_chunks,
     },
     artifacts::AtomicFileWriter,
     contexts::{
@@ -75,10 +74,10 @@ impl SeerContext {
         })
     }
 
-    fn lock_file_writer(
-        writer: &Arc<Mutex<AtomicFileWriter>>,
-    ) -> MutexGuard<'_, AtomicFileWriter> {
-        writer.lock().expect("file writer lock should not be poisoned")
+    fn lock_file_writer(writer: &Arc<Mutex<AtomicFileWriter>>) -> MutexGuard<'_, AtomicFileWriter> {
+        writer
+            .lock()
+            .expect("file writer lock should not be poisoned")
     }
 
     pub fn set_current_tx(&mut self, tx: Signature) {
@@ -317,7 +316,10 @@ impl SeerContext {
             .as_mut()
             .expect("Capturing account read before transaction context exists");
 
-        self.global_account_context
-            .capture_account_read(tx.step_order.saturating_sub(1), vm_addr, width);
+        self.global_account_context.capture_account_read(
+            tx.step_order.saturating_sub(1),
+            vm_addr,
+            width,
+        );
     }
 }

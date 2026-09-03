@@ -244,14 +244,13 @@ impl super::types::GlobalProgramContext {
             }
         }
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::program_manager::types::{DisasmStatus, GlobalProgramContext, ProgramInfo};
-    use crate::idl::IdlLookup;
     use super::super::utils::{fetch_anchor_idl_lookup_from_rpc, fetch_program_elf_from_rpc};
+    use crate::idl::IdlLookup;
+    use crate::program_manager::types::{DisasmStatus, GlobalProgramContext, ProgramInfo};
     use solana_pubkey::Pubkey;
     use std::{
         collections::HashMap,
