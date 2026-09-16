@@ -1,6 +1,6 @@
-/// WARNING!
-/// These tests are AI-generated TRASH and do not constitute proper invariant checks. 
-/// TBD. 
+//! WARNING!
+//! These tests are AI-generated TRASH and do not constitute proper invariant checks.
+//! TBD.
 
 use std::str::FromStr;
 
@@ -55,11 +55,11 @@ fn parses_hash_commands() {
     const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     let Command::Hash(HashCommand::State(state)) =
-        parse_from(["seer", "hash", "state", r#"{"slot":1}"#]).unwrap()
+        parse_from(["seer", "hash", "state", "{}"]).unwrap()
     else {
         panic!("expected hash state");
     };
-    assert_eq!(state.json["slot"], 1);
+    assert_eq!(state, StateAccounts::default());
 
     let Command::Hash(HashCommand::Simulation {
         msg_hash,

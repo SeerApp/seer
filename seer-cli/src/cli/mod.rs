@@ -1,7 +1,10 @@
+// The seer binary goes through this module because clap lives here.
+// Parse, normalise, dispatch to runs/storage, format user-facing output.
+// Do not implement storage or run logic here.
+
 mod encoding;
 mod hash;
 mod input;
-mod state;
 #[cfg(test)]
 mod test;
 
@@ -9,13 +12,30 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use solana_transaction::versioned::VersionedTransaction;
 
+use crate::storage::state_accounts::StateAccounts;
+
 pub use encoding::Encoding;
 pub use hash::Sha256Hash;
 pub use input::PathOrValue;
-pub use state::StateObject;
 
 pub fn run() -> Result<()> {
-    Command::try_from(Cli::parse()).map(|_| ())
+    match Command::try_from(Cli::parse())? {
+        Command::Hash(HashCommand::State(state)) => {
+            println!(
+                "Account state stored at hash {}",
+                hex::encode(crate::runs::hash::hash_state(&state)?)
+            );
+            Ok(())
+        }
+        Command::Hash(HashCommand::Transaction(tx)) => {
+            println!(
+                "Transaction stored at hash {}",
+                hex::encode(crate::runs::hash::hash_transaction(&tx)?)
+            );
+            Ok(())
+        }
+        Command::Hash(_) => Ok(()),
+    }
 }
 
 const INPUT_HELP: &str = "File path, @path, or the value itself";
@@ -75,7 +95,7 @@ pub enum Command {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum HashCommand {
-    State(StateObject),
+    State(StateAccounts),
     Transaction(VersionedTransaction),
     Simulation {
         msg_hash: Sha256Hash,
@@ -98,7 +118,9 @@ impl TryFrom<CliHash> for HashCommand {
 
     fn try_from(hash: CliHash) -> Result<Self> {
         match hash {
-            CliHash::State(args) => Ok(Self::State(StateObject::parse(&args.state)?)),
+            CliHash::State(args) => Ok(Self::State(StateAccounts::from_bytes(
+                args.state.load_text()?.trim().as_bytes(),
+            )?)),
             CliHash::Transaction(args) => {
                 let encoding = if args.b64 {
                     Encoding::Base64

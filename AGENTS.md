@@ -9,3 +9,8 @@ A type or function whose only job is to wrap another type or call is unacceptabl
 # No comments
 
 Do not add comments. Delete comments that are not absolutely, undeniably essential. Clap `help` attributes are allowed. `//` and `///` on code are not.
+
+# seer-cli `cli` module
+
+The `seer` binary goes through `cli` because clap lives there. `cli` parses args, normalises them, dispatches to `runs` / `storage`, and formats user-facing output. It does not implement storage or run logic itself.
+
