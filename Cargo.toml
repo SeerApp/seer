@@ -2,6 +2,7 @@
 members = [
     "disasm",
     "seer-core",
+    "seer-cli",
     "seer-interface"
 ]
 
