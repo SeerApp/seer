@@ -1,4 +1,5 @@
-#![allow(dead_code)]
+//! Storage of byte data by sha hash name is an
+//! invariant enforced at Storage level. 
 
 use std::fs;
 

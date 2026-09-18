@@ -1,4 +1,5 @@
 mod cli;
+mod report;
 mod runs;
 mod storage;
 

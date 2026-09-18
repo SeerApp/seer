@@ -2,7 +2,12 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
+
+use crate::report::Report;
+
+use super::blobs::read_blob;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct StateAccount {
@@ -12,8 +17,6 @@ pub struct StateAccount {
     pub data: [u8; 32],
     pub owner: Pubkey,
     pub executable: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "hex32_opt")]
-    pub executable_data: Option<[u8; 32]>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -27,6 +30,69 @@ impl StateAccounts {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         serde_json::from_slice(bytes).context("state accounts JSON")
+    }
+
+    pub fn get_data(&self, pubkey: &Pubkey) -> std::result::Result<Vec<u8>, Report> {
+        let Some(account) = self.0.get(pubkey) else {
+            return Err(Report {
+                missing_accounts: vec![*pubkey],
+                ..Report::default()
+            });
+        };
+        read_blob(&account.data).map_err(|_| Report {
+            missing_data: vec![*pubkey],
+            ..Report::default()
+        })
+    }
+
+    pub fn get_executable_account(&self, pubkey: &Pubkey) -> std::result::Result<Option<Pubkey>, Report> {
+        let data = self.get_data(pubkey)?;
+        let Some(account) = self.0.get(pubkey) else {
+            return Err(Report {
+                missing_accounts: vec![*pubkey],
+                ..Report::default()
+            });
+        };
+        if !solana_sdk_ids::bpf_loader_upgradeable::check_id(&account.owner) {
+            return Ok(None);
+        }
+        match bincode::deserialize(&data) {
+            Ok(UpgradeableLoaderState::Program {
+                programdata_address,
+            }) => Ok(Some(programdata_address)),
+            Ok(_) => Ok(None),
+            Err(_) => Err(Report {
+                incoherent: vec![*pubkey],
+                ..Report::default()
+            }),
+        }
+    }
+
+    pub fn verify(&self) -> std::result::Result<(), Report> {
+        let mut report = Report::default();
+        for (key, account) in &self.0 {
+            match self.get_executable_account(key) {
+                Err(e) => report.merge(e),
+                Ok(executable_account) => {
+                    if account.executable
+                        && solana_sdk_ids::bpf_loader_upgradeable::check_id(&account.owner)
+                            != executable_account.is_some()
+                    {
+                        report.incoherent.push(*key);
+                    }
+                    if let Some(programdata) = executable_account {
+                        if !self.0.contains_key(&programdata) {
+                            report.missing_accounts.push(programdata);
+                        }
+                    }
+                }
+            }
+        }
+        if report.is_empty() {
+            Ok(())
+        } else {
+            Err(report)
+        }
     }
 }
 
@@ -56,28 +122,5 @@ mod hex32 {
         bytes
             .try_into()
             .map_err(|_| serde::de::Error::custom("sha256 hash must be 32 bytes"))
-    }
-}
-
-mod hex32_opt {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(v: &Option<[u8; 32]>, s: S) -> Result<S::Ok, S::Error> {
-        match v {
-            Some(h) => hex32::serialize(h, s),
-            None => s.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<[u8; 32]>, D::Error> {
-        match Option::<String>::deserialize(d)? {
-            None => Ok(None),
-            Some(s) => {
-                let bytes = hex::decode(s).map_err(serde::de::Error::custom)?;
-                Ok(Some(bytes.try_into().map_err(|_| {
-                    serde::de::Error::custom("sha256 hash must be 32 bytes")
-                })?))
-            }
-        }
     }
 }
