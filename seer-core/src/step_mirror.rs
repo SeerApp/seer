@@ -56,6 +56,13 @@ impl UnsafeAccountBackdoor {
         changed_accounts
     }
 
+    pub fn live_accounts(&self) -> Vec<(Pubkey, AccountSharedData)> {
+        let mirror_ptr = self
+            .mirror_ptr
+            .expect("UnsafeAccountBackdoor has been cleared");
+        unsafe { &*mirror_ptr }.get_accounts()
+    }
+
     pub fn clear(&mut self) {
         self.mirror_ptr = None;
     }

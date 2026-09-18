@@ -1,4 +1,5 @@
 use solana_pubkey::Pubkey;
+use rusqlite::Connection;
 
 use crate::{contexts::seer::SeerContext, errors::IrrecoverableError};
 
@@ -8,9 +9,10 @@ pub struct SourcesContext {
 }
 
 impl SourcesContext {
-    pub async fn new(
+    pub fn new(
         authority: Pubkey,
         network_rpc_url: Option<String>,
+        conn: &Connection,
     ) -> Result<Self, IrrecoverableError> {
         // let eps = match Config::from_env().ok().expect("Error in parsing config") {
         //     Some(config) => Some(ExternalProgramService::new(config).await),
@@ -20,7 +22,7 @@ impl SourcesContext {
         // };
 
         Ok(Self {
-            seer: SeerContext::new(authority, network_rpc_url)?,
+            seer: SeerContext::new(authority, network_rpc_url, conn)?,
             // eps,
         })
     }

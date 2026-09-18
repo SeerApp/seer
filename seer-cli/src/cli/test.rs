@@ -116,3 +116,49 @@ fn parses_hash_commands() {
     assert_eq!(parsed, versioned);
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn parses_run_simulation() {
+    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    let Command::Run(RunCommand::Simulation {
+        tx_hash,
+        state_hash,
+        overrides,
+    }) = parse_from(["seer", "run", "simulation", EMPTY_SHA256, EMPTY_SHA256]).unwrap()
+    else {
+        panic!("expected run simulation");
+    };
+    assert_eq!(hex::encode(tx_hash.0), EMPTY_SHA256);
+    assert_eq!(tx_hash, state_hash);
+    assert_eq!(overrides, Overrides::default());
+
+    let Command::Run(RunCommand::Simulation { overrides, .. }) = parse_from([
+        "seer",
+        "run",
+        "simulation",
+        EMPTY_SHA256,
+        EMPTY_SHA256,
+        r#"{"slot":1}"#,
+    ])
+    .unwrap()
+    else {
+        panic!("expected run simulation with overrides");
+    };
+    assert_eq!(overrides.slot, Some(1));
+
+    let Command::Run(RunCommand::Simulation { overrides, .. }) = parse_from([
+        "seer",
+        "run",
+        "simulation",
+        EMPTY_SHA256,
+        EMPTY_SHA256,
+        r#"{"airdrop":[{"address":"11111111111111111111111111111111","lamports":42}]}"#,
+    ])
+    .unwrap()
+    else {
+        panic!("expected run simulation with airdrop");
+    };
+    assert_eq!(overrides.airdrop.len(), 1);
+    assert_eq!(overrides.airdrop[0].lamports, 42);
+}

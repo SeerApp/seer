@@ -6,10 +6,9 @@ use solana_address_lookup_table_interface::state::AddressLookupTable;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_message::v0::MessageAddressTableLookup;
 use solana_pubkey::Pubkey;
+use storage::blobs::read_blob;
 
 use crate::report::Report;
-
-use super::blobs::read_blob;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct StateAccount {

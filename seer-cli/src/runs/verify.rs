@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use solana_transaction::versioned::VersionedTransaction;
 
 use crate::report::Report;
-use crate::storage::state_accounts::StateAccounts;
+use crate::state_accounts::StateAccounts;
 
 pub fn verify(tx: &VersionedTransaction, state: &StateAccounts) -> Result<()> {
     tx.sanitize().context("malformed transaction")?;

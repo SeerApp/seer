@@ -1,6 +1,5 @@
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
-use solana_signature::Signature;
 
 use crate::{
     artifacts::AtomicFileWriter,
@@ -18,17 +17,15 @@ use crate::{
 pub struct TransactionContext {
     pub meta: TxMetadata,
     pub failure: Option<Failure>,
-    pub signature: Signature,
     instruction_context: Option<InstructionContext>,
     pub step_order: u64,
 }
 
 impl TransactionContext {
-    pub fn new(signature: Signature) -> Self {
+    pub fn new() -> Self {
         Self {
             meta: TxMetadata::default(),
             failure: None,
-            signature,
             instruction_context: None,
             step_order: 0,
         }
@@ -80,11 +77,7 @@ impl TransactionContext {
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
-        self.instruction_context = Some(InstructionContext::new(
-            instruction,
-            fee_payer,
-            Some(self.signature),
-        ));
+        self.instruction_context = Some(InstructionContext::new(instruction, fee_payer, None));
     }
 
     pub fn end_instruction(

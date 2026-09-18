@@ -1,9 +1,11 @@
 [workspace]
+resolver = "2"
 members = [
     "disasm",
     "seer-core",
     "seer-cli",
-    "seer-interface"
+    "seer-interface",
+    "storage",
 ]
 
 [workspace.package]
@@ -29,3 +31,25 @@ arithmetic_side_effects = "deny"
 default_trait_access = "deny"
 manual_let_else = "deny"
 used_underscore_binding = "deny"
+
+[patch.crates-io]
+agave-feature-set = { path = "../agave/feature-set" }
+agave-reserved-account-keys = { path = "../agave/reserved-account-keys" }
+agave-syscalls = { path = "../agave/syscalls" }
+solana-bpf-loader-program = { path = "../agave/programs/bpf_loader" }
+solana-builtins = { path = "../agave/builtins" }
+solana-builtins-default-costs = { path = "../agave/builtins-default-costs" }
+solana-compute-budget = { path = "../agave/compute-budget" }
+solana-compute-budget-instruction = { path = "../agave/compute-budget-instruction" }
+solana-fee = { path = "../agave/fee" }
+solana-program-runtime = { path = "../agave/program-runtime" }
+solana-sbpf = { path = "../sbpf" }
+solana-svm-callback = { path = "../agave/svm-callback" }
+solana-svm-feature-set = { path = "../agave/svm-feature-set" }
+solana-svm-log-collector = { path = "../agave/svm-log-collector" }
+solana-svm-measure = { path = "../agave/svm-measure" }
+solana-svm-timings = { path = "../agave/svm-timings" }
+solana-svm-transaction = { path = "../agave/svm-transaction" }
+solana-svm-type-overrides = { path = "../agave/svm-type-overrides" }
+solana-system-program = { path = "../agave/programs/system" }
+solana-transaction-context = { path = "../agave/transaction-context" }

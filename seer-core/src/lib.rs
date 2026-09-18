@@ -22,9 +22,8 @@ use std::cell::RefCell;
 use std::{env, path::PathBuf};
 
 use solana_pubkey::Pubkey;
-use solana_signature::Signature;
+use rusqlite::Connection;
 
-use crate::artifacts::AtomicFileWriter;
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
 use crate::errors::IrrecoverableError;
@@ -46,9 +45,9 @@ impl SeerSingleton {
         }
     }
 
-    pub fn set(&mut self, tx: Signature) {
+    pub fn set(&mut self, run_id: i64) {
         if let Some(ctx) = &mut self.context {
-            ctx.get_context().set_current_tx(tx);
+            ctx.get_context().set_current_tx(run_id);
             self.active = true;
         }
     }
@@ -75,13 +74,14 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub async fn init(
-    authority: Pubkey,
+pub fn init(
+    authority: [u8; 32],
     network_rpc_url: Option<String>,
+    conn: &Connection,
 ) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(authority, network_rpc_url).await?;
+    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), network_rpc_url, conn)?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
@@ -105,10 +105,10 @@ where
     });
 }
 
-pub fn set(tx: Signature) {
+pub fn set(run_id: i64) {
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
-        seer.set(tx);
+        seer.set(run_id);
     })
 }
 
@@ -117,16 +117,6 @@ pub fn unset() {
         let mut seer = seer.borrow_mut();
         seer.unset();
     })
-}
-
-/// Persist a run-scoped internal failure (`seer/failure.json`) if none exists yet.
-/// No-op when Seer is not initialized (unit tests hitting the SVM without a workspace).
-pub fn write_run_failure_if_missing(failure: &Failure) {
-    let inited = SEER.with(|seer| seer.borrow().is_inited());
-    if !inited {
-        return;
-    }
-    AtomicFileWriter::new().save_run_failure_if_missing(failure);
 }
 
 /// Record a tx-scoped execution failure if the active tx does not already have one.

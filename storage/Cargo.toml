@@ -1,0 +1,15 @@
+[package]
+name = "storage"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+anyhow = "1.0.99"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "6"
+hex = "0.4.3"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10.9"
+
+[lints]
+workspace = true

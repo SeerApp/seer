@@ -1,4 +1,6 @@
 use seer_interface::GuestAccountBackdoor;
+use solana_account::AccountSharedData;
+use solana_pubkey::Pubkey;
 
 use crate::{step_mirror::UnsafeAccountBackdoor, tree::nodes::account::TreeAccount};
 
@@ -24,6 +26,13 @@ impl GlobalAccountContext {
         if let Some(mut uab) = self.unsafe_account_backdoor.take() {
             uab.clear();
         }
+    }
+
+    pub fn live_accounts(&self) -> Vec<(Pubkey, AccountSharedData)> {
+        self.unsafe_account_backdoor
+            .as_ref()
+            .map(UnsafeAccountBackdoor::live_accounts)
+            .unwrap_or_default()
     }
 
     pub fn get_changed_accounts(&mut self, step_order: u64) -> Vec<TreeAccount> {
