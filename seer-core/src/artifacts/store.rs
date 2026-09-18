@@ -15,10 +15,9 @@ use crate::{
 
 use super::{
     layout::{
-        self, account_reads_dir, path_instruction_under_folder, path_meta_json,
-        path_register_chunk_file, path_register_dir, path_run_failure_json, path_seer_root_file,
-        path_trace_json, path_tx_failure_json, register_trace_chunk_filename,
-        register_trace_steps_on_disk,
+        self, path_instruction_under_folder, path_meta_json, path_register_chunk_file,
+        path_register_dir, path_run_failure_json, path_seer_root_file, path_trace_json,
+        path_tx_failure_json, register_trace_steps_on_disk,
     },
     writer::AtomicFileWriter,
 };
@@ -78,23 +77,6 @@ impl AtomicFileWriter {
         self.write_json_if_missing(
             &path_register_chunk_file(signature, instruction, key, min_order, max_order),
             trace_chunk,
-        );
-    }
-
-    pub fn save_account_reads_chunk(
-        &self,
-        signature: &str,
-        instruction: u8,
-        key: &Pubkey,
-        min_order: u64,
-        max_order: u64,
-        chunk: &serde_json::Value,
-    ) {
-        let reads_dir = account_reads_dir(signature, instruction, key);
-        create_dir_all(&reads_dir).expect("create reads output dir");
-        self.replace_json(
-            &reads_dir.join(register_trace_chunk_filename(min_order, max_order)),
-            chunk,
         );
     }
 

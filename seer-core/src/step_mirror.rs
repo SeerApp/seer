@@ -1,10 +1,7 @@
-use std::collections::HashMap;
-
 use seer_interface::GuestAccountBackdoor;
 use solana_account::AccountSharedData;
 use solana_pubkey::Pubkey;
 
-use crate::tree::nodes::account::AccountSharedDataWrapper;
 use crate::tree::nodes::account::TreeAccount;
 
 #[derive(Clone, Copy, Debug)]
@@ -61,12 +58,5 @@ impl UnsafeAccountBackdoor {
 
     pub fn clear(&mut self) {
         self.mirror_ptr = None;
-    }
-
-    pub fn clone_accounts(&self) -> HashMap<Pubkey, AccountSharedDataWrapper> {
-        self.accounts
-            .iter()
-            .map(|(key, account)| (*key, account.clone().into()))
-            .collect()
     }
 }

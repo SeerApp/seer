@@ -209,17 +209,6 @@ impl InvokeContext {
             tree.flatten_account_diffs();
         }
     }
-
-    // pub fn finalize_account_read_aggregates(
-    //     &mut self,
-    //     global_program_context: Option<&GlobalProgramContext>,
-    // ) -> Vec<TaggedAccountLoadAggregated> {
-    //     nodes::finalize_invoke_account_read_aggregates(
-    //         &self.trees[..],
-    //         &self.account_reads,
-    //         global_program_context,
-    //     )
-    // }
 }
 
 impl From<InvokeContext> for TreeRoot<RootViewChildren> {

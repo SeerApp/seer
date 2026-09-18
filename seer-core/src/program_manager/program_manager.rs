@@ -12,9 +12,9 @@ use crate::{
     artifacts::AtomicFileWriter,
     entrypoint_lookup::EntrypointLookup,
     errors::IrrecoverableError,
-    idl::{parsed_arg::collect_parsed_arg_byte_offsets, IdlLoadError, IdlLookup, IdlTreeParser},
+    idl::{IdlLoadError, IdlLookup},
     path_resolver::PathResolver,
-    program_manager::types::{AccountIdlParseResult, DisasmStatus, ProgramInfo},
+    program_manager::types::{DisasmStatus, ProgramInfo},
     seer_warn,
     target_reader::get_targets,
 };
@@ -207,19 +207,6 @@ impl super::types::GlobalProgramContext {
             .expect("program manager inner lock should not be poisoned")
             .get(key)
             .and_then(|program_info| program_info.idl_lookup.clone())
-    }
-
-    /// Parses `bytes` with a loaded IDL. Caller resolves which program owns the account.
-    pub fn parse_account_with_idl(
-        idl_lookup: &Arc<IdlLookup>,
-        bytes: &[u8],
-    ) -> Option<AccountIdlParseResult> {
-        let parsed = idl_lookup.get_account(bytes)?;
-        let parsed_byte_offsets = collect_parsed_arg_byte_offsets(&parsed.data);
-        Some(AccountIdlParseResult {
-            parsed,
-            parsed_byte_offsets,
-        })
     }
 
     pub fn queue_disasm_if_needed(&self, program_id: Pubkey) {
