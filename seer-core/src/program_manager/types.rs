@@ -7,10 +7,7 @@ use std::{
 
 use solana_pubkey::Pubkey;
 
-use crate::{
-    entrypoint_lookup::EntrypointLookup,
-    idl::{parsed_arg::ParsedArgByteOffset, types::ParsedAccount, IdlLookup},
-};
+use crate::{entrypoint_lookup::EntrypointLookup, idl::IdlLookup};
 
 pub struct ProgramInfo {
     pub(super) entrypoint_lookup: Option<Arc<EntrypointLookup>>,
@@ -63,8 +60,3 @@ pub(super) struct RpcAccountInfo {
     pub(super) data: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
-pub struct AccountIdlParseResult {
-    pub parsed: ParsedAccount,
-    pub parsed_byte_offsets: Vec<ParsedArgByteOffset>,
-}

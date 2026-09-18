@@ -10,10 +10,6 @@ use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 
 use crate::{
-    account_reads::{
-        refresh_parsed_reads::refresh_account_reads_parsed_for_instruction,
-        scanner::AccountVmLayout, utils::save_view_account_reads_chunks,
-    },
     artifacts::AtomicFileWriter,
     contexts::{
         account::global::GlobalAccountContext, register::RegisterContext,
@@ -145,16 +141,7 @@ impl SeerContext {
         if let Some((instruction, trace_tree)) =
             tx.end_instruction(&self.global_program_context, &w)
         {
-            let signature = tx.signature.to_string();
-            let receiver_by_account = trace_tree.account_pubkey_to_idl_receiver_map();
-            w.save_trace_tree(&signature, instruction, trace_tree);
-            refresh_account_reads_parsed_for_instruction(
-                &receiver_by_account,
-                &signature,
-                instruction,
-                &self.global_program_context,
-                &w,
-            );
+            w.save_trace_tree(&tx.signature.to_string(), instruction, trace_tree);
         }
     }
 
@@ -186,21 +173,8 @@ impl SeerContext {
             .open_account_backdoor_idempotent(bd);
 
         if tx.is_cpi() {
-            let w = Self::lock_file_writer(&self.file_writer);
-            let view_reads = self.global_account_context.drain_parsed_view_accounts(
-                &self.global_program_context,
-                tx.get_current_program_address(),
-            );
-            save_view_account_reads_chunks(
-                &view_reads,
-                &tx.signature.to_string(),
-                tx.instruction(),
-                &tx.get_current_program_address(),
-                &w,
-            );
-
             if let Some(rx) = self.register_context.flush_for_roll() {
-                w.save_register_trace_chunk(
+                Self::lock_file_writer(&self.file_writer).save_register_trace_chunk(
                     &tx.signature.to_string(),
                     tx.instruction(),
                     &tx.get_current_program_address(),
@@ -230,23 +204,8 @@ impl SeerContext {
             tx.set_execution_error(err, idl);
         }
 
-        let w = Self::lock_file_writer(&self.file_writer);
-        let view_reads = self
-            .global_account_context
-            .drain_parsed_view_accounts(global_program_context, program_address);
-
-        if !view_reads.is_empty() {
-            save_view_account_reads_chunks(
-                &view_reads,
-                &tx.signature.to_string(),
-                tx.instruction(),
-                &program_address,
-                &w,
-            );
-        }
-
         if let Some(rx) = self.register_context.flush_finalize() {
-            w.save_register_trace_chunk(
+            Self::lock_file_writer(&self.file_writer).save_register_trace_chunk(
                 &tx.signature.to_string(),
                 tx.instruction(),
                 &program_address,
@@ -298,28 +257,5 @@ impl SeerContext {
         {
             tx.account_diff(acc);
         }
-    }
-
-    pub fn capture_vm_layout(
-        &mut self,
-        layouts: &[AccountVmLayout],
-        keys: Vec<Pubkey>,
-        data_growth: u64,
-    ) {
-        self.global_account_context
-            .capture_vm_layout(layouts, keys, data_growth);
-    }
-
-    pub fn capture_account_read(&mut self, vm_addr: u64, width: u64) {
-        let tx = self
-            .transaction_context
-            .as_mut()
-            .expect("Capturing account read before transaction context exists");
-
-        self.global_account_context.capture_account_read(
-            tx.step_order.saturating_sub(1),
-            vm_addr,
-            width,
-        );
     }
 }
