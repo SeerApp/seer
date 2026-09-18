@@ -10,6 +10,7 @@ mod test;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use rusqlite::Connection;
 use solana_transaction::versioned::VersionedTransaction;
 
 use crate::storage::state_accounts::StateAccounts;
@@ -18,7 +19,7 @@ pub use encoding::Encoding;
 pub use hash::Sha256Hash;
 pub use input::PathOrValue;
 
-pub fn run() -> Result<()> {
+pub fn run(_conn: &Connection) -> Result<()> {
     match Command::try_from(Cli::parse())? {
         Command::Hash(HashCommand::State(state)) => {
             println!(
