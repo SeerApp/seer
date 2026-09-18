@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use solana_address_lookup_table_interface::state::AddressLookupTable;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
+use solana_message::v0::MessageAddressTableLookup;
 use solana_pubkey::Pubkey;
 
 use crate::report::Report;
@@ -90,6 +92,50 @@ impl StateAccounts {
         }
         if report.is_empty() {
             Ok(())
+        } else {
+            Err(report)
+        }
+    }
+
+    pub fn resolve_lookups(
+        &self,
+        lookups: &[MessageAddressTableLookup],
+    ) -> std::result::Result<Vec<Pubkey>, Report> {
+        let mut report = Report::default();
+        let mut resolved = Vec::new();
+        for lookup in lookups {
+            let data = match self.get_data(&lookup.account_key) {
+                Ok(data) => data,
+                Err(e) => {
+                    report.merge(e);
+                    continue;
+                }
+            };
+            let Some(account) = self.0.get(&lookup.account_key) else {
+                report.missing_accounts.push(lookup.account_key);
+                continue;
+            };
+            if !solana_sdk_ids::address_lookup_table::check_id(&account.owner) {
+                report.incoherent.push(lookup.account_key);
+                continue;
+            }
+            let Ok(table) = AddressLookupTable::deserialize(&data) else {
+                report.incoherent.push(lookup.account_key);
+                continue;
+            };
+            for i in lookup.writable_indexes.iter().chain(&lookup.readonly_indexes) {
+                match table.addresses.get(usize::from(*i)) {
+                    Some(addr) => resolved.push(*addr),
+                    None => {
+                        if !report.incoherent.contains(&lookup.account_key) {
+                            report.incoherent.push(lookup.account_key);
+                        }
+                    }
+                }
+            }
+        }
+        if report.is_empty() {
+            Ok(resolved)
         } else {
             Err(report)
         }

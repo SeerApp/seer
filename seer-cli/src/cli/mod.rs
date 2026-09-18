@@ -13,29 +13,39 @@ use clap::{Parser, Subcommand};
 use rusqlite::Connection;
 use solana_transaction::versioned::VersionedTransaction;
 
+use crate::runs::hash::{hash_simulation, hash_state, hash_transaction};
 use crate::storage::state_accounts::StateAccounts;
 
 pub use encoding::Encoding;
 pub use hash::Sha256Hash;
 pub use input::PathOrValue;
 
-pub fn run(_conn: &Connection) -> Result<()> {
+pub fn run(conn: &Connection) -> Result<()> {
     match Command::try_from(Cli::parse())? {
         Command::Hash(HashCommand::State(state)) => {
             println!(
                 "Account state stored at hash {}",
-                hex::encode(crate::runs::hash::hash_state(&state)?)
+                hex::encode(hash_state(&state)?)
             );
             Ok(())
         }
         Command::Hash(HashCommand::Transaction(tx)) => {
             println!(
                 "Transaction stored at hash {}",
-                hex::encode(crate::runs::hash::hash_transaction(&tx)?)
+                hex::encode(hash_transaction(&tx)?)
             );
             Ok(())
         }
-        Command::Hash(_) => Ok(()),
+        Command::Hash(HashCommand::Simulation {
+            msg_hash,
+            state_hash,
+        }) => {
+            println!(
+                "Simulation stored at hash {}",
+                hex::encode(hash_simulation(conn, &msg_hash.0, &state_hash.0)?)
+            );
+            Ok(())
+        }
     }
 }
 
