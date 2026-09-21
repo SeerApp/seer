@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use anyhow::{bail, Context, Result};
 
+pub(crate) const INPUT_HELP: &str = "File path, @path, or the value itself";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PathOrValue(String);
 

@@ -85,14 +85,8 @@ fn parses_hash_commands() {
 
     let versioned = solana_transaction::versioned::VersionedTransaction::from(tx);
     let wire = bincode::serialize(&versioned).unwrap();
-    let Command::Hash(HashCommand::Transaction(parsed)) = parse_from([
-        "seer",
-        "hash",
-        "transaction",
-        "--hex",
-        &hex::encode(&wire),
-    ])
-    .unwrap()
+    let Command::Hash(HashCommand::Transaction(parsed)) =
+        parse_from(["seer", "hash", "transaction", "--hex", &hex::encode(&wire)]).unwrap()
     else {
         panic!("expected hash transaction hex");
     };
@@ -109,12 +103,25 @@ fn parses_hash_commands() {
         "--wire",
         file.to_str().unwrap(),
     ])
-    .unwrap()
-    else {
+    .unwrap() else {
         panic!("expected hash transaction wire");
     };
     assert_eq!(parsed, versioned);
     std::fs::remove_dir_all(dir).ok();
+
+    let Command::Hash(HashCommand::TransactionAccounts { tx: parsed, url }) = parse_from([
+        "seer",
+        "hash",
+        "transaction",
+        "accounts",
+        &json,
+        "https://api.devnet.solana.com",
+    ])
+    .unwrap() else {
+        panic!("expected hash transaction accounts");
+    };
+    assert_eq!(parsed, versioned);
+    assert_eq!(url, "https://api.devnet.solana.com");
 }
 
 #[test]
@@ -141,8 +148,7 @@ fn parses_run_simulation() {
         EMPTY_SHA256,
         r#"{"slot":1}"#,
     ])
-    .unwrap()
-    else {
+    .unwrap() else {
         panic!("expected run simulation with overrides");
     };
     assert_eq!(overrides.slot, Some(1));
@@ -155,10 +161,40 @@ fn parses_run_simulation() {
         EMPTY_SHA256,
         r#"{"airdrop":[{"address":"11111111111111111111111111111111","lamports":42}]}"#,
     ])
-    .unwrap()
-    else {
+    .unwrap() else {
         panic!("expected run simulation with airdrop");
     };
     assert_eq!(overrides.airdrop.len(), 1);
     assert_eq!(overrides.airdrop[0].lamports, 42);
+}
+
+#[test]
+fn parses_run_transaction() {
+    let tx = solana_transaction::Transaction::default();
+    let json = serde_json::to_string(&tx).unwrap();
+    let versioned = solana_transaction::versioned::VersionedTransaction::from(tx);
+
+    let Command::Run(RunCommand::Transaction {
+        tx: parsed,
+        url,
+        overrides,
+    }) = parse_from(["seer", "run", &json, "https://api.devnet.solana.com"]).unwrap()
+    else {
+        panic!("expected run transaction");
+    };
+    assert_eq!(parsed, versioned);
+    assert_eq!(url, "https://api.devnet.solana.com");
+    assert_eq!(overrides, Overrides::default());
+
+    let Command::Run(RunCommand::Transaction { overrides, .. }) = parse_from([
+        "seer",
+        "run",
+        &json,
+        "https://api.devnet.solana.com",
+        r#"{"slot":1}"#,
+    ])
+    .unwrap() else {
+        panic!("expected run transaction with overrides");
+    };
+    assert_eq!(overrides.slot, Some(1));
 }

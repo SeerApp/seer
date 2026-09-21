@@ -14,6 +14,8 @@ use solana_sysvar::{
     recent_blockhashes::{IterItem, RecentBlockhashes},
 };
 
+use crate::cli::PathOrValue;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Airdrop {
     #[serde(with = "pubkey_b58")]
@@ -63,6 +65,13 @@ pub struct Overrides {
 }
 
 impl Overrides {
+    pub fn parse(overrides: Option<PathOrValue>) -> Result<Self> {
+        match overrides {
+            Some(v) => Ok(serde_json::from_str(v.load_text()?.trim())?),
+            None => Ok(Self::default()),
+        }
+    }
+
     pub fn apply(&self) -> LiteSVM {
         let mut svm = LiteSVM::new()
             .with_sigverify(self.sigverify)

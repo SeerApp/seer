@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use base64::Engine;
+use clap::Args;
 use solana_transaction::versioned::VersionedTransaction;
+
+use super::input::{PathOrValue, INPUT_HELP};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Encoding {
@@ -37,5 +40,48 @@ impl Encoding {
             }
         };
         bincode::deserialize(&payload).context("transaction wire")
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct TxEncoding {
+    #[arg(long, group = "encoding", help = "Input is base64-encoded")]
+    b64: bool,
+    #[arg(long, group = "encoding", help = "Input is base58-encoded")]
+    b58: bool,
+    #[arg(long, group = "encoding", help = "Input is hex-encoded")]
+    hex: bool,
+    #[arg(long, group = "encoding", help = "Input is Solana wire bytes")]
+    wire: bool,
+}
+
+impl TxEncoding {
+    pub fn decode(&self, tx: &PathOrValue) -> Result<VersionedTransaction> {
+        let encoding = if self.b64 {
+            Encoding::Base64
+        } else if self.b58 {
+            Encoding::Base58
+        } else if self.hex {
+            Encoding::Hex
+        } else if self.wire {
+            Encoding::Wire
+        } else {
+            Encoding::Json
+        };
+        encoding.decode(&tx.load_bytes()?)
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct TxInput {
+    #[command(flatten)]
+    encoding: TxEncoding,
+    #[arg(value_name = "TX", help = INPUT_HELP)]
+    tx: PathOrValue,
+}
+
+impl TxInput {
+    pub fn decode(&self) -> Result<VersionedTransaction> {
+        self.encoding.decode(&self.tx)
     }
 }

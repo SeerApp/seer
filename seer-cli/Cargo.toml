@@ -37,7 +37,9 @@ solana-loader-v3-interface = { version = "6", features = ["serde"] }
 solana-message = "3"
 solana-program-runtime = "=3.1.6"
 solana-pubkey = { version = "4", features = ["serde"] }
+solana-rpc-client = { path = "../../agave/rpc-client", default-features = false }
 solana-sdk-ids = "3"
+solana-signature = "3.0.12"
 solana-slot-hashes = "3"
 solana-stake-interface = "2.0.1"
 solana-svm-callback = "=3.1.6"

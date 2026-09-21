@@ -2,11 +2,33 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use solana_account::Account;
 use solana_address::Address;
+use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 
 use crate::overrides::Overrides;
 use crate::state_accounts::StateAccounts;
 use storage::blobs::read_blob;
+
+pub fn run(
+    conn: &Connection,
+    tx: &VersionedTransaction,
+    url: &str,
+    overrides: Overrides,
+) -> Result<i64> {
+    let state_hash = super::hash::hash_transaction_accounts(tx, url)?;
+    let tx_hash = super::hash::hash_transaction(tx)?;
+    run_simulation(conn, &tx_hash, &state_hash, overrides)
+}
+
+pub fn run_signature(
+    conn: &Connection,
+    signature: &Signature,
+    url: &str,
+    overrides: Overrides,
+) -> Result<i64> {
+    let tx = crate::network::get_transaction(url, signature)?;
+    run(conn, &tx, url, overrides)
+}
 
 pub fn run_simulation(
     conn: &Connection,
