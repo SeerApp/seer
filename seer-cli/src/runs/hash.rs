@@ -18,6 +18,7 @@ pub fn hash_transaction(tx: &VersionedTransaction) -> Result<[u8; 32]> {
 pub fn hash_simulation(conn: &Connection, tx_hash: &[u8; 32], state_hash: &[u8; 32]) -> Result<()> {
     let tx: VersionedTransaction = bincode::deserialize(&read_blob(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&read_blob(state_hash)?)?;
-    super::verify::verify(&tx, &state)?;
+    tx.sanitize().context("malformed transaction")?;
+    state.verify()?;
     insert_simulation(conn, tx_hash, state_hash)
 }
