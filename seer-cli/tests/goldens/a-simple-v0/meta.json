@@ -1,0 +1,9 @@
+{
+  "name": "a-simple-v0",
+  "source": "sig:5aQm1wSeqCLaWgZ3ccbTs6Jhm9bxsXkAYEEvHnJic9pv3QBRM8HE7btcHDcFJSraV8ZphG6uDmKUEnFvJwbAdnrf",
+  "environment": "{}",
+  "tx_hash": "23278393a3958f09671cf72622dc7ec48865712e3eb823331acd37315924b5a7",
+  "state_hash": "549dee0b95170568d1d91f53e9db2842b6b24f3ef04e4c2439bde7bc63e66aad",
+  "n_traces": 4,
+  "n_regs": 8
+}

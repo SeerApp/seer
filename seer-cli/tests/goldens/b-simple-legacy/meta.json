@@ -1,0 +1,9 @@
+{
+  "name": "b-simple-legacy",
+  "source": "sig:4Dmj6Amtzqhb5uCtLPbCt4fajW9hotAXmmaJsQDedczZXXGMgn7DXikmrzThf4C3Er5qY1UHbpC1BPjyKzAGDTHD",
+  "environment": "{}",
+  "tx_hash": "eaa467d7f2ed123b80efbfe216facb4b911ccece7547348254ce4bcd51ea67be",
+  "state_hash": "91b6d5cac4c4a8668455c0c3b0a390a6bf11030cf5b76c8862a60f77af8080a3",
+  "n_traces": 3,
+  "n_regs": 10
+}

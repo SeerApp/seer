@@ -38,6 +38,27 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::type_complexity)]
+    pub fn list_reg(&self, run_id: i64) -> Result<Vec<(i64, i64, i64, [u8; 32], [u8; 32])>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT ix, start_step, end_step, self_blob_hash, pubkey FROM reg WHERE run_id = ?1 ORDER BY ix, start_step",
+        )?;
+        let rows = stmt.query_map([run_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+                row.get::<_, Vec<u8>>(4)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (ix, start, end, self_h, pk) = row?;
+            Ok((ix, start, end, as32(self_h)?, as32(pk)?))
+        })
+        .collect()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn insert_reg(
         &self,
