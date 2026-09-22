@@ -26,6 +26,35 @@ pub struct StateAccount {
 #[serde(transparent)]
 pub struct StateAccounts(#[serde(with = "pubkey_map")] pub BTreeMap<Pubkey, StateAccount>);
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Patch {
+    pub account: Pubkey,
+    pub lamports: Option<u64>,
+    pub owner: Option<Pubkey>,
+    pub data: Option<Vec<u8>>,
+    pub executable: Option<bool>,
+}
+
+impl Patch {
+    pub fn json(&self) -> Result<String> {
+        let mut obj = serde_json::Map::new();
+        obj.insert("account".into(), self.account.to_string().into());
+        if let Some(v) = self.lamports {
+            obj.insert("lamports".into(), v.into());
+        }
+        if let Some(v) = self.owner {
+            obj.insert("owner".into(), v.to_string().into());
+        }
+        if self.data.is_some() {
+            obj.insert("data".into(), true.into());
+        }
+        if let Some(v) = self.executable {
+            obj.insert("executable".into(), v.into());
+        }
+        Ok(serde_json::to_string(&[serde_json::Value::Object(obj)])?)
+    }
+}
+
 impl StateAccounts {
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         serde_json::to_vec(self).context("state accounts JSON")
@@ -73,6 +102,26 @@ impl StateAccounts {
                 ..Report::default()
             }),
         }
+    }
+
+    pub fn patch(&mut self, blob: &Blob, patch: &Patch) -> Result<()> {
+        let row = self
+            .0
+            .get_mut(&patch.account)
+            .with_context(|| format!("{} is not in this run's state", patch.account))?;
+        if let Some(v) = patch.lamports {
+            row.lamports = v;
+        }
+        if let Some(v) = patch.owner {
+            row.owner = v;
+        }
+        if let Some(v) = patch.executable {
+            row.executable = v;
+        }
+        if let Some(bytes) = &patch.data {
+            row.data = blob.store(bytes)?;
+        }
+        Ok(())
     }
 
     pub fn verify(&self, blob: &Blob) -> std::result::Result<(), Report> {
@@ -193,5 +242,45 @@ mod test {
         let json = br#"{"11111111111111111111111111111111":{"lamports":"1","data":"0000000000000000000000000000000000000000000000000000000000000000","owner":"11111111111111111111111111111111","executable":false}}"#;
         let state = StateAccounts::from_bytes(json).unwrap();
         assert_eq!(state.to_bytes().unwrap(), json);
+    }
+
+    #[test]
+    fn patch_updates_lamports_and_data() {
+        let dir = std::env::temp_dir().join(format!(
+            "seer-state-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let storage = storage::Storage::open_at(&dir).unwrap();
+        let data = storage.blob.store(&[1, 2, 3]).unwrap();
+        let pk = Pubkey::default();
+        let mut state = StateAccounts(BTreeMap::from([(
+            pk,
+            StateAccount {
+                lamports: 1,
+                data,
+                owner: pk,
+                executable: false,
+            },
+        )]));
+        let new = [9u8, 9, 9, 9];
+        state
+            .patch(
+                &storage.blob,
+                &Patch {
+                    account: pk,
+                    lamports: Some(0),
+                    owner: None,
+                    data: Some(new.to_vec()),
+                    executable: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(state.0[&pk].lamports, 0);
+        assert_eq!(storage.blob.read(&state.0[&pk].data).unwrap(), new);
+        std::fs::remove_dir_all(dir).ok();
     }
 }

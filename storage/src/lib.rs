@@ -3,40 +3,11 @@ mod db;
 mod home;
 
 pub use blobs::Blob;
-pub use db::Db;
+pub use db::{Db, RunRow};
 pub use home::default_root;
 
 use anyhow::Result;
 use std::path::Path;
-use std::str::FromStr;
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Mode {
-    #[default]
-    Default,
-    Compare,
-}
-
-impl std::fmt::Display for Mode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Default => "default",
-            Self::Compare => "compare",
-        })
-    }
-}
-
-impl FromStr for Mode {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "default" => Ok(Self::Default),
-            "compare" => Ok(Self::Compare),
-            other => anyhow::bail!("storage mode must be default or compare, got {other}"),
-        }
-    }
-}
 
 pub struct Storage {
     pub blob: Blob,
@@ -44,11 +15,11 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn open_at(root: impl AsRef<Path>, mode: Mode) -> Result<Self> {
+    pub fn open_at(root: impl AsRef<Path>) -> Result<Self> {
         let root = home::ensure(root.as_ref().to_path_buf())?;
         Ok(Self {
-            blob: Blob::open(root.join("blob"), mode)?,
-            db: Db::open(root.join("db"), mode)?,
+            blob: Blob::open(root.join("blob"))?,
+            db: Db::open(root.join("db"))?,
         })
     }
 }
@@ -69,73 +40,121 @@ mod tests {
     }
 
     #[test]
-    fn compare_blob_and_only_run() {
+    fn blob_and_run_walk() {
         let root = tmp();
-        let (hash, id) = {
-            let storage = Storage::open_at(&root, Mode::Default).unwrap();
-            let hash = storage.blob.store(b"hello").unwrap();
-            storage.db.insert_simulation(&hash, &hash).unwrap();
-            let id = storage.db.insert_run(&hash, &hash, "{}").unwrap();
-            storage.db.finish_run(id, None).unwrap();
-            (hash, id)
-        };
-        let storage = Storage::open_at(&root, Mode::Compare).unwrap();
+        let storage = Storage::open_at(&root).unwrap();
+        let hash = storage.blob.store(b"hello").unwrap();
         assert_eq!(storage.blob.store(b"hello").unwrap(), hash);
-        assert!(storage.blob.store(b"hello!").is_err());
-        assert_eq!(storage.db.insert_run(&hash, &hash, "{}").unwrap(), id);
-        assert!(storage
+        storage.db.insert_simulation(&hash, &hash).unwrap();
+        let id1 = storage
             .db
-            .insert_run(&hash, &hash, r#"{"slot":1}"#)
-            .is_err());
-        storage.db.finish_run(id, None).unwrap();
-        assert!(storage.db.finish_run(id, Some("nope")).is_err());
-
-        std::fs::remove_dir_all(root).ok();
-    }
-
-    #[test]
-    fn compare_rejects_wrong_run_count() {
-        let root = tmp();
-        {
-            let storage = Storage::open_at(&root, Mode::Compare).unwrap();
-            assert!(storage.db.insert_run(&[1; 32], &[2; 32], "{}").is_err());
-        }
-        {
-            let storage = Storage::open_at(&root, Mode::Default).unwrap();
-            storage.db.insert_simulation(&[1; 32], &[2; 32]).unwrap();
-            storage.db.insert_run(&[1; 32], &[2; 32], "{}").unwrap();
-            storage.db.insert_run(&[1; 32], &[2; 32], "{}").unwrap();
-        }
-        let storage = Storage::open_at(&root, Mode::Compare).unwrap();
-        assert!(storage.db.insert_run(&[1; 32], &[2; 32], "{}").is_err());
-
-        std::fs::remove_dir_all(root).ok();
-    }
-
-    #[test]
-    fn print_state_and_query() {
-        let root = tmp();
-        let storage = Storage::open_at(&root, Mode::Default).unwrap();
-        let hash = storage
-            .blob
-            .store(br#"{"11111111111111111111111111111111":{"lamports":"1","data":"00","owner":"11111111111111111111111111111111","executable":false}}"#)
+            .insert_run(&hash, &hash, "{}", None, "[]", "")
             .unwrap();
-        let printed = storage.blob.print_state(&hash).unwrap();
-        assert!(printed.contains("11111111111111111111111111111111"));
+        storage.db.finish_run(id1, None).unwrap();
+        let id2 = storage
+            .db
+            .insert_run(&hash, &hash, r#"{"slot":1}"#, Some(id1), "[]", "from:1")
+            .unwrap();
+        storage.db.finish_run(id2, Some("boom")).unwrap();
+
+        let runs = storage.db.list_runs().unwrap();
+        let mut rows = runs.iter();
+        let a = rows.next().unwrap();
+        assert_eq!(a.id, id1);
+        assert_eq!(a.environment, "{}");
+        assert_eq!(a.parent_id, None);
+        let b = rows.next().unwrap();
+        assert_eq!(b.id, id2);
+        assert_eq!(b.parent_id, Some(id1));
+        assert_eq!(b.error.as_deref(), Some("boom"));
+        assert!(rows.next().is_none());
+        assert_eq!(
+            storage.db.get_run(id2).unwrap().error.as_deref(),
+            Some("boom")
+        );
+
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn empty_has_no_runs() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        assert!(storage.db.list_runs().unwrap().is_empty());
+        assert!(storage.db.get_run(1).is_err());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn query_simulation() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        let hash = storage.blob.store(b"tx").unwrap();
         storage.db.insert_simulation(&hash, &hash).unwrap();
         let rows = storage
             .db
             .query("SELECT COUNT(*) AS n FROM simulation")
             .unwrap();
         assert!(rows.contains("\"n\": 1"));
-        let trace = storage
-            .blob
-            .store(br#"{"step_order":0,"sender":"A","receiver":"11111111111111111111111111111111","accounts":[],"data":[],"children":[{"Log":{"step_order":0,"message":"ok"}}],"parsed":{"name":"transferSol","args":[{"name":"amount","value":{"value":{"value":"1"}}}]}}"#)
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn run_row_and_sig_lookup() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        let hash = storage.blob.store(b"tx").unwrap();
+        let sig = [7u8; 64];
+        let network = "mainnet";
+        assert!(storage
+            .db
+            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
+            .is_err());
+        storage.db.insert_simulation(&hash, &hash).unwrap();
+        storage
+            .db
+            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
             .unwrap();
-        let printed = storage.blob.print_trace(&trace).unwrap();
-        assert!(printed.contains("transferSol"));
-        assert!(printed.contains("amount: 1"));
-        assert!(printed.contains("log: ok"));
+        storage
+            .db
+            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
+            .unwrap();
+        let id = storage
+            .db
+            .insert_run(&hash, &hash, "{}", None, "[]", "sig:x")
+            .unwrap();
+        storage.db.finish_run(id, None).unwrap();
+        let child = storage
+            .db
+            .insert_run(
+                &hash,
+                &hash,
+                r#"{"slot":1}"#,
+                Some(id),
+                r#"[{"account":"11111111111111111111111111111111","lamports":0}]"#,
+                "from:1",
+            )
+            .unwrap();
+        storage.db.finish_run(child, Some("boom")).unwrap();
+        let got = storage.db.get_run(child).unwrap();
+        assert_eq!(got.parent_id, Some(id));
+        assert_eq!(got.source, "from:1");
+        assert_eq!(got.error.as_deref(), Some("boom"));
+        assert_eq!(storage.db.list_runs().unwrap().len(), 2);
+        assert_eq!(
+            storage.db.lookup_sig(&sig, Some(network)).unwrap(),
+            Some((hash, hash, r#"{"slot":9}"#.into()))
+        );
+        assert_eq!(
+            storage.db.lookup_sig(&sig, None).unwrap(),
+            Some((hash, hash, r#"{"slot":9}"#.into()))
+        );
+        assert!(storage
+            .db
+            .lookup_sig(&sig, Some("devnet"))
+            .unwrap()
+            .is_none());
+        assert!(storage.db.lookup_sig(&[8u8; 64], None).unwrap().is_none());
         std::fs::remove_dir_all(root).ok();
     }
 }

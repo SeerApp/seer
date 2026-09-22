@@ -1,9 +1,8 @@
-use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::{bail, Context, Result};
 
-pub(crate) const INPUT_HELP: &str = "File path, @path, or the value itself";
+pub(crate) const INPUT_HELP: &str = "@path, or the value itself";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PathOrValue(String);
@@ -19,17 +18,13 @@ impl FromStr for PathOrValue {
 impl PathOrValue {
     pub fn load_bytes(&self) -> Result<Vec<u8>> {
         let arg = self.0.as_str();
-        if let Some(path) = arg.strip_prefix('@') {
-            if path.is_empty() {
-                bail!("empty path after @");
-            }
-            return std::fs::read(path).with_context(|| format!("read {path}"));
+        let Some(path) = arg.strip_prefix('@') else {
+            return Ok(arg.as_bytes().to_vec());
+        };
+        if path.is_empty() {
+            bail!("empty path after @");
         }
-        let path = Path::new(arg);
-        if path.is_file() {
-            return std::fs::read(path).with_context(|| format!("read {}", path.display()));
-        }
-        Ok(arg.as_bytes().to_vec())
+        std::fs::read(path).with_context(|| format!("read {path}"))
     }
 
     pub fn load_text(&self) -> Result<String> {

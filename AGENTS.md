@@ -14,3 +14,7 @@ Do not add comments. Delete comments that are not absolutely, undeniably essenti
 
 The `seer` binary goes through `cli` because clap lives there. `cli` parses args, normalises them, dispatches to `runs` / `storage`, and formats user-facing output. It does not implement storage or run logic itself.
 
+# historical_transaction
+
+This table is populated only by an external seer service that is not implemented yet. seer-cli must not read or write it. `--sig --url` pulls a transaction from RPC to create a run; that does not insert or look up a historical row. Rows are tied to a Solana network (`mainnet` / `devnet` / `testnet`), never to an RPC URL. Do not replace `network` with `url`. Each row has its own `environment`; a run may override that environment, but the historical row stays the source of truth for the indexed transaction.
+

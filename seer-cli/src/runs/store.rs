@@ -3,30 +3,25 @@ use std::collections::BTreeMap;
 use anyhow::{bail, Context, Result};
 use solana_account::Account;
 use solana_address_lookup_table_interface::state::AddressLookupTable;
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
 use solana_transaction::versioned::VersionedTransaction;
 use storage::Storage;
 
-use super::helpers::{GetProgramdata, MergeFetched};
 use crate::network::get_multiple_accounts;
 use crate::state_accounts::{StateAccount, StateAccounts};
 
-#[allow(dead_code)]
-pub fn hash_data(storage: &Storage, data: &[u8]) -> Result<[u8; 32]> {
-    storage.blob.store(data)
-}
-
-pub fn hash_state(storage: &Storage, state: &StateAccounts) -> Result<[u8; 32]> {
+pub fn store_state(storage: &Storage, state: &StateAccounts) -> Result<[u8; 32]> {
     state.verify(&storage.blob)?;
     storage.blob.store(&state.to_bytes()?)
 }
 
-pub fn hash_transaction(storage: &Storage, tx: &VersionedTransaction) -> Result<[u8; 32]> {
+pub fn store_transaction(storage: &Storage, tx: &VersionedTransaction) -> Result<[u8; 32]> {
     tx.sanitize().context("malformed transaction")?;
     storage.blob.store(&bincode::serialize(tx)?)
 }
 
-pub fn hash_accounts(
+pub fn store_accounts(
     storage: &Storage,
     keys: &[Pubkey],
     url: &str,
@@ -45,15 +40,19 @@ pub fn hash_accounts(
             None => missing.push(*key),
         }
     }
-    raw.merge_fetched(&missing, url)?;
+    for (key, account) in fetch(url, &missing)? {
+        raw.insert(key, account);
+    }
     let mut extra: Vec<Pubkey> = raw
         .values()
-        .filter_map(GetProgramdata::get_programdata)
+        .filter_map(programdata)
         .filter(|programdata| !raw.contains_key(programdata))
         .collect();
     extra.sort();
     extra.dedup();
-    raw.merge_fetched(&extra, url)?;
+    for (key, account) in fetch(url, &extra)? {
+        raw.insert(key, account);
+    }
     raw.into_iter()
         .map(|(key, account)| {
             Ok((
@@ -70,7 +69,7 @@ pub fn hash_accounts(
         .map(StateAccounts)
 }
 
-pub fn hash_transaction_accounts(
+pub fn store_transaction_accounts(
     storage: &Storage,
     tx: &VersionedTransaction,
     url: &str,
@@ -91,15 +90,11 @@ pub fn hash_transaction_accounts(
             .collect();
         table_keys.sort();
         table_keys.dedup();
-        let fetched = get_multiple_accounts(url, &table_keys)?;
-        for (key, account) in table_keys.iter().zip(fetched) {
-            let Some(account) = account else {
-                bail!("missing address lookup table {key}");
-            };
+        for (key, account) in fetch(url, &table_keys)? {
             if !solana_sdk_ids::address_lookup_table::check_id(&account.owner) {
                 bail!("{key} is not an address lookup table");
             }
-            cache.insert(*key, account);
+            cache.insert(key, account);
         }
         for lookup in lookups {
             let key = Pubkey::from(lookup.account_key.to_bytes());
@@ -125,13 +120,45 @@ pub fn hash_transaction_accounts(
     keys.sort();
     keys.dedup();
     let already = (!cache.is_empty()).then_some(&cache);
-    hash_state(storage, &hash_accounts(storage, &keys, url, already)?)
+    store_state(storage, &store_accounts(storage, &keys, url, already)?)
 }
 
-pub fn hash_simulation(storage: &Storage, tx_hash: &[u8; 32], state_hash: &[u8; 32]) -> Result<()> {
+pub fn store_simulation(
+    storage: &Storage,
+    tx_hash: &[u8; 32],
+    state_hash: &[u8; 32],
+) -> Result<()> {
     let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
     tx.sanitize().context("malformed transaction")?;
     state.verify(&storage.blob)?;
     storage.db.insert_simulation(tx_hash, state_hash)
+}
+
+fn fetch(url: &str, keys: &[Pubkey]) -> Result<Vec<(Pubkey, Account)>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    get_multiple_accounts(url, keys)?
+        .into_iter()
+        .zip(keys)
+        .map(|(account, key)| {
+            let Some(account) = account else {
+                bail!("missing account {key}");
+            };
+            Ok((*key, account))
+        })
+        .collect()
+}
+
+fn programdata(account: &Account) -> Option<Pubkey> {
+    if !solana_sdk_ids::bpf_loader_upgradeable::check_id(&account.owner) {
+        return None;
+    }
+    match bincode::deserialize(&account.data) {
+        Ok(UpgradeableLoaderState::Program {
+            programdata_address,
+        }) => Some(Pubkey::from(programdata_address.to_bytes())),
+        _ => None,
+    }
 }

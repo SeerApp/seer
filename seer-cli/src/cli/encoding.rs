@@ -3,10 +3,10 @@ use base64::Engine;
 use clap::Args;
 use solana_transaction::versioned::VersionedTransaction;
 
-use super::input::{PathOrValue, INPUT_HELP};
+use super::input::PathOrValue;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Encoding {
+enum Encoding {
     Json,
     Wire,
     Base64,
@@ -69,19 +69,5 @@ impl TxEncoding {
             Encoding::Json
         };
         encoding.decode(&tx.load_bytes()?)
-    }
-}
-
-#[derive(Args, Debug)]
-pub struct TxInput {
-    #[command(flatten)]
-    encoding: TxEncoding,
-    #[arg(value_name = "TX", help = INPUT_HELP)]
-    tx: PathOrValue,
-}
-
-impl TxInput {
-    pub fn decode(&self) -> Result<VersionedTransaction> {
-        self.encoding.decode(&self.tx)
     }
 }

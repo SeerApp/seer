@@ -1,12 +1,11 @@
-//! WARNING!
-//! These tests are AI-generated TRASH and do not constitute proper invariant checks.
-//! TBD.
-
 use std::str::FromStr;
 
 use clap::Parser;
+use solana_pubkey::Pubkey;
 
 use super::*;
+use crate::runs::run::Request;
+use crate::state_accounts::Patch;
 
 fn parse_from<I, T>(args: I) -> Result<Command>
 where
@@ -17,7 +16,7 @@ where
 }
 
 #[test]
-fn resolves_file_at_path_or_inline_value() {
+fn at_path_only() {
     let dir = std::env::temp_dir().join(format!("seer-cli-input-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("blob");
@@ -26,7 +25,7 @@ fn resolves_file_at_path_or_inline_value() {
     let path = file.to_string_lossy().into_owned();
     assert_eq!(
         PathOrValue::from_str(&path).unwrap().load_text().unwrap(),
-        "from-file"
+        path
     );
     assert_eq!(
         PathOrValue::from_str(&format!("@{path}"))
@@ -51,150 +50,159 @@ fn resolves_file_at_path_or_inline_value() {
 }
 
 #[test]
-fn parses_hash_commands() {
-    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+fn bare_seer_is_status() {
+    assert_eq!(parse_from(["seer"]).unwrap(), Command::Status);
+}
 
-    let Command::Hash(HashCommand::State(state)) =
-        parse_from(["seer", "hash", "state", "{}"]).unwrap()
-    else {
-        panic!("expected hash state");
-    };
-    assert_eq!(state, StateAccounts::default());
+#[test]
+fn hash_is_not_a_command() {
+    assert!(parse_from(["seer", "hash", "state", "{}"]).is_err());
+}
 
-    let Command::Hash(HashCommand::Simulation {
-        msg_hash,
-        state_hash,
-    }) = parse_from(["seer", "hash", "simulation", EMPTY_SHA256, EMPTY_SHA256]).unwrap()
-    else {
-        panic!("expected hash simulation");
+#[test]
+fn parses_run_sig_tx_from_show_ls_diff() {
+    let sig = solana_signature::Signature::default().to_string();
+    let Command::Run(Request { signature, url, .. }) = parse_from([
+        "seer",
+        "run",
+        "--sig",
+        &sig,
+        "--url",
+        "https://api.devnet.solana.com",
+    ])
+    .unwrap() else {
+        panic!("expected run --sig");
     };
-    assert_eq!(msg_hash, state_hash);
-    assert_eq!(hex::encode(msg_hash.0), EMPTY_SHA256);
+    assert_eq!(signature.unwrap().to_string(), sig);
+    assert_eq!(url.as_deref(), Some("https://api.devnet.solana.com"));
 
-    let tx = solana_transaction::Transaction::default();
-    let json = serde_json::to_string(&tx).unwrap();
-    let Command::Hash(HashCommand::Transaction(parsed)) =
-        parse_from(["seer", "hash", "transaction", &json]).unwrap()
-    else {
-        panic!("expected hash transaction json");
+    let pk = "11111111111111111111111111111111";
+    let Command::Run(Request { from, patch, .. }) = parse_from([
+        "seer",
+        "run",
+        "--from",
+        "1",
+        "--account",
+        pk,
+        "--lamports",
+        "0",
+    ])
+    .unwrap() else {
+        panic!("expected run --from");
     };
+    assert_eq!(from, Some(1));
     assert_eq!(
-        parsed,
-        solana_transaction::versioned::VersionedTransaction::from(tx.clone())
+        patch,
+        Some(Patch {
+            account: Pubkey::from_str(pk).unwrap(),
+            lamports: Some(0),
+            owner: None,
+            data: None,
+            executable: None,
+        })
     );
 
-    let versioned = solana_transaction::versioned::VersionedTransaction::from(tx);
-    let wire = bincode::serialize(&versioned).unwrap();
-    let Command::Hash(HashCommand::Transaction(parsed)) =
-        parse_from(["seer", "hash", "transaction", "--hex", &hex::encode(&wire)]).unwrap()
-    else {
-        panic!("expected hash transaction hex");
-    };
-    assert_eq!(parsed, versioned);
-
-    let dir = std::env::temp_dir().join(format!("seer-cli-tx-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("tx.bin");
-    std::fs::write(&file, &wire).unwrap();
-    let Command::Hash(HashCommand::Transaction(parsed)) = parse_from([
-        "seer",
-        "hash",
-        "transaction",
-        "--wire",
-        file.to_str().unwrap(),
-    ])
-    .unwrap() else {
-        panic!("expected hash transaction wire");
-    };
-    assert_eq!(parsed, versioned);
-    std::fs::remove_dir_all(dir).ok();
-
-    let Command::Hash(HashCommand::TransactionAccounts { tx: parsed, url }) = parse_from([
-        "seer",
-        "hash",
-        "transaction",
-        "accounts",
-        &json,
-        "https://api.devnet.solana.com",
-    ])
-    .unwrap() else {
-        panic!("expected hash transaction accounts");
-    };
-    assert_eq!(parsed, versioned);
-    assert_eq!(url, "https://api.devnet.solana.com");
-}
-
-#[test]
-fn parses_run_simulation() {
-    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-
-    let Command::Run(RunCommand::Simulation {
-        tx_hash,
-        state_hash,
-        overrides,
-    }) = parse_from(["seer", "run", "simulation", EMPTY_SHA256, EMPTY_SHA256]).unwrap()
-    else {
-        panic!("expected run simulation");
-    };
-    assert_eq!(hex::encode(tx_hash.0), EMPTY_SHA256);
-    assert_eq!(tx_hash, state_hash);
-    assert_eq!(overrides, Overrides::default());
-
-    let Command::Run(RunCommand::Simulation { overrides, .. }) = parse_from([
-        "seer",
-        "run",
-        "simulation",
-        EMPTY_SHA256,
-        EMPTY_SHA256,
-        r#"{"slot":1}"#,
-    ])
-    .unwrap() else {
-        panic!("expected run simulation with overrides");
-    };
-    assert_eq!(overrides.slot, Some(1));
-
-    let Command::Run(RunCommand::Simulation { overrides, .. }) = parse_from([
-        "seer",
-        "run",
-        "simulation",
-        EMPTY_SHA256,
-        EMPTY_SHA256,
-        r#"{"airdrop":[{"address":"11111111111111111111111111111111","lamports":42}]}"#,
-    ])
-    .unwrap() else {
-        panic!("expected run simulation with airdrop");
-    };
-    assert_eq!(overrides.airdrop.len(), 1);
-    assert_eq!(overrides.airdrop[0].lamports, 42);
-}
-
-#[test]
-fn parses_run_transaction() {
     let tx = solana_transaction::Transaction::default();
     let json = serde_json::to_string(&tx).unwrap();
-    let versioned = solana_transaction::versioned::VersionedTransaction::from(tx);
-
-    let Command::Run(RunCommand::Transaction {
+    let Command::Run(Request {
         tx: parsed,
         url,
-        overrides,
-    }) = parse_from(["seer", "run", &json, "https://api.devnet.solana.com"]).unwrap()
-    else {
-        panic!("expected run transaction");
-    };
-    assert_eq!(parsed, versioned);
-    assert_eq!(url, "https://api.devnet.solana.com");
-    assert_eq!(overrides, Overrides::default());
-
-    let Command::Run(RunCommand::Transaction { overrides, .. }) = parse_from([
+        environment,
+        ..
+    }) = parse_from([
         "seer",
         "run",
+        "--tx",
         &json,
+        "--url",
         "https://api.devnet.solana.com",
+        "--env",
         r#"{"slot":1}"#,
     ])
-    .unwrap() else {
-        panic!("expected run transaction with overrides");
+    .unwrap()
+    else {
+        panic!("expected run --tx");
     };
-    assert_eq!(overrides.slot, Some(1));
+    assert_eq!(
+        parsed.unwrap(),
+        solana_transaction::versioned::VersionedTransaction::from(tx)
+    );
+    assert_eq!(url.as_deref(), Some("https://api.devnet.solana.com"));
+    assert_eq!(environment.unwrap().slot, Some(1));
+
+    assert_eq!(
+        parse_from(["seer", "show", "3", "--trace"]).unwrap(),
+        Command::Show {
+            id: 3,
+            tx: false,
+            state: false,
+            account: None,
+            trace: true,
+        }
+    );
+    assert_eq!(
+        parse_from(["seer", "ls", "--tree"]).unwrap(),
+        Command::Ls { tree: true }
+    );
+    assert_eq!(
+        parse_from(["seer", "diff", "1", "2"]).unwrap(),
+        Command::Diff { a: 1, b: 2 }
+    );
+}
+
+#[test]
+fn run_rejects_bad_combinations() {
+    assert!(parse_from(["seer", "run"]).is_err());
+    assert!(parse_from(["seer", "run", "--lamports", "0"]).is_err());
+    assert!(parse_from([
+        "seer",
+        "run",
+        "--from",
+        "1",
+        "--account",
+        "11111111111111111111111111111111"
+    ])
+    .is_err());
+    let sig = solana_signature::Signature::default().to_string();
+    assert!(parse_from(["seer", "run", "--sig", &sig]).is_err());
+    assert!(parse_from(["seer", "run", "--sig", &sig, "--from", "1"]).is_err());
+}
+
+fn dummy_row(id: i64, parent: Option<i64>) -> storage::RunRow {
+    storage::RunRow {
+        id,
+        transaction_blob_hash: [0; 32],
+        state_blob_hash: [u8::from(id == 2); 32],
+        run_at: String::new(),
+        environment: "{}".into(),
+        status: "finished".into(),
+        error: None,
+        parent_id: parent,
+        patches: if parent.is_some() {
+            r#"[{"account":"11111111111111111111111111111111","lamports":0}]"#.into()
+        } else {
+            "[]".into()
+        },
+        source: match parent {
+            Some(p) => format!("from:{p}"),
+            None => "sig:abc".into(),
+        },
+    }
+}
+
+#[test]
+fn ls_show_diff_text() {
+    let b = dummy_row(2, Some(1));
+    let listed = super::format::ls_text(&[dummy_row(1, None), dummy_row(2, Some(1))], false);
+    assert!(listed.contains("sig:abc"));
+    assert!(listed.contains("lamports"));
+    let tree = super::format::ls_text(&[dummy_row(1, None), dummy_row(2, Some(1))], true);
+    assert!(tree.contains("1  sig:abc"));
+    let card = super::format::run_card(&b);
+    assert!(card.contains("run 2"));
+    assert!(card.contains("next: seer show 2"));
+    assert!(card.contains("next: seer run --from 2"));
+    let d = super::format::diff_text(&dummy_row(1, None), &dummy_row(2, Some(1)));
+    assert!(d.contains("1 vs 2"));
+    assert!(d.contains("different"));
 }

@@ -17,17 +17,17 @@ pub fn get_multiple_accounts(url: &str, keys: &[Pubkey]) -> Result<Vec<Option<Ac
 }
 
 pub fn get_transaction(url: &str, signature: &Signature) -> Result<VersionedTransaction> {
-    RpcClient::new(url.to_string())
-        .get_transaction_with_config(
-            signature,
-            RpcTransactionConfig {
-                encoding: Some(UiTransactionEncoding::Base64),
-                commitment: None,
-                max_supported_transaction_version: Some(0),
-            },
-        )?
-        .transaction
+    let got = RpcClient::new(url.to_string()).get_transaction_with_config(
+        signature,
+        RpcTransactionConfig {
+            encoding: Some(UiTransactionEncoding::Base64),
+            commitment: None,
+            max_supported_transaction_version: Some(1),
+        },
+    )?;
+    let version = got.transaction.version;
+    got.transaction
         .transaction
         .decode()
-        .context("transaction decode")
+        .with_context(|| format!("transaction decode (version {version:?})"))
 }
