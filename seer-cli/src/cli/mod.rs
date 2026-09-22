@@ -10,9 +10,9 @@ mod test;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use rusqlite::Connection;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
+use storage::{Mode, Storage};
 
 use crate::overrides::Overrides;
 use crate::runs::hash::{hash_simulation, hash_state, hash_transaction, hash_transaction_accounts};
@@ -25,26 +25,32 @@ pub use input::PathOrValue;
 use encoding::{TxEncoding, TxInput};
 use input::INPUT_HELP;
 
-pub fn run(conn: &Connection) -> Result<()> {
-    match Command::try_from(Cli::parse())? {
+pub fn run() -> Result<()> {
+    let cli = Cli::parse();
+    let home = match &cli.storage_home {
+        Some(path) => path.clone(),
+        None => storage::default_root()?,
+    };
+    let storage = Storage::open_at(home, cli.storage_mode)?;
+    match Command::try_from(cli)? {
         Command::Hash(HashCommand::State(state)) => {
             println!(
                 "Account state stored at hash {}",
-                hex::encode(hash_state(&state)?)
+                hex::encode(hash_state(&storage, &state)?)
             );
             Ok(())
         }
         Command::Hash(HashCommand::Transaction(tx)) => {
             println!(
                 "Transaction stored at hash {}",
-                hex::encode(hash_transaction(&tx)?)
+                hex::encode(hash_transaction(&storage, &tx)?)
             );
             Ok(())
         }
         Command::Hash(HashCommand::TransactionAccounts { tx, url }) => {
             println!(
                 "Account state stored at hash {}",
-                hex::encode(hash_transaction_accounts(&tx, &url)?)
+                hex::encode(hash_transaction_accounts(&storage, &tx, &url)?)
             );
             Ok(())
         }
@@ -52,7 +58,7 @@ pub fn run(conn: &Connection) -> Result<()> {
             msg_hash,
             state_hash,
         }) => {
-            hash_simulation(conn, &msg_hash.0, &state_hash.0)?;
+            hash_simulation(&storage, &msg_hash.0, &state_hash.0)?;
             println!("Simulation stored");
             Ok(())
         }
@@ -63,12 +69,15 @@ pub fn run(conn: &Connection) -> Result<()> {
         }) => {
             println!(
                 "Run stored at id {}",
-                run_simulation(conn, &tx_hash.0, &state_hash.0, overrides)?
+                run_simulation(&storage, &tx_hash.0, &state_hash.0, overrides)?
             );
             Ok(())
         }
         Command::Run(RunCommand::Transaction { tx, url, overrides }) => {
-            println!("Run stored at id {}", run_tx(conn, &tx, &url, overrides)?);
+            println!(
+                "Run stored at id {}",
+                run_tx(&storage, &tx, &url, overrides)?
+            );
             Ok(())
         }
         Command::Run(RunCommand::Signature {
@@ -78,8 +87,20 @@ pub fn run(conn: &Connection) -> Result<()> {
         }) => {
             println!(
                 "Run stored at id {}",
-                run_signature(conn, &signature, &url, overrides)?
+                run_signature(&storage, &signature, &url, overrides)?
             );
+            Ok(())
+        }
+        Command::PrintTransaction(hash) => {
+            println!("{}", storage.blob.print_transaction(&hash.0)?);
+            Ok(())
+        }
+        Command::PrintState(hash) => {
+            println!("{}", storage.blob.print_state(&hash.0)?);
+            Ok(())
+        }
+        Command::Query(sql) => {
+            println!("{}", storage.db.query(&sql)?);
             Ok(())
         }
     }
@@ -88,6 +109,15 @@ pub fn run(conn: &Connection) -> Result<()> {
 #[derive(Parser, Debug)]
 #[command(name = "seer")]
 struct Cli {
+    #[arg(long, global = true, value_name = "DIR", help = "Storage root")]
+    storage_home: Option<std::path::PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        default_value_t = Mode::Default,
+        help = "default (write) or compare"
+    )]
+    storage_mode: Mode,
     #[command(subcommand)]
     command: CliCommand,
 }
@@ -97,6 +127,27 @@ enum CliCommand {
     #[command(subcommand)]
     Hash(CliHash),
     Run(RunCli),
+    #[command(subcommand)]
+    Print(CliPrint),
+    Query(QueryArgs),
+}
+
+#[derive(Subcommand, Debug)]
+enum CliPrint {
+    Transaction(PrintArgs),
+    State(PrintArgs),
+}
+
+#[derive(Parser, Debug)]
+struct PrintArgs {
+    #[arg(value_name = "SHA256", help = INPUT_HELP)]
+    hash: PathOrValue,
+}
+
+#[derive(Parser, Debug)]
+struct QueryArgs {
+    #[arg(value_name = "SQL")]
+    sql: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -190,6 +241,9 @@ struct RunSignatureArgs {
 pub enum Command {
     Hash(HashCommand),
     Run(RunCommand),
+    PrintTransaction(Sha256Hash),
+    PrintState(Sha256Hash),
+    Query(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -234,6 +288,13 @@ impl TryFrom<Cli> for Command {
         match cli.command {
             CliCommand::Hash(hash) => Ok(Self::Hash(HashCommand::try_from(hash)?)),
             CliCommand::Run(run) => Ok(Self::Run(RunCommand::try_from(run)?)),
+            CliCommand::Print(CliPrint::Transaction(args)) => {
+                Ok(Self::PrintTransaction(Sha256Hash::parse(&args.hash)?))
+            }
+            CliCommand::Print(CliPrint::State(args)) => {
+                Ok(Self::PrintState(Sha256Hash::parse(&args.hash)?))
+            }
+            CliCommand::Query(args) => Ok(Self::Query(args.sql)),
         }
     }
 }

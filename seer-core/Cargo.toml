@@ -47,7 +47,6 @@ reqwest = { version = "0.12.23", default-features = false, features = ["blocking
 solana-loader-v3-interface = "3.0.0"
 flate2 = "1.0"
 tempfile = "3"
-rusqlite = { version = "0.32", features = ["bundled"] }
 storage = { path = "../storage" }
 
 [[test]]

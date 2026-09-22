@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::{env, path::PathBuf};
 
 use solana_pubkey::Pubkey;
-use rusqlite::Connection;
+use storage::Storage;
 
 use crate::contexts::seer::SeerContext;
 use crate::contexts::sources::SourcesContext;
@@ -77,11 +77,11 @@ thread_local! {
 pub fn init(
     authority: [u8; 32],
     network_rpc_url: Option<String>,
-    conn: &Connection,
+    storage: &Storage,
 ) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), network_rpc_url, conn)?;
+    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), network_rpc_url, storage)?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();

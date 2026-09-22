@@ -161,4 +161,3 @@ pub enum ViewEnumValue {
     Tuple(ViewTupleTypeNode),
     Struct(ViewStructTypeNode),
 }
-

@@ -1,33 +1,33 @@
 use std::collections::BTreeMap;
 
 use anyhow::{bail, Context, Result};
-use rusqlite::Connection;
 use solana_account::Account;
 use solana_address_lookup_table_interface::state::AddressLookupTable;
 use solana_pubkey::Pubkey;
 use solana_transaction::versioned::VersionedTransaction;
+use storage::Storage;
 
 use super::helpers::{GetProgramdata, MergeFetched};
 use crate::network::get_multiple_accounts;
 use crate::state_accounts::{StateAccount, StateAccounts};
-use storage::{blobs::{read_blob, store_blob}, db::insert_simulation};
 
 #[allow(dead_code)]
-pub fn hash_data(data: &[u8]) -> Result<[u8; 32]> {
-    store_blob(data)
+pub fn hash_data(storage: &Storage, data: &[u8]) -> Result<[u8; 32]> {
+    storage.blob.store(data)
 }
 
-pub fn hash_state(state: &StateAccounts) -> Result<[u8; 32]> {
-    state.verify()?;
-    store_blob(&state.to_bytes()?)
+pub fn hash_state(storage: &Storage, state: &StateAccounts) -> Result<[u8; 32]> {
+    state.verify(&storage.blob)?;
+    storage.blob.store(&state.to_bytes()?)
 }
 
-pub fn hash_transaction(tx: &VersionedTransaction) -> Result<[u8; 32]> {
+pub fn hash_transaction(storage: &Storage, tx: &VersionedTransaction) -> Result<[u8; 32]> {
     tx.sanitize().context("malformed transaction")?;
-    store_blob(&bincode::serialize(tx)?)
+    storage.blob.store(&bincode::serialize(tx)?)
 }
 
 pub fn hash_accounts(
+    storage: &Storage,
     keys: &[Pubkey],
     url: &str,
     already: Option<&BTreeMap<Pubkey, Account>>,
@@ -60,7 +60,7 @@ pub fn hash_accounts(
                 key,
                 StateAccount {
                     lamports: account.lamports,
-                    data: store_blob(&account.data)?,
+                    data: storage.blob.store(&account.data)?,
                     owner: Pubkey::from(account.owner.to_bytes()),
                     executable: account.executable,
                 },
@@ -70,7 +70,11 @@ pub fn hash_accounts(
         .map(StateAccounts)
 }
 
-pub fn hash_transaction_accounts(tx: &VersionedTransaction, url: &str) -> Result<[u8; 32]> {
+pub fn hash_transaction_accounts(
+    storage: &Storage,
+    tx: &VersionedTransaction,
+    url: &str,
+) -> Result<[u8; 32]> {
     tx.sanitize().context("malformed transaction")?;
     let mut keys: Vec<Pubkey> = tx
         .message
@@ -104,10 +108,15 @@ pub fn hash_transaction_accounts(tx: &VersionedTransaction, url: &str) -> Result
                 .with_context(|| format!("missing address lookup table {key}"))?;
             let table = AddressLookupTable::deserialize(&account.data)
                 .map_err(|e| anyhow::anyhow!("invalid address lookup table {key}: {e}"))?;
-            for index in lookup.writable_indexes.iter().chain(&lookup.readonly_indexes) {
-                let addr = table.addresses.get(usize::from(*index)).with_context(|| {
-                    format!("lookup index {index} out of range in {key}")
-                })?;
+            for index in lookup
+                .writable_indexes
+                .iter()
+                .chain(&lookup.readonly_indexes)
+            {
+                let addr = table
+                    .addresses
+                    .get(usize::from(*index))
+                    .with_context(|| format!("lookup index {index} out of range in {key}"))?;
                 keys.push(Pubkey::from(addr.to_bytes()));
             }
             keys.push(key);
@@ -116,13 +125,13 @@ pub fn hash_transaction_accounts(tx: &VersionedTransaction, url: &str) -> Result
     keys.sort();
     keys.dedup();
     let already = (!cache.is_empty()).then_some(&cache);
-    hash_state(&hash_accounts(&keys, url, already)?)
+    hash_state(storage, &hash_accounts(storage, &keys, url, already)?)
 }
 
-pub fn hash_simulation(conn: &Connection, tx_hash: &[u8; 32], state_hash: &[u8; 32]) -> Result<()> {
-    let tx: VersionedTransaction = bincode::deserialize(&read_blob(tx_hash)?)?;
-    let state = StateAccounts::from_bytes(&read_blob(state_hash)?)?;
+pub fn hash_simulation(storage: &Storage, tx_hash: &[u8; 32], state_hash: &[u8; 32]) -> Result<()> {
+    let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
+    let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
     tx.sanitize().context("malformed transaction")?;
-    state.verify()?;
-    insert_simulation(conn, tx_hash, state_hash)
+    state.verify(&storage.blob)?;
+    storage.db.insert_simulation(tx_hash, state_hash)
 }

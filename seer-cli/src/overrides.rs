@@ -161,7 +161,10 @@ impl Overrides {
             svm.set_sysvar(&history);
         }
         if let Some(slot_hash) = self.slot_hash {
-            svm.set_sysvar(&SlotHashes::new(&[(clock.slot, slot_hash.to_bytes().into())]));
+            svm.set_sysvar(&SlotHashes::new(&[(
+                clock.slot,
+                slot_hash.to_bytes().into(),
+            )]));
         }
         if let Some(blockhash) = self.blockhash {
             #[allow(deprecated)]

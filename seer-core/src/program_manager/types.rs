@@ -59,4 +59,3 @@ pub(super) struct RpcAccountInfo {
     pub(super) executable: bool,
     pub(super) data: Vec<u8>,
 }
-

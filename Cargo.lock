@@ -3648,7 +3648,6 @@ dependencies = [
  "pathdiff",
  "regex",
  "reqwest",
- "rusqlite",
  "rustc-demangle",
  "seer-interface",
  "serde",
@@ -6440,11 +6439,15 @@ name = "storage"
 version = "1.1.1"
 dependencies = [
  "anyhow",
+ "bincode",
  "chrono",
  "dirs",
  "hex",
  "rusqlite",
+ "serde",
+ "serde_json",
  "sha2 0.10.9",
+ "solana-transaction",
 ]
 
 [[package]]

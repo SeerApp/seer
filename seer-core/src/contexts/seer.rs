@@ -5,12 +5,12 @@ use std::{
 };
 
 use bincode::serialized_size;
-use rusqlite::Connection;
 use seer_interface::{GuestAccountBackdoor, GuestMemory};
 use solana_account::{AccountSharedData, ReadableAccount};
 use solana_instruction::error::InstructionError;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
+use storage::Storage;
 
 use crate::{
     artifacts::{layout::register_trace_steps_on_disk, AtomicFileWriter},
@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct SeerContext {
-    conn: *const Connection,
+    storage: *const Storage,
     run_id: i64,
     pub file_writer: Arc<Mutex<AtomicFileWriter>>,
     pub transaction_context: Option<TransactionContext>,
@@ -39,7 +39,7 @@ impl SeerContext {
     pub fn new(
         authority: Pubkey,
         network_rpc_url: Option<String>,
-        conn: &Connection,
+        storage: &Storage,
     ) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
@@ -68,7 +68,7 @@ impl SeerContext {
         let global_account_context = GlobalAccountContext::new();
 
         Ok(Self {
-            conn,
+            storage,
             run_id: 0,
             file_writer,
             transaction_context: None,
@@ -78,8 +78,8 @@ impl SeerContext {
         })
     }
 
-    fn conn(&self) -> &Connection {
-        unsafe { &*self.conn }
+    fn storage(&self) -> &Storage {
+        unsafe { &*self.storage }
     }
 
     fn lock_file_writer(writer: &Arc<Mutex<AtomicFileWriter>>) -> MutexGuard<'_, AtomicFileWriter> {
@@ -90,27 +90,30 @@ impl SeerContext {
 
     fn persist_reg(&self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
         let (start_step, end_step) = register_trace_steps_on_disk(chunk);
-        let self_hash = storage::blobs::store_blob(
-            &serde_json::to_vec(chunk).expect("serialize register chunk"),
-        )
-        .expect("store register blob");
-        let program_hash = storage::blobs::store_blob(&elf_bytes(
-            &self.global_account_context.live_accounts(),
-            program,
-        ))
-        .expect("store program blob");
-        storage::db::insert_program(self.conn(), &program_hash).expect("insert program");
-        storage::db::insert_reg(
-            self.conn(),
-            self.run_id,
-            i64::from(ix),
-            i64::try_from(start_step).expect("start_step fits i64"),
-            i64::try_from(end_step).expect("end_step fits i64"),
-            &self_hash,
-            &program_hash,
-            &program.to_bytes(),
-        )
-        .expect("insert reg");
+        let elf = elf_bytes(&self.global_account_context.live_accounts(), program);
+        let run_id = self.run_id;
+        let storage = self.storage();
+        let self_hash = storage
+            .blob
+            .store(&serde_json::to_vec(chunk).expect("serialize register chunk"))
+            .expect("store register blob");
+        let program_hash = storage.blob.store(&elf).expect("store program blob");
+        storage
+            .db
+            .insert_program(&program_hash)
+            .expect("insert program");
+        storage
+            .db
+            .insert_reg(
+                run_id,
+                i64::from(ix),
+                i64::try_from(start_step).expect("start_step fits i64"),
+                i64::try_from(end_step).expect("end_step fits i64"),
+                &self_hash,
+                &program_hash,
+                &program.to_bytes(),
+            )
+            .expect("insert reg");
     }
 
     pub fn set_current_tx(&mut self, run_id: i64) {
@@ -152,14 +155,17 @@ impl SeerContext {
             .as_mut()
             .expect("Instruction called before transaction context")
             .start_instruction(instruction, fee_payer);
-        storage::db::insert_run_ix(self.conn(), self.run_id, i64::from(instruction))
+        let run_id = self.run_id;
+        self.storage()
+            .db
+            .insert_run_ix(run_id, i64::from(instruction))
             .expect("insert run_ix");
     }
 
     pub fn end_instruction(&mut self) {
         seer_debug!("Ending instruction");
 
-        let (ix, hash) = {
+        let (ix, tree) = {
             let tx = self
                 .transaction_context
                 .as_mut()
@@ -174,17 +180,16 @@ impl SeerContext {
 
             let w = Self::lock_file_writer(&self.file_writer);
             let ix = tx.instruction();
-            let hash = tx
+            let tree = tx
                 .end_instruction(&self.global_program_context, &w)
-                .map(|(_, tree)| {
-                    storage::blobs::store_blob(
-                        &serde_json::to_vec(&tree).expect("serialize trace"),
-                    )
-                    .expect("store trace blob")
-                });
-            (ix, hash)
+                .map(|(_, tree)| serde_json::to_vec(&tree).expect("serialize trace"));
+            (ix, tree)
         };
-        storage::db::finish_run_ix(self.conn(), self.run_id, i64::from(ix), hash.as_ref())
+        let hash = tree.map(|bytes| self.storage().blob.store(&bytes).expect("store trace blob"));
+        let run_id = self.run_id;
+        self.storage()
+            .db
+            .finish_run_ix(run_id, i64::from(ix), hash.as_ref())
             .expect("finish run_ix");
     }
 
@@ -216,13 +221,9 @@ impl SeerContext {
                 .as_mut()
                 .expect("Starting program before transaction context");
             let pending_reg = if tx.is_cpi() {
-                self.register_context.flush_for_roll().map(|rx| {
-                    (
-                        tx.instruction(),
-                        tx.get_current_program_address(),
-                        rx,
-                    )
-                })
+                self.register_context
+                    .flush_for_roll()
+                    .map(|rx| (tx.instruction(), tx.get_current_program_address(), rx))
             } else {
                 None
             };
@@ -280,13 +281,10 @@ impl SeerContext {
                 tx.account_diff(acc);
             }
 
-            let pending_reg = self.register_context.record(tx.step_order, i, reg).map(|rx| {
-                (
-                    tx.instruction(),
-                    tx.get_current_program_address(),
-                    rx,
-                )
-            });
+            let pending_reg = self
+                .register_context
+                .record(tx.step_order, i, reg)
+                .map(|rx| (tx.instruction(), tx.get_current_program_address(), rx));
 
             tx.step(&self.global_program_context, i);
             pending_reg

@@ -4,23 +4,27 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
-use storage::blobs::read_blob;
+use storage::Blob;
 
 use crate::report::Report;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct StateAccount {
-    #[serde(serialize_with = "u64_str::serialize", deserialize_with = "u64_str::deserialize")]
+    #[serde(
+        serialize_with = "u64_str::serialize",
+        deserialize_with = "u64_str::deserialize"
+    )]
     pub lamports: u64,
     #[serde(with = "hex32")]
     pub data: [u8; 32],
+    #[serde(with = "b58")]
     pub owner: Pubkey,
     pub executable: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct StateAccounts(pub BTreeMap<Pubkey, StateAccount>);
+pub struct StateAccounts(#[serde(with = "pubkey_map")] pub BTreeMap<Pubkey, StateAccount>);
 
 impl StateAccounts {
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
@@ -31,21 +35,25 @@ impl StateAccounts {
         serde_json::from_slice(bytes).context("state accounts JSON")
     }
 
-    pub fn get_data(&self, pubkey: &Pubkey) -> std::result::Result<Vec<u8>, Report> {
+    pub fn get_data(&self, blob: &Blob, pubkey: &Pubkey) -> std::result::Result<Vec<u8>, Report> {
         let Some(account) = self.0.get(pubkey) else {
             return Err(Report {
                 missing_accounts: vec![*pubkey],
                 ..Report::default()
             });
         };
-        read_blob(&account.data).map_err(|_| Report {
+        blob.read(&account.data).map_err(|_| Report {
             missing_data: vec![*pubkey],
             ..Report::default()
         })
     }
 
-    pub fn get_executable_account(&self, pubkey: &Pubkey) -> std::result::Result<Option<Pubkey>, Report> {
-        let data = self.get_data(pubkey)?;
+    pub fn get_executable_account(
+        &self,
+        blob: &Blob,
+        pubkey: &Pubkey,
+    ) -> std::result::Result<Option<Pubkey>, Report> {
+        let data = self.get_data(blob, pubkey)?;
         let Some(account) = self.0.get(pubkey) else {
             return Err(Report {
                 missing_accounts: vec![*pubkey],
@@ -67,10 +75,10 @@ impl StateAccounts {
         }
     }
 
-    pub fn verify(&self) -> std::result::Result<(), Report> {
+    pub fn verify(&self, blob: &Blob) -> std::result::Result<(), Report> {
         let mut report = Report::default();
         for (key, account) in &self.0 {
-            match self.get_executable_account(key) {
+            match self.get_executable_account(blob, key) {
                 Err(e) => report.merge(e),
                 Ok(executable_account) => {
                     if account.executable
@@ -109,6 +117,58 @@ mod u64_str {
     }
 }
 
+mod b58 {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Pubkey, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&v.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Pubkey, D::Error> {
+        String::deserialize(d)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+mod pubkey_map {
+    use super::*;
+    use serde::de::{MapAccess, Visitor};
+    use serde::ser::SerializeMap;
+    use std::fmt;
+
+    pub fn serialize<S: Serializer>(
+        map: &BTreeMap<Pubkey, StateAccount>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut out = s.serialize_map(Some(map.len()))?;
+        for (k, v) in map {
+            out.serialize_entry(&k.to_string(), v)?;
+        }
+        out.end()
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<Pubkey, StateAccount>, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = BTreeMap<Pubkey, StateAccount>;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("map of base58 pubkeys")
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
+                let mut map = BTreeMap::new();
+                while let Some((k, v)) = a.next_entry::<String, StateAccount>()? {
+                    map.insert(k.parse().map_err(serde::de::Error::custom)?, v);
+                }
+                Ok(map)
+            }
+        }
+        d.deserialize_map(V)
+    }
+}
+
 mod hex32 {
     use super::*;
 
@@ -121,5 +181,17 @@ mod hex32 {
         bytes
             .try_into()
             .map_err(|_| serde::de::Error::custom("sha256 hash must be 32 bytes"))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn json_uses_base58_pubkeys() {
+        let json = br#"{"11111111111111111111111111111111":{"lamports":"1","data":"0000000000000000000000000000000000000000000000000000000000000000","owner":"11111111111111111111111111111111","executable":false}}"#;
+        let state = StateAccounts::from_bytes(json).unwrap();
+        assert_eq!(state.to_bytes().unwrap(), json);
     }
 }

@@ -21,7 +21,9 @@ impl Report {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.missing_accounts.is_empty() && self.missing_data.is_empty() && self.incoherent.is_empty()
+        self.missing_accounts.is_empty()
+            && self.missing_data.is_empty()
+            && self.incoherent.is_empty()
     }
 }
 
