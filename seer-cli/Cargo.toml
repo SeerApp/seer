@@ -50,6 +50,7 @@ solana-system-program = "=3.1.6"
 solana-sysvar = "3"
 solana-transaction = { version = "3.0.0", features = ["serde"] }
 solana-transaction-context = "=3.1.6"
+solana-transaction-status-client-types = { path = "../../agave/transaction-status-client-types", features = ["agave-unstable-api"] }
 
 [lints]
 workspace = true

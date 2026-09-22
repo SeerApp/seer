@@ -55,10 +55,15 @@ pub fn execute(storage: &Storage, req: Request) -> Result<i64> {
 fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
     if let Some(signature) = &req.signature {
         let url = req.url.as_deref().context("--sig requires --url")?;
-        let tx = crate::network::get_transaction(url, signature)?;
+        let (tx, loaded) = crate::network::get_transaction(url, signature)?;
         return Ok(Resolved {
             tx_hash: super::store::store_transaction(storage, &tx)?,
-            state_hash: super::store::store_transaction_accounts(storage, &tx, url)?,
+            state_hash: super::store::store_transaction_accounts(
+                storage,
+                &tx,
+                url,
+                loaded.as_ref(),
+            )?,
             parent_id: None,
             environment: "{}".into(),
             source: format!("sig:{signature}"),
@@ -87,7 +92,7 @@ fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
     let url = req.url.as_deref().context("pass --url")?;
     Ok(Resolved {
         tx_hash: super::store::store_transaction(storage, tx)?,
-        state_hash: super::store::store_transaction_accounts(storage, tx, url)?,
+        state_hash: super::store::store_transaction_accounts(storage, tx, url, None)?,
         parent_id: None,
         environment: "{}".into(),
         source: "tx".into(),

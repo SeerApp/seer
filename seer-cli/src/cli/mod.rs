@@ -14,7 +14,7 @@ mod input;
 mod test;
 
 use encoding::TxEncoding;
-use format::{diff_text, ls_text, run_card, run_json};
+use format::{diff_text, ls_text, run_card, run_json, state_listing};
 use input::INPUT_HELP;
 
 pub use input::PathOrValue;
@@ -126,7 +126,7 @@ struct ShowCli {
     id: i64,
     #[arg(long, help = "Print the transaction")]
     tx: bool,
-    #[arg(long, help = "Print the input state")]
+    #[arg(long, help = "List accounts in the input state")]
     state: bool,
     #[arg(long, value_name = "PUBKEY", help = "Print one account")]
     account: Option<String>,
@@ -335,12 +335,10 @@ fn show(
         }
     }
     if state {
-        let printed = crate::print::state(&storage.blob.read(&row.state_blob_hash)?)?;
-        value.insert("state".into(), serde_json::from_str(&printed)?);
+        let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+        let (printed, parsed) = state_listing(row.id, &state);
+        value.insert("state".into(), parsed);
         text.push_str(&printed);
-        if !printed.ends_with('\n') {
-            text.push('\n');
-        }
     }
     if let Some(pk) = account {
         let (printed, parsed) = show_account(storage, &row, &pk)?;

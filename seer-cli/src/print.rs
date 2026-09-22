@@ -6,11 +6,6 @@ pub fn transaction(bytes: &[u8]) -> Result<String> {
     serde_json::to_string_pretty(&pretty_tx(&tx)).context("transaction json")
 }
 
-pub fn state(bytes: &[u8]) -> Result<String> {
-    let value: serde_json::Value = serde_json::from_slice(bytes).context("state json")?;
-    serde_json::to_string_pretty(&value).context("state json")
-}
-
 pub fn trace(bytes: &[u8]) -> Result<String> {
     let value: serde_json::Value = serde_json::from_slice(bytes).context("trace json")?;
     let mut out = String::new();
@@ -206,9 +201,6 @@ fn line(out: &mut String, depth: usize, text: &str) {
 mod test {
     #[test]
     fn state_and_trace() {
-        let printed =
-            super::state(br#"{"11111111111111111111111111111111":{"lamports":"1"}}"#).unwrap();
-        assert!(printed.contains("11111111111111111111111111111111"));
         let printed = super::trace(br#"{"step_order":0,"sender":"A","receiver":"11111111111111111111111111111111","accounts":[],"data":[],"children":[{"Log":{"step_order":0,"message":"ok"}}],"parsed":{"name":"transferSol","args":[{"name":"amount","value":{"value":{"value":"1"}}}]}}"#).unwrap();
         assert!(printed.contains("transferSol"));
         assert!(printed.contains("amount: 1"));

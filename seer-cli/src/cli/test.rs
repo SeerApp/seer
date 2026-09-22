@@ -205,4 +205,21 @@ fn ls_show_diff_text() {
     let d = super::format::diff_text(&dummy_row(1, None), &dummy_row(2, Some(1)));
     assert!(d.contains("1 vs 2"));
     assert!(d.contains("different"));
+    let pk = solana_pubkey::Pubkey::default();
+    let mut state = crate::state_accounts::StateAccounts::default();
+    state.0.insert(
+        pk,
+        crate::state_accounts::StateAccount {
+            lamports: 1,
+            data: [0; 32],
+            owner: pk,
+            executable: false,
+        },
+    );
+    let (listed, json) = super::format::state_listing(3, &state);
+    assert!(listed.contains("accounts 1"));
+    assert!(listed.contains(&pk.to_string()));
+    assert!(!listed.contains("data"));
+    assert!(listed.contains("next: seer show 3 --account"));
+    assert_eq!(json[0]["lamports"], "1");
 }

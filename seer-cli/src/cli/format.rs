@@ -1,3 +1,4 @@
+use crate::state_accounts::StateAccounts;
 use storage::RunRow;
 
 pub(crate) fn run_json(row: &RunRow) -> serde_json::Value {
@@ -143,6 +144,27 @@ pub(crate) fn diff_text(a: &RunRow, b: &RunRow) -> String {
         }
     ));
     out
+}
+
+pub(crate) fn state_listing(id: i64, state: &StateAccounts) -> (String, serde_json::Value) {
+    let mut accounts = Vec::new();
+    let mut text = format!("accounts {}\n", state.0.len());
+    for (pk, acct) in &state.0 {
+        accounts.push(serde_json::json!({
+            "pubkey": pk.to_string(),
+            "lamports": acct.lamports.to_string(),
+            "owner": acct.owner.to_string(),
+            "executable": acct.executable,
+        }));
+        text.push_str(&format!(
+            "  {pk}  lamports={}  owner={}{}\n",
+            acct.lamports,
+            acct.owner,
+            if acct.executable { "  executable" } else { "" }
+        ));
+    }
+    text.push_str(&format!("next: seer show {id} --account <PUBKEY>\n"));
+    (text, serde_json::Value::Array(accounts))
 }
 
 pub(crate) fn status_text(row: &RunRow) -> String {
