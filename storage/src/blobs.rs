@@ -75,6 +75,14 @@ impl Blob {
         serde_json::to_string_pretty(&value).context("state json")
     }
 
+    pub fn print_trace(&self, hash: &[u8; 32]) -> Result<String> {
+        let value: serde_json::Value =
+            serde_json::from_slice(&self.read(hash)?).context("trace json")?;
+        let mut out = String::new();
+        write_trace(&mut out, &value, 0);
+        Ok(out)
+    }
+
     fn path(&self, hash: &[u8; 32]) -> PathBuf {
         self.dir.join(hex::encode(hash))
     }
@@ -131,4 +139,139 @@ fn pretty_message(tx: &solana_transaction::versioned::VersionedTransaction) -> s
             .collect();
     }
     out
+}
+
+fn write_trace(out: &mut String, value: &serde_json::Value, depth: usize) {
+    match value {
+        serde_json::Value::Object(obj) if obj.contains_key("receiver") => {
+            write_root(out, obj, depth)
+        }
+        serde_json::Value::Object(obj) => write_tagged(out, obj, depth),
+        _ => line(out, depth, &value.to_string()),
+    }
+}
+
+fn write_root(out: &mut String, obj: &serde_json::Map<String, serde_json::Value>, depth: usize) {
+    let receiver = str_field(obj, "receiver");
+    let name = parsed_name(obj.get("parsed"));
+    if name.is_empty() {
+        line(out, depth, receiver);
+    } else {
+        line(out, depth, &format!("{receiver}  {name}"));
+    }
+    write_parsed_args(out, obj.get("parsed"), depth.saturating_add(1));
+    if let Some(serde_json::Value::Array(children)) = obj.get("children") {
+        for child in children {
+            write_trace(out, child, depth.saturating_add(1));
+        }
+    }
+}
+
+fn write_tagged(out: &mut String, obj: &serde_json::Map<String, serde_json::Value>, depth: usize) {
+    if let Some(body) = obj.get("Log") {
+        line(out, depth, &format!("log: {}", str_value(body, "message")));
+    } else if let Some(body) = obj.get("Error") {
+        line(
+            out,
+            depth,
+            &format!("error: {}", str_value(body, "message")),
+        );
+    } else if let Some(body) = obj.get("Account") {
+        let key = str_value(body, "key");
+        let before = body
+            .get("before")
+            .and_then(|a| a.get("lamports"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let after = body
+            .get("after")
+            .and_then(|a| a.get("lamports"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        line(out, depth, &format!("account {key}  {before} -> {after}"));
+    } else if let Some(body) = obj.get("Invoke") {
+        write_trace(out, body, depth);
+    } else if let Some(body) = obj.get("Entrypoint").or_else(|| obj.get("FnCall")) {
+        let tag = if obj.contains_key("Entrypoint") {
+            "entrypoint"
+        } else {
+            "fn"
+        };
+        line(
+            out,
+            depth,
+            &format!("{tag} {}", str_value(body, "signature")),
+        );
+        if let Some(serde_json::Value::Array(children)) = body.get("children") {
+            for child in children {
+                write_trace(out, child, depth.saturating_add(1));
+            }
+        }
+    } else if obj.contains_key("receiver") {
+        write_root(out, obj, depth);
+    } else {
+        line(
+            out,
+            depth,
+            &serde_json::Value::Object(obj.clone()).to_string(),
+        );
+    }
+}
+
+fn write_parsed_args(out: &mut String, parsed: Option<&serde_json::Value>, depth: usize) {
+    let Some(serde_json::Value::Array(args)) = parsed.and_then(|p| p.get("args")) else {
+        return;
+    };
+    for arg in args {
+        let name = str_value(arg, "name");
+        line(
+            out,
+            depth,
+            &format!("{name}: {}", pretty_arg(arg.get("value"))),
+        );
+    }
+}
+
+fn parsed_name(parsed: Option<&serde_json::Value>) -> &str {
+    parsed
+        .and_then(|p| p.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+}
+
+fn pretty_arg(value: Option<&serde_json::Value>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+    if let Some(n) = value
+        .pointer("/value/value")
+        .and_then(serde_json::Value::as_str)
+    {
+        return n.to_owned();
+    }
+    if let Some(s) = value.as_str() {
+        return s.to_owned();
+    }
+    value.to_string()
+}
+
+fn str_field<'a>(obj: &'a serde_json::Map<String, serde_json::Value>, key: &str) -> &'a str {
+    obj.get(key)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("?")
+}
+
+fn str_value<'a>(value: &'a serde_json::Value, key: &str) -> &'a str {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("?")
+}
+
+fn line(out: &mut String, depth: usize, text: &str) {
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+    out.push_str(text);
+    out.push('\n');
 }

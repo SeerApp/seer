@@ -128,6 +128,14 @@ mod tests {
             .query("SELECT COUNT(*) AS n FROM simulation")
             .unwrap();
         assert!(rows.contains("\"n\": 1"));
+        let trace = storage
+            .blob
+            .store(br#"{"step_order":0,"sender":"A","receiver":"11111111111111111111111111111111","accounts":[],"data":[],"children":[{"Log":{"step_order":0,"message":"ok"}}],"parsed":{"name":"transferSol","args":[{"name":"amount","value":{"value":{"value":"1"}}}]}}"#)
+            .unwrap();
+        let printed = storage.blob.print_trace(&trace).unwrap();
+        assert!(printed.contains("transferSol"));
+        assert!(printed.contains("amount: 1"));
+        assert!(printed.contains("log: ok"));
         std::fs::remove_dir_all(root).ok();
     }
 }

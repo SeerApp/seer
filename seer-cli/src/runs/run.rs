@@ -39,7 +39,7 @@ pub fn run_simulation(
     let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
     let mut svm = overrides.apply();
-    // LiteSVM compiles upgradeable programs in set_account and looks up programdata then.
+
     for executable in [false, true] {
         for (pubkey, account) in &state.0 {
             if account.executable != executable {

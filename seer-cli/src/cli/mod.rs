@@ -99,6 +99,10 @@ pub fn run() -> Result<()> {
             println!("{}", storage.blob.print_state(&hash.0)?);
             Ok(())
         }
+        Command::PrintTrace(hash) => {
+            println!("{}", storage.blob.print_trace(&hash.0)?);
+            Ok(())
+        }
         Command::Query(sql) => {
             println!("{}", storage.db.query(&sql)?);
             Ok(())
@@ -136,6 +140,7 @@ enum CliCommand {
 enum CliPrint {
     Transaction(PrintArgs),
     State(PrintArgs),
+    Trace(PrintArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -243,6 +248,7 @@ pub enum Command {
     Run(RunCommand),
     PrintTransaction(Sha256Hash),
     PrintState(Sha256Hash),
+    PrintTrace(Sha256Hash),
     Query(String),
 }
 
@@ -293,6 +299,9 @@ impl TryFrom<Cli> for Command {
             }
             CliCommand::Print(CliPrint::State(args)) => {
                 Ok(Self::PrintState(Sha256Hash::parse(&args.hash)?))
+            }
+            CliCommand::Print(CliPrint::Trace(args)) => {
+                Ok(Self::PrintTrace(Sha256Hash::parse(&args.hash)?))
             }
             CliCommand::Query(args) => Ok(Self::Query(args.sql)),
         }
