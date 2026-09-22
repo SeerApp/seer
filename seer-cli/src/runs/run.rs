@@ -39,19 +39,25 @@ pub fn run_simulation(
     let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
     let mut svm = overrides.apply();
-    for (pubkey, account) in &state.0 {
-        svm.set_account(
-            Address::from(pubkey.to_bytes()),
-            Account {
-                lamports: account.lamports,
-                data: state
-                    .get_data(&storage.blob, pubkey)
-                    .map_err(anyhow::Error::from)?,
-                owner: account.owner.to_bytes().into(),
-                executable: account.executable,
-                rent_epoch: u64::MAX,
-            },
-        )?;
+    // LiteSVM compiles upgradeable programs in set_account and looks up programdata then.
+    for executable in [false, true] {
+        for (pubkey, account) in &state.0 {
+            if account.executable != executable {
+                continue;
+            }
+            svm.set_account(
+                Address::from(pubkey.to_bytes()),
+                Account {
+                    lamports: account.lamports,
+                    data: state
+                        .get_data(&storage.blob, pubkey)
+                        .map_err(anyhow::Error::from)?,
+                    owner: account.owner.to_bytes().into(),
+                    executable: account.executable,
+                    rent_epoch: u64::MAX,
+                },
+            )?;
+        }
     }
     overrides.airdrop(&mut svm)?;
     let fee_payer = tx
