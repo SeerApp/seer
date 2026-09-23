@@ -44,6 +44,7 @@ fn push_u64(buf: &mut Vec<u8>, v: u64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_shdr(
     buf: &mut Vec<u8>,
     name: u32,

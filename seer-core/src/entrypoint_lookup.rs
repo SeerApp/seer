@@ -37,19 +37,16 @@ impl EntrypointLookup {
 
         let maybe_entrypoint = 'find_entrypoint: {
             while let Some(source_die) = source_die_trace.pop_front() {
-                match source_die.source_type {
-                    SourceDieType::Fn => {
-                        if let Some(d) = source_die.loc.decl {
-                            break 'find_entrypoint Some(TreeEntrypoint {
-                                step_order,
-                                instruction,
-                                signature: source_die.loc.signature,
-                                loc: d,
-                                children: vec![],
-                            });
-                        }
+                if let SourceDieType::Fn = source_die.source_type {
+                    if let Some(d) = source_die.loc.decl {
+                        break 'find_entrypoint Some(TreeEntrypoint {
+                            step_order,
+                            instruction,
+                            signature: source_die.loc.signature,
+                            loc: d,
+                            children: vec![],
+                        });
                     }
-                    _ => {}
                 }
             }
             None

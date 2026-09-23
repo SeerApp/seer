@@ -21,6 +21,12 @@ pub struct TransactionContext {
     pub step_order: u64,
 }
 
+impl Default for TransactionContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransactionContext {
     pub fn new() -> Self {
         Self {
@@ -94,6 +100,8 @@ impl TransactionContext {
         ix.into_trace_tree(file_writer)
     }
 
+    /// # Safety
+    /// Must only be called while an instruction context is active.
     pub unsafe fn start_program(
         &mut self,
         accounts: Vec<Pubkey>,
@@ -136,7 +144,7 @@ impl TransactionContext {
 
         ix.step(global_program_context, order, i);
 
-        self.step_order += 1;
+        self.step_order = self.step_order.saturating_add(1);
     }
 
     pub fn account_diff(&mut self, data: TreeAccount) {

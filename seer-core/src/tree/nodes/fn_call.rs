@@ -26,6 +26,7 @@ pub struct TreeFnCall<C> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum FnCallChildren {
     Entrypoint(TreeEntrypoint<EntrypointChildren>),
     FnCall(TreeFnCall<FnCallChildren>),
@@ -61,6 +62,7 @@ impl From<EntrypointChildren> for FnCallChildren {
 }
 
 #[derive(Serialize, Deserialize, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum FnCallViewChildren {
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
     FnCall(TreeFnCall<FnCallViewChildren>),
@@ -79,7 +81,7 @@ impl PartialEq for TreeFnCall<FnCallViewChildren> {
 impl TreeFnCall<FnCallChildren> {
     pub fn clone_into_view(
         &self,
-        source_roots: &Vec<TreeRoot<RootChildren>>,
+        source_roots: &[TreeRoot<RootChildren>],
     ) -> TreeFnCall<FnCallViewChildren> {
         let mut tree_view: TreeFnCall<FnCallViewChildren> = TreeFnCall {
             step_order: self.step_order,
@@ -93,11 +95,11 @@ impl TreeFnCall<FnCallChildren> {
             match child {
                 FnCallChildren::Entrypoint(e) => {
                     tree_view.children.push(FnCallViewChildren::Entrypoint(
-                        TreeEntrypoint::clone_into_view(&e, source_roots),
+                        TreeEntrypoint::clone_into_view(e, source_roots),
                     ));
                 }
                 FnCallChildren::FnCall(f) => tree_view.children.push(FnCallViewChildren::FnCall(
-                    TreeFnCall::clone_into_view(&f, source_roots),
+                    TreeFnCall::clone_into_view(f, source_roots),
                 )),
                 FnCallChildren::Invoke { tree_index, .. } => {
                     tree_view
@@ -158,22 +160,17 @@ impl TreeFnCall<FnCallChildren> {
         }
     }
 
-    pub fn grow(
-        &mut self,
-        instruction: u64,
-        call_trace: &Vec<TreeFnCall<FnCallChildren>>,
-        counter: usize,
-    ) {
+    pub fn grow(&mut self, call_trace: &[TreeFnCall<FnCallChildren>], counter: usize) {
         let Some(mut tree_fn_call) = call_trace.get(counter).cloned() else {
             return;
         };
 
         match self.children.last_mut() {
             Some(FnCallChildren::FnCall(f)) if *f == tree_fn_call => {
-                f.grow(instruction, call_trace, counter + 1);
+                f.grow(call_trace, counter.saturating_add(1));
             }
             _ => {
-                tree_fn_call.grow(instruction, call_trace, counter + 1);
+                tree_fn_call.grow(call_trace, counter.saturating_add(1));
                 self.children.push(FnCallChildren::FnCall(tree_fn_call));
             }
         }

@@ -49,7 +49,7 @@ pub fn is_staging_tmp_path(path: &Path) -> bool {
 }
 
 pub(crate) fn seer_root_from_cwd() -> PathBuf {
-    let mut path = PathBuf::from(get_cwd());
+    let mut path = get_cwd();
     path.push(disk::ROOT_SEG);
     fs::create_dir_all(&path).unwrap();
     path

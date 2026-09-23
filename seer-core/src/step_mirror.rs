@@ -17,6 +17,8 @@ pub struct UnsafeAccountBackdoor {
 }
 
 impl UnsafeAccountBackdoor {
+    /// # Safety
+    /// `bd` must remain valid until `clear` (the matching `end_program` close).
     pub unsafe fn new(bd: &dyn GuestAccountBackdoor) -> Self {
         let ptr: *const dyn GuestAccountBackdoor = bd;
         Self {
@@ -40,23 +42,22 @@ impl UnsafeAccountBackdoor {
         let mirror = unsafe { &*mirror_ptr };
 
         let accounts = mirror.get_accounts();
-        let num_accounts = accounts.len();
         let mut changed_accounts = Vec::new();
 
-        for index in 0..num_accounts {
-            if accounts[index].0 != self.accounts[index].0 {
+        for (index, (key, account)) in accounts.iter().enumerate() {
+            if *key != self.accounts[index].0 {
                 panic!("Account pubkey different");
             }
 
-            if accounts[index].1 != self.accounts[index].1 {
+            if *account != self.accounts[index].1 {
                 changed_accounts.push(TreeAccount {
                     step_order,
-                    key: accounts[index].0,
+                    key: *key,
                     before: self.accounts[index].1.clone().into(),
-                    after: accounts[index].1.clone().into(),
+                    after: account.clone().into(),
                 });
 
-                self.accounts[index] = accounts[index].clone();
+                self.accounts[index] = (*key, account.clone());
             }
         }
 

@@ -15,6 +15,7 @@ pub struct ProgramInfo {
 }
 
 impl ProgramInfo {
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn new(entrypoint_lookup: Option<EntrypointLookup>, idl_lookup: Option<IdlLookup>) -> Self {
         Self {
             entrypoint_lookup: entrypoint_lookup.map(Arc::new),
@@ -22,6 +23,7 @@ impl ProgramInfo {
         }
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn with_idl_lookup(idl_lookup: IdlLookup) -> Self {
         Self {
             entrypoint_lookup: None,
@@ -29,6 +31,7 @@ impl ProgramInfo {
         }
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn set_idl_lookup(&mut self, idl_lookup: IdlLookup) {
         self.idl_lookup = Some(Arc::new(idl_lookup));
     }

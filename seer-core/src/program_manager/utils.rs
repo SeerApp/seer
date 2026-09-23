@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
 };
@@ -27,7 +27,7 @@ use super::types::{DisasmStatus, RpcAccountInfo};
 pub(super) fn preload_local_disasm_for_targets(
     targets: &HashMap<Pubkey, Target>,
     disasm_status: &Arc<Mutex<HashMap<Pubkey, DisasmStatus>>>,
-    programs_output_dir: &PathBuf,
+    programs_output_dir: &Path,
     file_writer: &AtomicFileWriter,
 ) {
     if let Err(err) = ensure_programs_output_dir(programs_output_dir) {
@@ -166,8 +166,8 @@ pub(super) fn fetch_program_elf_from_rpc(
             if upgrade_authority_address.is_some() {
                 UpgradeableLoaderState::size_of_programdata_metadata()
             } else {
-                UpgradeableLoaderState::size_of_programdata_metadata()
-                    - serialized_size(&Pubkey::default()).unwrap_or(0) as usize
+                    UpgradeableLoaderState::size_of_programdata_metadata()
+                        .saturating_sub(serialized_size(&Pubkey::default()).unwrap_or(0) as usize)
             }
         }
         _ => {
@@ -189,7 +189,7 @@ pub(super) fn fetch_program_elf_from_rpc(
 fn maybe_download_and_disassemble(
     program_id: &Pubkey,
     network_rpc_url: Option<&str>,
-    programs_output_dir: &PathBuf,
+    programs_output_dir: &Path,
     file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     let Some(rpc_url) = network_rpc_url else {
@@ -206,8 +206,8 @@ fn maybe_download_and_disassemble(
 
 fn disassemble_local_elf_for_program(
     program_id: &Pubkey,
-    local_executable_path: &PathBuf,
-    programs_output_dir: &PathBuf,
+    local_executable_path: &Path,
+    programs_output_dir: &Path,
     file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     ensure_programs_output_dir(programs_output_dir)?;
@@ -230,7 +230,7 @@ fn disassemble_local_elf_for_program(
 fn disassemble_elf_bytes_for_program(
     program_id: &Pubkey,
     elf_bytes: &[u8],
-    programs_output_dir: &PathBuf,
+    programs_output_dir: &Path,
     file_writer: &AtomicFileWriter,
 ) -> Result<(), String> {
     let temp_dir = tempdir().map_err(|e| {
@@ -261,7 +261,7 @@ fn disassemble_elf_bytes_for_program(
     Ok(())
 }
 
-fn ensure_programs_output_dir(programs_output_dir: &PathBuf) -> Result<(), String> {
+fn ensure_programs_output_dir(programs_output_dir: &Path) -> Result<(), String> {
     fs::create_dir_all(programs_output_dir).map_err(|e| {
         format!(
             "create programs dir {}: {}",
@@ -296,7 +296,9 @@ fn extract_anchor_idl_compressed_bytes(account_data: &[u8]) -> Result<Vec<u8>, S
     const DISCRIMINATOR_LEN: usize = 8;
     const AUTHORITY_LEN: usize = 32;
     const DATA_LEN_LEN: usize = 4;
-    const HEADER_LEN: usize = DISCRIMINATOR_LEN + AUTHORITY_LEN + DATA_LEN_LEN;
+    const HEADER_LEN: usize = DISCRIMINATOR_LEN
+        .saturating_add(AUTHORITY_LEN)
+        .saturating_add(DATA_LEN_LEN);
 
     if account_data.len() < HEADER_LEN {
         return Err(format!(
@@ -305,14 +307,14 @@ fn extract_anchor_idl_compressed_bytes(account_data: &[u8]) -> Result<Vec<u8>, S
             HEADER_LEN
         ));
     }
-    let data_len_offset = DISCRIMINATOR_LEN + AUTHORITY_LEN;
+    let data_len_offset = DISCRIMINATOR_LEN.saturating_add(AUTHORITY_LEN);
     let data_len = u32::from_le_bytes(
-        account_data[data_len_offset..data_len_offset + DATA_LEN_LEN]
+        account_data[data_len_offset..data_len_offset.saturating_add(DATA_LEN_LEN)]
             .try_into()
             .map_err(|_| "anchor idl data length decode failed".to_string())?,
     ) as usize;
     let data_start = HEADER_LEN;
-    let data_end = data_start + data_len;
+    let data_end = data_start.saturating_add(data_len);
     if account_data.len() < data_end {
         return Err(format!(
             "anchor idl account truncated: {} bytes (need >= {})",

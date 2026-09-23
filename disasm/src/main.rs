@@ -41,10 +41,10 @@ fn prefer_symbol_name(a: &str, b: &str) -> String {
     let score = |s: &str| -> i32 {
         let mut sc = s.len() as i32;
         if s.contains("::") {
-            sc += 100;
+            sc = sc.saturating_add(100);
         }
         if s.starts_with('.') {
-            sc -= 30;
+            sc = sc.saturating_sub(30);
         }
         sc
     };
@@ -122,7 +122,7 @@ impl TextFnSymbols {
         entries.sort_by_key(|e| e.0);
 
         for i in 0..entries.len() {
-            let next_start = entries.get(i + 1).map(|e| e.0).unwrap_or(text_end);
+            let next_start = entries.get(i.saturating_add(1)).map(|e| e.0).unwrap_or(text_end);
             let (start, sz, _) = &entries[i];
             let own_end = start.saturating_add(*sz).max(start.saturating_add(insn_sz));
             let end = next_start.min(own_end).max(start.saturating_add(insn_sz));
@@ -146,7 +146,7 @@ impl TextFnSymbols {
         if i == 0 {
             return None;
         }
-        let (start, end, name) = &self.spans[i - 1];
+        let (start, end, name) = &self.spans[i.saturating_sub(1)];
         if vma >= *start && vma < *end {
             Some(name.as_str())
         } else {
@@ -627,8 +627,10 @@ fn build_block_starts(rows: &[LiftRow]) -> Vec<u64> {
         if let Some(t) = row.jump_target {
             leaders.insert(t);
         }
-        if (row.is_cond_jump || row.is_uncond_jump || row.is_exit) && i + 1 < rows.len() {
-            leaders.insert(rows[i + 1].pc);
+        if (row.is_cond_jump || row.is_uncond_jump || row.is_exit)
+            && i.saturating_add(1) < rows.len()
+        {
+            leaders.insert(rows[i.saturating_add(1)].pc);
         }
     }
     leaders.into_iter().collect()
@@ -821,7 +823,7 @@ fn build_lifted_blocks_json(lift_rows: &[LiftRow]) -> Map<String, Value> {
     let leaders = build_block_starts(lift_rows);
 
     for (i, start) in leaders.iter().enumerate() {
-        let end_exclusive = leaders.get(i + 1).copied().unwrap_or(u64::MAX);
+        let end_exclusive = leaders.get(i.saturating_add(1)).copied().unwrap_or(u64::MAX);
         let block_rows: Vec<&LiftRow> = lift_rows
             .iter()
             .filter(|r| r.pc >= *start && r.pc < end_exclusive)

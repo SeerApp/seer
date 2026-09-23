@@ -29,7 +29,6 @@ impl Tracer {
             .as_ref()
             .expect("Get current program address before invoke context")
             .get_last_receiver()
-            .clone()
     }
 
     /// True when a program is already running (next `start_program` is a CPI).

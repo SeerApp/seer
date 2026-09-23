@@ -2,7 +2,7 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
-    path::PathBuf,
+    path::Path,
     sync::{mpsc, Arc, Mutex},
 };
 
@@ -26,8 +26,8 @@ impl super::types::GlobalProgramContext {
     /// `dwarf_compile_dir` — root of the tree referenced by paths embedded in DWARF (the build
     /// workspace). Used with `runtime_dir` when resolving sources at runtime.
     pub fn init(
-        runtime_dir: &PathBuf,
-        dwarf_compile_dir: &PathBuf,
+        runtime_dir: &Path,
+        dwarf_compile_dir: &Path,
         network_rpc_url: Option<String>,
         file_writer: Arc<Mutex<AtomicFileWriter>>,
     ) -> Result<Self, IrrecoverableError> {
@@ -37,7 +37,8 @@ impl super::types::GlobalProgramContext {
 
         let target_dir = runtime_dir.join("target");
         let targets = get_targets(&target_dir)?;
-        let path_resolver = PathResolver::new(dwarf_compile_dir.clone(), runtime_dir.clone());
+        let path_resolver =
+            PathResolver::new(dwarf_compile_dir.to_path_buf(), runtime_dir.to_path_buf());
         let file_writer_guard = file_writer
             .lock()
             .expect("file writer lock should not be poisoned");
@@ -91,7 +92,10 @@ impl super::types::GlobalProgramContext {
                         existing.entrypoint_lookup = new_entrypoint_lookup.map(Arc::new);
                     }
                     if existing.idl_lookup.is_none() && new_idl_lookup.is_some() {
-                        existing.idl_lookup = new_idl_lookup.map(Arc::new);
+                        #[allow(clippy::arc_with_non_send_sync)]
+                        {
+                            existing.idl_lookup = new_idl_lookup.map(Arc::new);
+                        }
                     }
                 }
                 Entry::Vacant(vacant) => {
@@ -171,6 +175,7 @@ impl super::types::GlobalProgramContext {
 
         match super::utils::fetch_anchor_idl_lookup_from_rpc(rpc_url, key) {
             Ok(idl_lookup) => {
+                #[allow(clippy::arc_with_non_send_sync)]
                 let idl_lookup = Arc::new(idl_lookup);
                 let mut guard = self
                     .inner

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use solana_instruction::error::InstructionError;
@@ -7,6 +7,7 @@ use solana_pubkey::Pubkey;
 use crate::{artifacts::AtomicFileWriter, tree::nodes::account::TreeAccount};
 
 #[derive(Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExecutionEvent {
     StartProgram(Pubkey),
     EndProgram(Option<InstructionError>),
@@ -38,7 +39,7 @@ impl Analysis {
         file_writer.save_loose_json_if_missing(&data, &filename, "json", false);
     }
 
-    pub fn load(folder: &PathBuf, sig: String, instruction: u8) -> Self {
+    pub fn load(folder: &Path, sig: String, instruction: u8) -> Self {
         let path = folder.join(format!("analysis_{}_{}.json", sig, instruction));
 
         let events = if path.is_file() {

@@ -60,17 +60,17 @@ impl<'a> GuestFetch<AccountInfoFlat> for AccountInfoRepr {
         let raw: Self = fetch(mem, addr, Self::size_of() as u64);
 
         let lamports_rc_inner_ptr: u64 = raw.lamports_ptr;
-        let lamports_refcell_ptr = lamports_rc_inner_ptr + 2 * 8;
-        let lamports_ref_ptr: u64 = fetch(mem, lamports_refcell_ptr + 8, 8);
+        let lamports_refcell_ptr = lamports_rc_inner_ptr.saturating_add(2 * 8);
+        let lamports_ref_ptr: u64 = fetch(mem, lamports_refcell_ptr.saturating_add(8), 8);
         let lamports: u64 = fetch(mem, lamports_ref_ptr, 8);
 
         let data_rc_inner_ptr: u64 = raw.data_ptr;
-        let data_refcell_ptr = data_rc_inner_ptr + 2 * 8;
-        let data_slice_ptr: u64 = fetch(mem, data_refcell_ptr + 8, 8);
-        let data_slice_len: u64 = fetch(mem, data_refcell_ptr + 16, 8);
+        let data_refcell_ptr = data_rc_inner_ptr.saturating_add(2 * 8);
+        let data_slice_ptr: u64 = fetch(mem, data_refcell_ptr.saturating_add(8), 8);
+        let data_slice_len: u64 = fetch(mem, data_refcell_ptr.saturating_add(16), 8);
 
         let data_bytes: Vec<u8> = (0..data_slice_len)
-            .map(|i| fetch(mem, data_slice_ptr + i, 1))
+            .map(|i| fetch(mem, data_slice_ptr.saturating_add(i), 1))
             .collect();
 
         #[allow(deprecated)]

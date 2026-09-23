@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use seer_core::{
     analysis::{Analysis, ExecutionEvent},
@@ -67,15 +67,15 @@ pub fn anchor_idl_golden_dir() -> PathBuf {
 }
 
 pub fn _run_tx(
-    analysis_root: &PathBuf,
+    analysis_root: &Path,
     fee_payer: Pubkey,
     index: u8,
-    signature: &String,
+    signature: &str,
     global_program_context: &GlobalProgramContext,
 ) -> TreeRoot<RootViewChildren> {
     let mut tracer = Tracer::new(fee_payer);
 
-    let analysis_trace = Analysis::load(analysis_root, signature.clone(), index);
+    let analysis_trace = Analysis::load(analysis_root, signature.to_string(), index);
 
     let mut trace_order = 0u64;
 
@@ -92,7 +92,7 @@ pub fn _run_tx(
             ExecutionEvent::Log(log) => tracer.log(&log, trace_order),
             ExecutionEvent::Step(step) => {
                 tracer.step(global_program_context, step, trace_order);
-                trace_order += 1;
+                trace_order = trace_order.saturating_add(1);
             }
         }
     }

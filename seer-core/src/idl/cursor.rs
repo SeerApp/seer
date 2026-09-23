@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Cursor<'a> {
     buf: &'a [u8],
     pos: usize,
@@ -25,20 +26,12 @@ impl<'a> Cursor<'a> {
         self.pos
     }
 
-    pub fn clone(&self) -> Self {
-        Self {
-            buf: self.buf,
-            pos: self.pos,
-            base_offset: self.base_offset,
-        }
-    }
-
     pub fn absolute_pos(&self) -> usize {
-        self.base_offset + self.pos
+        self.base_offset.saturating_add(self.pos)
     }
 
     pub fn peek(&self, n: usize) -> Option<&[u8]> {
-        let end = self.pos + n;
+        let end = self.pos.checked_add(n)?;
         if end > self.buf.len() {
             return None;
         }
@@ -46,7 +39,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn take(&mut self, n: usize) -> Option<&[u8]> {
-        let end = self.pos + n;
+        let end = self.pos.checked_add(n)?;
         if end > self.buf.len() {
             return None;
         }
@@ -56,12 +49,11 @@ impl<'a> Cursor<'a> {
     }
 
     /// Like [`Self::take`], but runs `on_none` with the number of bytes remaining when the buffer is too short.
-    pub fn take_or_else<'b>(
-        &'b mut self,
-        n: usize,
-        on_none: impl FnOnce(usize),
-    ) -> Option<&'b [u8]> {
-        let end = self.pos + n;
+    pub fn take_or_else(&mut self, n: usize, on_none: impl FnOnce(usize)) -> Option<&[u8]> {
+        let Some(end) = self.pos.checked_add(n) else {
+            on_none(self.remaining());
+            return None;
+        };
         if end > self.buf.len() {
             let rem = self.remaining();
             on_none(rem);
@@ -90,7 +82,7 @@ impl<'a> Cursor<'a> {
         let new_pos = if offset >= 0 {
             offset
         } else {
-            len + offset // from end
+            len.saturating_add(offset)
         };
 
         self.pos = new_pos.clamp(0, len) as usize;
@@ -103,7 +95,7 @@ impl<'a> Cursor<'a> {
     /// Returns `false` if the new position would fall outside the buffer.
     pub fn set_pos_relative_from(&mut self, offset: i32, from: usize) -> bool {
         let len = self.buf.len() as i32;
-        let new_pos = from as i32 + offset;
+        let new_pos = (from as i32).saturating_add(offset);
 
         if new_pos < 0 || new_pos > len {
             return false;

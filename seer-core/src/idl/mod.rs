@@ -11,7 +11,7 @@ use crate::idl::types::{ParsedAccount, ParsedInstruction};
 use crate::target_reader::Target;
 use crate::tree::nodes::root::{RootChildren, TreeRoot};
 use solana_instruction_error::InstructionError;
-use std::{fs, path::PathBuf};
+use std::{fs, path::Path};
 use thiserror::Error;
 
 pub trait IdlTreeParser {
@@ -68,9 +68,9 @@ pub enum IdlLoadError {
 
 impl IdlLookup {
     pub fn new(idl_json: &str, source_label: &str) -> Result<Self, IdlLoadError> {
-        match AnchorIdlLookup::from_json_str(&idl_json) {
+        match AnchorIdlLookup::from_json_str(idl_json) {
             Ok(anchor) => Ok(Self::Anchor(anchor)),
-            Err(anchor_err) => match CodamaIdlLookup::from_json_str(&idl_json) {
+            Err(anchor_err) => match CodamaIdlLookup::from_json_str(idl_json) {
                 Ok(codama) => Ok(Self::Codama(codama)),
                 Err(codama_err) => Err(IdlLoadError::Warning(format!(
                     "The provided IDL source \"{}\" could not be parsed into either Anchor v0.30.0+ or Codama IDL. \
@@ -81,7 +81,7 @@ impl IdlLookup {
         }
     }
 
-    pub fn new_from_path(idl_path: &PathBuf) -> Result<Self, IdlLoadError> {
+    pub fn new_from_path(idl_path: &Path) -> Result<Self, IdlLoadError> {
         let idl_json = fs::read_to_string(idl_path).map_err(|err| {
             IdlLoadError::Irrecoverable(IrrecoverableError::IdlFileOpen {
                 filename: idl_path.to_string_lossy().to_string(),

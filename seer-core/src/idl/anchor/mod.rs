@@ -118,7 +118,7 @@ impl AnchorIdlLookup {
         Ok(Self { idl })
     }
 
-    fn get_account_names(&self, accounts: &Vec<IdlInstructionAccountItem>) -> Vec<String> {
+    fn get_account_names(&self, accounts: &[IdlInstructionAccountItem]) -> Vec<String> {
         let mut account_names = vec![];
 
         for ax in accounts {

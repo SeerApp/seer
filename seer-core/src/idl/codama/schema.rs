@@ -107,7 +107,7 @@ pub fn analyze_codama_program(
         let n = runtime_args.len();
         let mut ok = true;
         for (i, arg) in runtime_args.iter().enumerate() {
-            let last = i + 1 == n;
+            let last = i.saturating_add(1) == n;
             let loc = SchemaLoc::Instruction {
                 instruction: ix_name.clone(),
                 path: vec![arg.name.to_string()],
@@ -133,7 +133,7 @@ pub fn analyze_codama_program(
         let n = inner.fields.len();
         let mut ok = true;
         for (i, field) in inner.fields.iter().enumerate() {
-            let last = i + 1 == n;
+            let last = i.saturating_add(1) == n;
             let loc = SchemaLoc::Account {
                 account: acc_name.clone(),
                 path: vec![field.name.to_string()],
@@ -190,7 +190,7 @@ fn validate_type_tree(
         TypeNode::Struct(s) => {
             let n = s.fields.len();
             for (i, field) in s.fields.iter().enumerate() {
-                let last_sib = i + 1 == n;
+                let last_sib = i.saturating_add(1) == n;
                 let floc = push_loc_path(&loc, field.name.to_string());
                 if !validate_type_tree(&field.r#type, defined_types, last_sib && is_last, floc) {
                     return false;
@@ -201,7 +201,7 @@ fn validate_type_tree(
         TypeNode::Tuple(t) => {
             let n = t.items.len();
             for (i, item) in t.items.iter().enumerate() {
-                let last_sib = i + 1 == n;
+                let last_sib = i.saturating_add(1) == n;
                 let iloc = push_loc_path(&loc, i.to_string());
                 if !validate_type_tree(item, defined_types, last_sib && is_last, iloc) {
                     return false;
@@ -229,7 +229,7 @@ fn validate_type_tree(
                         let st = ev.r#struct.get_nested_type_node();
                         let n = st.fields.len();
                         for (i, field) in st.fields.iter().enumerate() {
-                            let last_sib = i + 1 == n;
+                            let last_sib = i.saturating_add(1) == n;
                             let floc = push_loc_path(&variant_loc, field.name.to_string());
                             if !validate_type_tree(
                                 &field.r#type,
@@ -246,7 +246,7 @@ fn validate_type_tree(
                         let tup = ev.tuple.get_nested_type_node();
                         let n = tup.items.len();
                         for (i, item) in tup.items.iter().enumerate() {
-                            let last_sib = i + 1 == n;
+                            let last_sib = i.saturating_add(1) == n;
                             let iloc = push_loc_path(&variant_loc, i.to_string());
                             if !validate_type_tree(item, defined_types, last_sib && is_last, iloc) {
                                 return false;

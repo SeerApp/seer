@@ -17,8 +17,8 @@ pub struct TxMetadata {
     data: TxData,
 }
 
-impl TxMetadata {
-    pub fn default() -> Self {
+impl Default for TxMetadata {
+    fn default() -> Self {
         Self {
             version: 1,
             data: TxData {
@@ -26,6 +26,9 @@ impl TxMetadata {
             },
         }
     }
+}
+
+impl TxMetadata {
 
     pub fn push_warning(&mut self, warning: impl Into<String>) {
         self.data.notes.warnings.push(warning.into());

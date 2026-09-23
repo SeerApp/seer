@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct PathResolver {
@@ -16,13 +16,13 @@ impl PathResolver {
         }
     }
 
-    pub fn relative_path_to_runtime_path(&self, relative_path: &PathBuf) -> PathBuf {
+    pub fn relative_path_to_runtime_path(&self, relative_path: &Path) -> PathBuf {
         self.runtime_dir.join(relative_path)
     }
 
-    pub fn dwarf_path_to_relative_path(&self, dwarf_path: &PathBuf) -> anyhow::Result<PathBuf> {
+    pub fn dwarf_path_to_relative_path(&self, dwarf_path: &Path) -> anyhow::Result<PathBuf> {
         Ok(dwarf_path
-            .strip_prefix(self.compile_dir.clone())
+            .strip_prefix(&self.compile_dir)
             .map_err(|e| {
                 anyhow::anyhow!(
                     "DWARF path {:?} does not correspond to compile directory {:?}: {}",
@@ -34,22 +34,22 @@ impl PathResolver {
             .to_path_buf())
     }
 
-    pub fn dwarf_path_to_runtime_path(&self, dwarf_path: &PathBuf) -> anyhow::Result<PathBuf> {
+    pub fn dwarf_path_to_runtime_path(&self, dwarf_path: &Path) -> anyhow::Result<PathBuf> {
         Ok(self.relative_path_to_runtime_path(&self.dwarf_path_to_relative_path(dwarf_path)?))
     }
 
-    pub fn runtime_path_to_relative_path(&self, runtime_path: &PathBuf) -> PathBuf {
+    pub fn runtime_path_to_relative_path(&self, runtime_path: &Path) -> PathBuf {
         runtime_path
-            .strip_prefix(self.runtime_dir.clone())
+            .strip_prefix(&self.runtime_dir)
             .expect("Runtime path does not correspond to runtime directory")
             .to_path_buf()
     }
 
-    pub fn compile_dir(&self) -> &PathBuf {
+    pub fn compile_dir(&self) -> &Path {
         &self.compile_dir
     }
 
-    pub fn runtime_dir(&self) -> &PathBuf {
+    pub fn runtime_dir(&self) -> &Path {
         &self.runtime_dir
     }
 }

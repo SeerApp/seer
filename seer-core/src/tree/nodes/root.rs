@@ -42,6 +42,7 @@ impl<C: PartialEq> PartialEq for TreeRoot<C> {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum RootChildren {
     Entrypoint(TreeEntrypoint<EntrypointChildren>),
     Log(TreeLog),
@@ -51,6 +52,7 @@ pub enum RootChildren {
 }
 
 #[derive(Serialize, Deserialize, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum RootViewChildren {
     Invoke(TreeRoot<RootViewChildren>),
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
@@ -62,7 +64,7 @@ pub enum RootViewChildren {
 impl TreeRoot<RootChildren> {
     pub fn clone_into_view(
         source_index: usize,
-        source_roots: &Vec<TreeRoot<RootChildren>>,
+        source_roots: &[TreeRoot<RootChildren>],
     ) -> TreeRoot<RootViewChildren> {
         let root = &source_roots[source_index];
 
@@ -80,7 +82,7 @@ impl TreeRoot<RootChildren> {
             match child {
                 RootChildren::Entrypoint(e) => {
                     tree_view.children.push(RootViewChildren::Entrypoint(
-                        TreeEntrypoint::clone_into_view(&e, source_roots),
+                        TreeEntrypoint::clone_into_view(e, source_roots),
                     ));
                 }
                 RootChildren::Invoke { tree_index, .. } => {

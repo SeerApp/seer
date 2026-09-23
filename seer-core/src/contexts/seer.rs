@@ -200,6 +200,8 @@ impl SeerContext {
             .close_account_backdoor_idempotent();
     }
 
+    /// # Safety
+    /// `bd` must remain valid until the matching `end_program` closes the account backdoor.
     pub unsafe fn start_program(
         &mut self,
         accounts: Vec<Pubkey>,

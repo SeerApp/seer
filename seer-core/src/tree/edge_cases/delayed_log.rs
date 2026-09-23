@@ -5,6 +5,12 @@ pub struct DelayedLogEdgeCase {
     last_known_entrypoint: Option<TreeEntrypoint<EntrypointChildren>>,
 }
 
+impl Default for DelayedLogEdgeCase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DelayedLogEdgeCase {
     pub fn new() -> Self {
         Self {

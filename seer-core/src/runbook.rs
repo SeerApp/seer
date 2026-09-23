@@ -14,7 +14,7 @@ struct ProgramArtifact {
     so_rel_path: String,
 }
 
-pub fn generate_runbooks(authority: Pubkey, runtime_dir: &PathBuf) -> Option<(String, String)> {
+pub fn generate_runbooks(authority: Pubkey, runtime_dir: &Path) -> Option<(String, String)> {
     let deploy_dir = runtime_dir.join("target").join("deploy");
 
     if !deploy_dir.is_dir() {

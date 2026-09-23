@@ -16,6 +16,12 @@ use super::layout::staging_path_for;
 /// Owned by [`crate::contexts::seer::SeerContext`] (shared with the disasm worker via `Arc<Mutex<_>>`).
 pub struct AtomicFileWriter;
 
+impl Default for AtomicFileWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AtomicFileWriter {
     pub fn new() -> Self {
         Self

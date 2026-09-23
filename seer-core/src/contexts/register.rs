@@ -61,6 +61,12 @@ pub struct RegisterContext {
     invocations: Vec<RegisterTraceInvocation>,
 }
 
+impl Default for RegisterContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RegisterContext {
     pub fn new() -> Self {
         Self {
@@ -119,7 +125,35 @@ impl RegisterContext {
             Some(call_depth)
         };
 
-        if layer.rx.is_none() {
+        if let Some(rx) = layer.rx.as_mut() {
+            let reg_delta = layer.previous.and_then(|p| changed_registers(&p, &current));
+
+            let prev_key = order.saturating_sub(1);
+            if let Some(entry) = rx.trace.get_mut(&prev_key) {
+                entry.reg = reg_delta;
+                entry.call_depth = call_depth_entry;
+            } else {
+                #[cfg(debug_assertions)]
+                panic!("register trace missing attribution row {prev_key} for hook order {order}");
+                #[cfg(not(debug_assertions))]
+                rx.trace.insert(
+                    prev_key,
+                    RegisterTraceEntry {
+                        pc,
+                        reg: reg_delta,
+                        call_depth: call_depth_entry,
+                    },
+                );
+            }
+            rx.trace.insert(
+                order,
+                RegisterTraceEntry {
+                    pc,
+                    reg: None,
+                    call_depth: None,
+                },
+            );
+        } else {
             let mut trace = BTreeMap::new();
 
             if let Some((stub_order, stub_pc)) = layer.cross_chunk_stub.take() {
@@ -159,35 +193,6 @@ impl RegisterContext {
                 min_order: trace.first_key_value().map(|(&k, _)| k).unwrap_or(order),
                 trace,
             });
-        } else {
-            let reg_delta = layer.previous.and_then(|p| changed_registers(&p, &current));
-
-            let rx = layer.rx.as_mut().expect("rx");
-            let prev_key = order.saturating_sub(1);
-            if let Some(entry) = rx.trace.get_mut(&prev_key) {
-                entry.reg = reg_delta;
-                entry.call_depth = call_depth_entry;
-            } else {
-                #[cfg(debug_assertions)]
-                panic!("register trace missing attribution row {prev_key} for hook order {order}");
-                #[cfg(not(debug_assertions))]
-                rx.trace.insert(
-                    prev_key,
-                    RegisterTraceEntry {
-                        pc,
-                        reg: reg_delta,
-                        call_depth: call_depth_entry,
-                    },
-                );
-            }
-            rx.trace.insert(
-                order,
-                RegisterTraceEntry {
-                    pc,
-                    reg: None,
-                    call_depth: None,
-                },
-            );
         }
 
         let roll = {
@@ -197,7 +202,7 @@ impl RegisterContext {
             layer
                 .rx
                 .as_ref()
-                .is_some_and(|rx| rx.trace.len() >= (REGISTER_TRACE_CHUNK_SIZE as usize) + 1)
+                .is_some_and(|rx| rx.trace.len() > (REGISTER_TRACE_CHUNK_SIZE as usize))
         };
         if roll {
             self.flush_for_roll()
@@ -264,7 +269,7 @@ fn serialize_registers(registers: &[u64]) -> BTreeMap<usize, String> {
 
 fn update_call_depth(frame_stack: &mut Vec<u64>, frame_ptr: u64) -> u32 {
     if let Some(pos) = frame_stack.iter().rposition(|fp| *fp == frame_ptr) {
-        frame_stack.truncate(pos + 1);
+        frame_stack.truncate(pos.saturating_add(1));
     } else {
         frame_stack.push(frame_ptr);
     }

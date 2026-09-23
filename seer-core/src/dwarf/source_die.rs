@@ -102,6 +102,8 @@ fn find_unit_by_offset<R: Reader>(
         let unit_start = header.offset().as_debug_info_offset().unwrap();
 
         if offset.0 >= unit_start.0 {
+            // Offset is gimli's associated integer; no saturating ops on the trait.
+            #[allow(clippy::arithmetic_side_effects)]
             let relative_offset = offset.0 - unit_start.0;
             if relative_offset < header.length_including_self() {
                 let unit_offset = UnitOffset(relative_offset);
@@ -216,6 +218,8 @@ impl SourceDieTrace {
         let unit_offset = die.offset();
         let header_offset = unit.header.offset().as_debug_info_offset().unwrap().0;
 
+        // Offset is gimli's associated integer; no saturating ops on the trait.
+        #[allow(clippy::arithmetic_side_effects)]
         let absolute_offset = header_offset + unit_offset.0;
         let offset = absolute_offset.into_u64();
         let tag = die.tag();
@@ -253,7 +257,14 @@ impl SourceDieTrace {
 
         let mut children = entries_tree_node.children();
         while let Some(child) = children.next().ok().unwrap() {
-            self.build(sources, dwarf, unit, child, next_parent_offset, depth + 1);
+            self.build(
+                sources,
+                dwarf,
+                unit,
+                child,
+                next_parent_offset,
+                depth.saturating_add(1),
+            );
         }
     }
 

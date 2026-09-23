@@ -46,7 +46,7 @@ fn take_bytes<'a, 'b>(
 }
 
 pub fn get_parsed_arg_value<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     arg: &IdlField,
     cursor: &mut Cursor<'a>,
 ) -> Option<ParsedArgValue> {
@@ -54,7 +54,7 @@ pub fn get_parsed_arg_value<'a>(
 }
 
 fn get_parsed_arg_value_from_ty<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     ty: &IdlType,
     cursor: &mut Cursor<'a>,
     mut generics_maps: HashMap<String, GenericHolder>,
@@ -277,7 +277,7 @@ fn get_parsed_arg_value_from_ty<'a>(
 }
 
 pub fn get_idl_type_def_ty<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
     ty: &IdlTypeDefTy,
@@ -285,7 +285,7 @@ pub fn get_idl_type_def_ty<'a>(
     match ty {
         IdlTypeDefTy::Struct { fields } => get_struct(types, fields, cursor, generics_maps),
         IdlTypeDefTy::Enum { variants } => {
-            for v in variants {
+            if let Some(v) = variants.iter().next() {
                 let value = if v.fields.is_none() {
                     ViewEnumValue::Empty
                 } else if let Some(parsed_arg_value) =
@@ -315,7 +315,7 @@ pub fn get_idl_type_def_ty<'a>(
 }
 
 fn get_listed_values<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
     ty: &IdlType,
@@ -430,7 +430,7 @@ fn get_parsed_arg_value_from_constant(constant: &ConstHolder) -> Option<ParsedAr
 }
 
 fn resolve_generic<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,
     generic: &String,
@@ -444,7 +444,7 @@ fn resolve_generic<'a>(
 }
 
 fn get_struct<'a>(
-    types: &Vec<IdlTypeDef>,
+    types: &[IdlTypeDef],
     fields: &Option<IdlDefinedFields>,
     cursor: &mut Cursor<'a>,
     generics_maps: &HashMap<String, GenericHolder>,

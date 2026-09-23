@@ -21,7 +21,10 @@ impl<T> LookupNode<T> {
             return None;
         }
 
-        let mut points: Vec<u64> = intervals.iter().map(|i| (i.begin + i.end) / 2).collect();
+        let mut points: Vec<u64> = intervals
+            .iter()
+            .map(|i| i.begin.saturating_add(i.end) / 2)
+            .collect();
         points.sort();
         let center = points[points.len() / 2];
 
@@ -40,8 +43,8 @@ impl<T> LookupNode<T> {
         }
 
         Some(Box::new(LookupNode {
-            center: center,
-            overlaps: overlaps,
+            center,
+            overlaps,
             left: LookupNode::<T>::build(left),
             right: LookupNode::<T>::build(right),
         }))
@@ -54,17 +57,16 @@ impl<T: Clone> LookupNode<T> {
         let mut best: Option<&LookupInterval<T>> = None;
 
         for iv in &self.overlaps {
-            if iv.begin <= pc_lookup && pc_lookup < iv.end {
-                if best.map_or(true, |b| iv.depth > b.depth) {
+            if iv.begin <= pc_lookup && pc_lookup < iv.end
+                && best.is_none_or(|b| iv.depth > b.depth) {
                     best = Some(iv);
                 }
-            }
         }
 
         if pc_lookup < self.center {
             if let Some(left) = &self.left {
                 if let Some(candidate) = left.search_deepest(pc) {
-                    if best.map_or(true, |b| candidate.depth > b.depth) {
+                    if best.is_none_or(|b| candidate.depth > b.depth) {
                         best = Some(candidate);
                     }
                 }
@@ -72,7 +74,7 @@ impl<T: Clone> LookupNode<T> {
         } else if pc_lookup > self.center {
             if let Some(right) = &self.right {
                 if let Some(candidate) = right.search_deepest(pc) {
-                    if best.map_or(true, |b| candidate.depth > b.depth) {
+                    if best.is_none_or(|b| candidate.depth > b.depth) {
                         best = Some(candidate);
                     }
                 }

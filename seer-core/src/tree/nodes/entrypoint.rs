@@ -29,6 +29,7 @@ pub struct TreeEntrypoint<C> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum EntrypointChildren {
     Entrypoint(TreeEntrypoint<EntrypointChildren>),
     FnCall(TreeFnCall<FnCallChildren>),
@@ -45,6 +46,7 @@ impl PartialEq for TreeEntrypoint<EntrypointChildren> {
 }
 
 #[derive(Serialize, Deserialize, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum EntrypointViewChildren {
     Invoke(TreeRoot<RootViewChildren>),
     Entrypoint(TreeEntrypoint<EntrypointViewChildren>),
@@ -63,7 +65,7 @@ impl PartialEq for TreeEntrypoint<EntrypointViewChildren> {
 impl TreeEntrypoint<EntrypointChildren> {
     pub fn clone_into_view(
         &self,
-        source_roots: &Vec<TreeRoot<RootChildren>>,
+        source_roots: &[TreeRoot<RootChildren>],
     ) -> TreeEntrypoint<EntrypointViewChildren> {
         let mut tree_view: TreeEntrypoint<EntrypointViewChildren> = TreeEntrypoint {
             step_order: self.step_order,
@@ -77,11 +79,11 @@ impl TreeEntrypoint<EntrypointChildren> {
             match child {
                 EntrypointChildren::Entrypoint(e) => {
                     tree_view.children.push(EntrypointViewChildren::Entrypoint(
-                        TreeEntrypoint::clone_into_view(&e, source_roots),
+                        TreeEntrypoint::clone_into_view(e, source_roots),
                     ));
                 }
                 EntrypointChildren::FnCall(f) => tree_view.children.push(
-                    EntrypointViewChildren::FnCall(TreeFnCall::clone_into_view(&f, source_roots)),
+                    EntrypointViewChildren::FnCall(TreeFnCall::clone_into_view(f, source_roots)),
                 ),
                 EntrypointChildren::Invoke { tree_index, .. } => {
                     tree_view.children.push(EntrypointViewChildren::Invoke(
@@ -156,41 +158,33 @@ impl TreeEntrypoint<EntrypointChildren> {
         let step_order = self.step_order;
 
         while let Some(source_die) = call_trace.pop_front() {
-            match source_die.source_type {
-                SourceDieType::Fn => {
-                    if let Some(c) = source_die.loc.call {
-                        fn_calls.push(TreeFnCall {
-                            step_order,
-                            instruction,
-                            signature: source_die.loc.signature,
-                            loc: c,
-                            children: vec![],
-                        });
-                    }
+            if let SourceDieType::Fn = source_die.source_type {
+                if let Some(c) = source_die.loc.call {
+                    fn_calls.push(TreeFnCall {
+                        step_order,
+                        instruction,
+                        signature: source_die.loc.signature,
+                        loc: c,
+                        children: vec![],
+                    });
                 }
-                _ => {}
             }
         }
 
-        self.grow(instruction, &fn_calls, 0);
+        self.grow(&fn_calls, 0);
     }
 
-    fn grow(
-        &mut self,
-        instruction: u64,
-        call_trace: &Vec<TreeFnCall<FnCallChildren>>,
-        counter: usize,
-    ) {
+    fn grow(&mut self, call_trace: &[TreeFnCall<FnCallChildren>], counter: usize) {
         let Some(mut tree_fn_call) = call_trace.get(counter).cloned() else {
             return;
         };
 
         match self.children.last_mut() {
             Some(EntrypointChildren::FnCall(f)) if *f == tree_fn_call => {
-                f.grow(instruction, call_trace, counter + 1);
+                f.grow(call_trace, counter.saturating_add(1));
             }
             _ => {
-                tree_fn_call.grow(instruction, call_trace, counter + 1);
+                tree_fn_call.grow(call_trace, counter.saturating_add(1));
                 self.children.push(EntrypointChildren::FnCall(tree_fn_call));
             }
         }

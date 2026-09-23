@@ -49,7 +49,7 @@ impl IdlTreeParser for CodamaIdlLookup {
                 &argument.r#type,
                 &mut cur,
                 &self.root_node.program.defined_types,
-                idx + 1 == arg_count,
+                idx.saturating_add(1) == arg_count,
                 None,
             );
 
@@ -232,7 +232,7 @@ impl CodamaIdlLookup {
         let slice = &data[offset..];
         let mut cur = Cursor::new(slice);
         get_parsed_arg_value(ty, &mut cur, defined_types, is_last, None)
-            .map_or(false, |parsed| cmp(&parsed))
+            .is_some_and(|parsed| cmp(&parsed))
     }
 
     fn discriminator_matches<'a, F>(
@@ -256,9 +256,8 @@ impl CodamaIdlLookup {
             ),
             DiscriminatorNode::Field(node) => {
                 let field_name = node.name.to_string();
-                let (ty, cmp) = match resolve_field(&field_name) {
-                    Some(v) => v,
-                    None => return false,
+                let Some((ty, cmp)) = resolve_field(&field_name) else {
+                    return false;
                 };
                 self.parse_at_offset_matches(data, node.offset, is_last, ty, move |parsed| {
                     cmp(parsed)

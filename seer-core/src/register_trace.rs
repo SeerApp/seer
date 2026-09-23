@@ -262,13 +262,13 @@ impl RegisterTraceCollector {
 
         if skip_redundant_snapshot_row {
             self.last_hook_pc = Some(pc);
-            self.records_this_chunk += 1;
+            self.records_this_chunk = self.records_this_chunk.saturating_add(1);
             return completed;
         }
 
         chunk.push(order, trace_pc, reg);
         self.last_hook_pc = Some(pc);
-        self.records_this_chunk += 1;
+        self.records_this_chunk = self.records_this_chunk.saturating_add(1);
 
         completed
     }
@@ -285,7 +285,7 @@ impl RegisterTraceCollector {
 
 fn update_call_depth(frame_stack: &mut Vec<u64>, frame_ptr: u64) -> u32 {
     if let Some(pos) = frame_stack.iter().rposition(|fp| *fp == frame_ptr) {
-        frame_stack.truncate(pos + 1);
+        frame_stack.truncate(pos.saturating_add(1));
     } else {
         frame_stack.push(frame_ptr);
     }
@@ -341,7 +341,7 @@ mod tests {
     fn regs(seed: u64) -> [u64; REGISTER_COUNT] {
         let mut reg = [0; REGISTER_COUNT];
         for (index, slot) in reg.iter_mut().enumerate() {
-            *slot = seed + index as u64;
+            *slot = seed.saturating_add(index as u64);
         }
         reg
     }
@@ -405,28 +405,28 @@ mod tests {
 
         for order in 0..REGISTER_TRACE_CHUNK_SIZE as u64 {
             if order == 500 {
-                reg[1] += 1;
+                reg[1] = reg[1].saturating_add(1);
             }
-            let completed = collector.record(order, order + 1000, &reg, UID);
+            let completed = collector.record(order, order.saturating_add(1000), &reg, UID);
             assert!(completed.is_none());
         }
 
-        reg[2] += 7;
+        reg[2] = reg[2].saturating_add(7);
         let completed = collector
             .record(REGISTER_TRACE_CHUNK_SIZE as u64, 9000, &reg, UID)
             .expect("completed chunk");
 
         assert_eq!(completed.tree_uid, UID);
         assert_eq!(completed.min_order, 0);
-        assert_eq!(completed.max_order, REGISTER_TRACE_CHUNK_SIZE as u64 - 1);
-        assert_eq!(completed.chunk.trace.len(), REGISTER_TRACE_CHUNK_SIZE - 1);
+        assert_eq!(completed.max_order, (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_sub(1));
+        assert_eq!(completed.chunk.trace.len(), REGISTER_TRACE_CHUNK_SIZE.saturating_sub(1));
         assert_eq!(completed.chunk.snapshot.reg[&0], "100");
         assert!(!completed.chunk.snapshot.reg.contains_key(&11));
 
         let tail = collector.finalize().expect("tail chunk");
         assert_eq!(tail.tree_uid, UID);
         assert_eq!(tail.min_order, REGISTER_TRACE_CHUNK_SIZE as u64);
-        assert_eq!(tail.max_order, REGISTER_TRACE_CHUNK_SIZE as u64 + 1);
+        assert_eq!(tail.max_order, (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_add(1));
         assert_eq!(tail.chunk.snapshot.reg[&2], reg[2].to_string());
         assert!(!tail.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(tail.chunk.trace.len(), 2);
@@ -440,14 +440,14 @@ mod tests {
         assert_eq!(
             tail.chunk
                 .trace
-                .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
+                .get(&(REGISTER_TRACE_CHUNK_SIZE as u64).saturating_add(1))
                 .map(|r| r.pc),
             Some(9000)
         );
         assert!(tail
             .chunk
             .trace
-            .get(&(REGISTER_TRACE_CHUNK_SIZE as u64 + 1))
+            .get(&(REGISTER_TRACE_CHUNK_SIZE as u64).saturating_add(1))
             .is_some_and(|r| r.reg.is_none()));
     }
 

@@ -97,10 +97,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                 }
             }
             CountNode::Prefixed(prefix) => {
-                let len_raw = match self.get_number_value(prefix.prefix.get_nested_type_node()) {
-                    Some(s) => s,
-                    None => return None,
-                };
+                let len_raw = self.get_number_value(prefix.prefix.get_nested_type_node())?;
                 let Ok(len) = len_raw.parse::<usize>() else {
                     crate::seer_warn!("Codama decode: invalid prefixed count '{}'", len_raw);
                     return None;
@@ -124,9 +121,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                         break;
                     }
 
-                    let Some(decoded) = value else {
-                        return None;
-                    };
+                    let decoded = value?;
                     values.push(decoded);
                 }
             }
@@ -315,17 +310,14 @@ impl<'a> CodamaCursor for Cursor<'a> {
     }
 
     fn get_pubkey_value(&mut self) -> Option<Pubkey> {
-        let slice = match self.take(32) {
-            Some(s) => s,
-            None => {
-                let rem = self.remaining();
-                crate::seer_warn!(
-                    "Codama decode: insufficient bytes for pubkey (need {}, remaining {})",
-                    32,
-                    rem
-                );
-                return None;
-            }
+        let Some(slice) = self.take(32) else {
+            let rem = self.remaining();
+            crate::seer_warn!(
+                "Codama decode: insufficient bytes for pubkey (need {}, remaining {})",
+                32,
+                rem
+            );
+            return None;
         };
         let arr: [u8; 32] = slice.try_into().ok()?;
         Some(Pubkey::new_from_array(arr))
@@ -362,17 +354,14 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
     fn get_string_value(&mut self, origin: &StringTypeNode, len: Option<usize>) -> Option<String> {
         let len = len.unwrap_or(self.remaining());
-        let bytes = match self.take(len) {
-            Some(b) => b,
-            None => {
-                let rem = self.remaining();
-                crate::seer_warn!(
-                    "Codama decode: insufficient bytes for string payload (need {}, remaining {})",
-                    len,
-                    rem
-                );
-                return None;
-            }
+        let Some(bytes) = self.take(len) else {
+            let rem = self.remaining();
+            crate::seer_warn!(
+                "Codama decode: insufficient bytes for string payload (need {}, remaining {})",
+                len,
+                rem
+            );
+            return None;
         };
         Some(match origin.encoding {
             BytesEncoding::Base16 => hex::encode(bytes),
@@ -423,17 +412,14 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
     fn get_bytes_value(&mut self, len: Option<usize>) -> Option<String> {
         let len = len.unwrap_or(self.remaining());
-        let bytes = match self.take(len) {
-            Some(b) => b,
-            None => {
-                let rem = self.remaining();
-                crate::seer_warn!(
-                    "Codama decode: insufficient bytes for bytes payload (need {}, remaining {})",
-                    len,
-                    rem
-                );
-                return None;
-            }
+        let Some(bytes) = self.take(len) else {
+            let rem = self.remaining();
+            crate::seer_warn!(
+                "Codama decode: insufficient bytes for bytes payload (need {}, remaining {})",
+                len,
+                rem
+            );
+            return None;
         };
         Some(hex::encode(bytes))
     }
@@ -444,17 +430,14 @@ impl<'a> CodamaCursor for Cursor<'a> {
         defined_types: &[DefinedTypeNode],
     ) -> Option<ParsedArgValue> {
         let fixed_start_offset = self.absolute_pos();
-        let bytes = match self.take(origin.size) {
-            Some(b) => b,
-            None => {
-                let rem = self.remaining();
-                crate::seer_warn!(
-                    "Codama decode: insufficient bytes for fixedSize slice (need {}, remaining {})",
-                    origin.size,
-                    rem
-                );
-                return None;
-            }
+        let Some(bytes) = self.take(origin.size) else {
+            let rem = self.remaining();
+            crate::seer_warn!(
+                "Codama decode: insufficient bytes for fixedSize slice (need {}, remaining {})",
+                origin.size,
+                rem
+            );
+            return None;
         };
         let mut inner = Cursor::new_with_base(bytes, fixed_start_offset);
         get_parsed_arg_value(&origin.r#type, &mut inner, defined_types, true, None)

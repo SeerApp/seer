@@ -122,7 +122,7 @@ fn decode_hex(hex: &str) -> Vec<u8> {
     assert_eq!(hex.len() % 2, 0, "hex input must have even length");
     (0..hex.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex byte"))
+        .map(|i| u8::from_str_radix(&hex[i..i.saturating_add(2)], 16).expect("valid hex byte"))
         .collect()
 }
 
@@ -327,7 +327,7 @@ fn test_token_2022_instructions_allow_single_and_multiple_discriminators() {
         .find(|ix| {
             ix["discriminators"]
                 .as_array()
-                .map_or(false, |d| d.len() == 1)
+                .is_some_and(|d| d.len() == 1)
         })
         .and_then(|ix| ix["name"].as_str())
         .expect("token-2022 must contain at least one single-discriminator instruction")
@@ -337,7 +337,7 @@ fn test_token_2022_instructions_allow_single_and_multiple_discriminators() {
         .find(|ix| {
             ix["discriminators"]
                 .as_array()
-                .map_or(false, |d| d.len() > 1)
+                .is_some_and(|d| d.len() > 1)
         })
         .and_then(|ix| ix["name"].as_str())
         .expect("token-2022 must contain at least one multi-discriminator instruction")

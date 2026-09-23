@@ -3,7 +3,7 @@ use solana_signer::Signer;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::errors::IrrecoverableError;
@@ -16,15 +16,14 @@ pub struct Target {
     pub idl: Option<PathBuf>,
 }
 
-fn collect_target_bases(dir: &PathBuf, bases: &mut HashSet<String>) {
+fn collect_target_bases(dir: &Path, bases: &mut HashSet<String>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let file_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(s) => s,
-            None => continue,
+        let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
         };
         if let Some(base) = file_name.strip_suffix("-keypair.json") {
             bases.insert(base.to_string());
@@ -38,7 +37,7 @@ fn collect_target_bases(dir: &PathBuf, bases: &mut HashSet<String>) {
     }
 }
 
-pub fn get_targets(target_dir: &PathBuf) -> Result<HashMap<Pubkey, Target>, IrrecoverableError> {
+pub fn get_targets(target_dir: &Path) -> Result<HashMap<Pubkey, Target>, IrrecoverableError> {
     let mut bases: HashSet<String> = HashSet::new();
     let mut targets: HashMap<Pubkey, Target> = HashMap::new();
 

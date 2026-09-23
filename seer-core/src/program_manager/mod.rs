@@ -2,6 +2,7 @@
 
 pub mod entrypoints;
 pub mod known_programs;
+#[allow(clippy::module_inception)]
 pub mod program_manager;
 pub(crate) mod types;
 mod utils;

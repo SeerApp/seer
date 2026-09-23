@@ -8,6 +8,12 @@ pub struct GlobalAccountContext {
     unsafe_account_backdoor: Option<UnsafeAccountBackdoor>,
 }
 
+impl Default for GlobalAccountContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GlobalAccountContext {
     pub fn new() -> Self {
         Self {

@@ -16,6 +16,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::large_enum_variant)]
 enum Pushable {
     Log(TreeLog),
     Account(TreeAccount),
@@ -33,6 +34,12 @@ struct LiveTrace {
 pub struct InvokeContext {
     live_trace: Vec<LiveTrace>,
     trees: Vec<TreeRoot<RootChildren>>,
+}
+
+impl Default for InvokeContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InvokeContext {

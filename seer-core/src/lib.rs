@@ -37,6 +37,12 @@ pub struct SeerSingleton {
     active: bool,
 }
 
+impl Default for SeerSingleton {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SeerSingleton {
     pub fn new() -> Self {
         Self {

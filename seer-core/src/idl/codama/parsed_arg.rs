@@ -224,7 +224,7 @@ pub fn get_view_number_type_node<'a>(
 ) -> Option<ViewNumberTypeNode> {
     Some(ViewNumberTypeNode {
         value: cur.get_number_value(origin)?,
-        format: origin.format.clone(),
+        format: origin.format,
     })
 }
 
@@ -239,7 +239,7 @@ pub fn get_view_struct_type_node<'a>(
 
     for (idx, field) in origin.fields.iter().enumerate() {
         let field_byte_offset = cur.absolute_pos();
-        let field_is_last = is_last && idx + 1 == field_count;
+        let field_is_last = is_last && idx.saturating_add(1) == field_count;
         let value = get_parsed_arg_value(&field.r#type, cur, defined_types, field_is_last, None);
         let Some(value) = value else {
             crate::seer_warn!(
@@ -339,7 +339,7 @@ pub fn get_view_amount_type_node<'a>(
     cur: &mut Cursor<'a>,
 ) -> Option<ViewAmountTypeNode> {
     Some(ViewAmountTypeNode {
-        decimals: origin.decimals.clone(),
+        decimals: origin.decimals,
         unit: origin.unit.clone(),
         number: get_view_number_type_node(origin.number.get_nested_type_node(), cur)?,
     })
@@ -433,7 +433,7 @@ pub fn get_view_date_time_type_node<'a>(
     let number = origin.number.get_nested_type_node();
     Some(ViewDateTimeTypeNode {
         value: cur.get_number_value(number)?,
-        format: number.format.clone(),
+        format: number.format,
     })
 }
 

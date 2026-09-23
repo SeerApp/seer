@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, io, path::PathBuf};
+use std::{collections::HashSet, fs, io, path::{Path, PathBuf}};
 
 use gimli::{Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
@@ -11,6 +11,12 @@ pub struct DwarfManager {
     sections: Option<DwarfSections<Vec<u8>>>,
 }
 
+impl Default for DwarfManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DwarfManager {
     pub fn new() -> Self {
         Self { sections: None }
@@ -20,8 +26,7 @@ impl DwarfManager {
         let sections = self.sections.as_ref()?;
         Some(
             sections
-                .borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little))
-                .into(),
+                .borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little)),
         )
     }
 
@@ -76,9 +81,8 @@ impl DwarfManager {
             };
 
             let runtime_path = if resolved_path.is_absolute() {
-                if let Some(runtime_path) = path_resolver
+                if let Ok(runtime_path) = path_resolver
                     .dwarf_path_to_runtime_path(&resolved_path)
-                    .ok()
                 {
                     runtime_path
                 } else {
@@ -99,7 +103,7 @@ impl DwarfManager {
         files
     }
 
-    pub fn set_dwarf_section(&mut self, path: &PathBuf) -> Result<(), IrrecoverableError> {
+    pub fn set_dwarf_section(&mut self, path: &Path) -> Result<(), IrrecoverableError> {
         let data = fs::read(path).map_err(|e| IrrecoverableError::DwarfFileRead {
             filename: path.to_string_lossy().to_string(),
             detail: e.to_string(),
@@ -114,7 +118,7 @@ impl DwarfManager {
                 match obj.section_by_name(id.name()) {
                     Some(s) => Ok(s
                         .uncompressed_data()
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                        .map_err(io::Error::other)?
                         .into_owned()),
                     None => Ok(Vec::new()),
                 }
