@@ -27,6 +27,16 @@ fn test_relative_paths() {
     println!("source files {:?}", source_files);
 
     let sources = Sources::new(path_resolver, source_files);
-
-    println!("sources {:?}", sources.len());
+    assert!(
+        sources
+            .infos
+            .keys()
+            .any(|p| p.ends_with("programs/transfer-tokens/src/lib.rs")),
+        "DWARF prefix strip must map onto fixture programs/transfer-tokens/src/lib.rs, got {:?}",
+        sources
+            .infos
+            .keys()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>(),
+    );
 }
