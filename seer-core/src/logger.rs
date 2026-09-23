@@ -1,9 +1,7 @@
 //! Seer application logging for CLI streaming and Loki/Grafana.
 //!
-//! Environment:
-//! - `SEER_LOG`: `debug`, `info`, `warn`, or `none` — minimum level to emit (`info` if unset).
-//!   `none` disables all Seer log output.
-//! - `SEER_LOG_FORMAT`: `json` (default) or `pretty` — JSON lines vs colored human output.
+//! Default is silent. The CLI sets the level with `-v` / `-vv` / `-vvv`.
+//! `SEER_LOG_FORMAT=json` switches stderr lines from human-readable to JSON.
 
 use std::fmt;
 use std::sync::{Mutex, OnceLock};
@@ -38,9 +36,9 @@ impl SeerLoggerLevel {
 
     fn color_code(self) -> &'static str {
         match self {
-            SeerLoggerLevel::Debug => "\x1b[36m", // Cyan
-            SeerLoggerLevel::Info => "\x1b[32m",  // Green
-            SeerLoggerLevel::Warn => "\x1b[33m",  // Yellow
+            SeerLoggerLevel::Debug => "\x1b[36m",
+            SeerLoggerLevel::Info => "\x1b[32m",
+            SeerLoggerLevel::Warn => "\x1b[33m",
         }
     }
 
@@ -74,33 +72,34 @@ struct LogRecord<'a> {
 
 const RESET: &str = "\x1b[0m";
 
+fn format_from_env() -> SeerLogFormat {
+    match std::env::var("SEER_LOG_FORMAT")
+        .ok()
+        .map(|v| v.to_lowercase())
+        .as_deref()
+    {
+        Some("json") => SeerLogFormat::Json,
+        _ => SeerLogFormat::Pretty,
+    }
+}
+
 impl SeerLogger {
-    pub fn from_env() -> Self {
-        let level = match std::env::var("SEER_LOG")
-            .ok()
-            .map(|v| v.to_lowercase())
-            .as_deref()
-        {
-            None => Some(SeerLoggerLevel::Info),
-            Some("none") => None,
-            Some("debug") => Some(SeerLoggerLevel::Debug),
-            Some("info") => Some(SeerLoggerLevel::Info),
-            Some("warn") => Some(SeerLoggerLevel::Warn),
-            Some(_) => Some(SeerLoggerLevel::Info),
+    /// `0` silent, `1` warn, `2` info, `3+` debug. Format from `SEER_LOG_FORMAT`.
+    pub fn from_verbosity(verbose: u8) -> Self {
+        let level = match verbose {
+            0 => None,
+            1 => Some(SeerLoggerLevel::Warn),
+            2 => Some(SeerLoggerLevel::Info),
+            _ => Some(SeerLoggerLevel::Debug),
         };
+        Self {
+            level,
+            format: format_from_env(),
+        }
+    }
 
-        let format = std::env::var("SEER_LOG_FORMAT")
-            .ok()
-            .map(|v| v.to_lowercase())
-            .as_deref()
-            .and_then(|v| match v {
-                "pretty" => Some(SeerLogFormat::Pretty),
-                "json" => Some(SeerLogFormat::Json),
-                _ => None,
-            })
-            .unwrap_or(SeerLogFormat::Json);
-
-        Self { level, format }
+    pub fn from_env() -> Self {
+        Self::from_verbosity(0)
     }
 
     #[inline(always)]
@@ -130,10 +129,10 @@ impl SeerLogger {
                     message,
                 };
                 let line = serde_json::to_string(&record).expect("log record serializes to JSON");
-                println!("{line}");
+                eprintln!("{line}");
             }
             SeerLogFormat::Pretty => {
-                println!(
+                eprintln!(
                     "{}[SEER {}]{} {} :: {}",
                     level.color_code(),
                     level.label_upper(),
@@ -186,4 +185,31 @@ macro_rules! seer_warn {
             logger.warn(module_path!(), format_args!($($arg)*));
         }
     }};
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn verbosity_ladder() {
+        let silent = SeerLogger::from_verbosity(0);
+        assert!(!silent.enabled(SeerLoggerLevel::Warn));
+        assert!(!silent.enabled(SeerLoggerLevel::Info));
+        assert!(!silent.enabled(SeerLoggerLevel::Debug));
+
+        let warn = SeerLogger::from_verbosity(1);
+        assert!(warn.enabled(SeerLoggerLevel::Warn));
+        assert!(!warn.enabled(SeerLoggerLevel::Info));
+        assert!(!warn.enabled(SeerLoggerLevel::Debug));
+
+        let info = SeerLogger::from_verbosity(2);
+        assert!(info.enabled(SeerLoggerLevel::Warn));
+        assert!(info.enabled(SeerLoggerLevel::Info));
+        assert!(!info.enabled(SeerLoggerLevel::Debug));
+
+        let debug = SeerLogger::from_verbosity(3);
+        assert!(debug.enabled(SeerLoggerLevel::Debug));
+        assert!(SeerLogger::from_verbosity(9).enabled(SeerLoggerLevel::Debug));
+    }
 }

@@ -136,14 +136,62 @@ fn parses_run_sig_tx_from_show_ls_diff() {
             id: 3,
             tx: false,
             state: false,
-            account: None,
+            account: vec![],
+            data: vec![],
             trace: true,
         }
     );
+    let pk = Pubkey::from_str("11111111111111111111111111111111").unwrap();
+    let Command::Show { account, data, .. } = parse_from([
+        "seer",
+        "show",
+        "1",
+        "--account",
+        "11111111111111111111111111111111",
+        "--account",
+        "11111111111111111111111111111111",
+        "--data",
+        "11111111111111111111111111111111",
+    ])
+    .unwrap() else {
+        panic!("expected show filters");
+    };
+    assert_eq!(account, vec![pk, pk]);
+    assert_eq!(data, vec![pk]);
+    assert!(parse_from(["seer", "--json", "show", "1"]).is_err());
+    assert!(parse_from(["seer", "show", "1", "--head", "1"]).is_err());
     assert_eq!(
         parse_from(["seer", "ls", "--tree"]).unwrap(),
-        Command::Ls { tree: true }
+        Command::Ls {
+            tree: true,
+            head: 20,
+            skip: 0,
+            from: None,
+            status: None,
+        }
     );
+    assert_eq!(
+        parse_from(["seer", "ls", "--skip", "1", "--head", "2"]).unwrap(),
+        Command::Ls {
+            tree: false,
+            head: 2,
+            skip: 1,
+            from: None,
+            status: None,
+        }
+    );
+    assert_eq!(
+        parse_from(["seer", "ls", "--from", "3", "--status", "error", "--tree", "--head", "0"])
+            .unwrap(),
+        Command::Ls {
+            tree: true,
+            head: 0,
+            skip: 0,
+            from: Some(3),
+            status: Some(super::format::LsStatus::Error),
+        }
+    );
+    assert!(parse_from(["seer", "ls", "--status", "pending"]).is_err());
     assert_eq!(
         parse_from(["seer", "diff", "1", "2"]).unwrap(),
         Command::Diff { a: 1, b: 2 }
@@ -169,6 +217,10 @@ fn run_rejects_bad_combinations() {
 }
 
 fn dummy_row(id: i64, parent: Option<i64>) -> storage::RunRow {
+    dummy_row_err(id, parent, None)
+}
+
+fn dummy_row_err(id: i64, parent: Option<i64>, error: Option<&str>) -> storage::RunRow {
     storage::RunRow {
         id,
         transaction_blob_hash: [0; 32],
@@ -176,7 +228,7 @@ fn dummy_row(id: i64, parent: Option<i64>) -> storage::RunRow {
         run_at: String::new(),
         environment: "{}".into(),
         status: "finished".into(),
-        error: None,
+        error: error.map(str::to_string),
         parent_id: parent,
         patches: if parent.is_some() {
             r#"[{"account":"11111111111111111111111111111111","lamports":0}]"#.into()
@@ -191,20 +243,40 @@ fn dummy_row(id: i64, parent: Option<i64>) -> storage::RunRow {
 }
 
 #[test]
-fn ls_show_diff_text() {
-    let b = dummy_row(2, Some(1));
-    let listed = super::format::ls_text(&[dummy_row(1, None), dummy_row(2, Some(1))], false);
-    assert!(listed.contains("sig:abc"));
-    assert!(listed.contains("lamports"));
-    let tree = super::format::ls_text(&[dummy_row(1, None), dummy_row(2, Some(1))], true);
-    assert!(tree.contains("1  sig:abc"));
-    let card = super::format::run_card(&b);
-    assert!(card.contains("run 2"));
-    assert!(card.contains("next: seer show 2"));
-    assert!(card.contains("next: seer run --from 2"));
-    let d = super::format::diff_text(&dummy_row(1, None), &dummy_row(2, Some(1)));
-    assert!(d.contains("1 vs 2"));
-    assert!(d.contains("different"));
+fn ls_tree_and_state_are_objects() {
+    let runs = [
+        dummy_row(1, None),
+        dummy_row(2, Some(1)),
+        dummy_row(3, Some(1)),
+        dummy_row(5, None),
+        dummy_row_err(6, Some(5), Some("boom")),
+    ];
+    let tree = super::format::ls_tree_json(&runs);
+    assert_eq!(tree[0]["id"], 5);
+    assert_eq!(tree[0]["children"][0]["id"], 6);
+    assert_eq!(tree[1]["id"], 1);
+    assert_eq!(tree[1]["children"][0]["id"], 3);
+    assert_eq!(tree[1]["children"][1]["id"], 2);
+
+    let kids = super::format::ls_select(&runs, Some(1), false, None);
+    assert_eq!(kids.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 3]);
+    let sub = super::format::ls_select(&runs, Some(1), true, None);
+    assert_eq!(sub.iter().map(|r| r.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+    let failed = super::format::ls_select(&runs, None, false, Some(super::format::LsStatus::Error));
+    assert_eq!(failed.iter().map(|r| r.id).collect::<Vec<_>>(), vec![6]);
+
+    let newest: Vec<_> = {
+        let mut v: Vec<_> = runs.iter().map(super::format::run_json).collect();
+        v.reverse();
+        super::format::slice_json_array(v, 0, 2)
+    };
+    assert_eq!(newest[0]["id"], 6);
+    assert_eq!(newest[1]["id"], 5);
+    let sliced = super::format::slice_json_array(tree.clone(), 1, 1);
+    assert_eq!(sliced[0]["id"], 1);
+    let all = super::format::slice_json_array(tree.clone(), 0, 0);
+    assert_eq!(all.len(), 2);
+
     let pk = solana_pubkey::Pubkey::default();
     let mut state = crate::state_accounts::StateAccounts::default();
     state.0.insert(
@@ -216,10 +288,8 @@ fn ls_show_diff_text() {
             executable: false,
         },
     );
-    let (listed, json) = super::format::state_listing(3, &state);
-    assert!(listed.contains("accounts 1"));
-    assert!(listed.contains(&pk.to_string()));
-    assert!(!listed.contains("data"));
-    assert!(listed.contains("next: seer show 3 --account"));
-    assert_eq!(json[0]["lamports"], "1");
+    let catalog = super::format::state_catalog(&state);
+    assert!(catalog.is_object());
+    assert_eq!(catalog[pk.to_string()]["lamports"], "1");
+    assert!(catalog[pk.to_string()].get("data").is_none());
 }

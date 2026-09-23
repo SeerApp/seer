@@ -14,7 +14,7 @@ mod input;
 mod test;
 
 use encoding::TxEncoding;
-use format::{diff_text, ls_text, run_card, run_json, state_listing};
+use format::{ls_select, ls_tree_json, run_json, slice_json_array, state_catalog, LsStatus};
 use input::INPUT_HELP;
 
 pub use input::PathOrValue;
@@ -30,27 +30,35 @@ Seer replays Solana transactions locally. You work in runs.
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    let json = cli.json;
+    seer_core::init_seer_logger(seer_core::SeerLogger::from_verbosity(cli.verbose));
+    let short = cli.short;
     let home = match &cli.storage_home {
         Some(path) => path.clone(),
         None => storage::default_root()?,
     };
     let storage = Storage::open_at(home)?;
     match Command::try_from(cli)? {
-        Command::Status => status(&storage, json),
+        Command::Status => status(&storage, short),
         Command::Run(req) => {
             let id = execute(&storage, req)?;
-            emit_run(&storage, id, json)
+            emit_run(&storage, id, short)
         }
         Command::Show {
             id,
             tx,
             state,
             account,
+            data,
             trace,
-        } => show(&storage, id, tx, state, account, trace, json),
-        Command::Ls { tree } => ls(&storage, tree, json),
-        Command::Diff { a, b } => diff(&storage, a, b, json),
+        } => show(&storage, id, tx, state, &account, &data, trace, short),
+        Command::Ls {
+            tree,
+            head,
+            skip,
+            from,
+            status,
+        } => ls(&storage, tree, head, skip, from, status, short),
+        Command::Diff { a, b } => diff(&storage, a, b, short),
         Command::Query(sql) => {
             println!("{}", storage.db.query(&sql)?);
             Ok(())
@@ -67,8 +75,15 @@ pub fn run() -> Result<()> {
 struct Cli {
     #[arg(long, global = true, value_name = "DIR", help = "Storage root")]
     storage_home: Option<std::path::PathBuf>,
-    #[arg(long, global = true, help = "Print JSON")]
-    json: bool,
+    #[arg(
+        short = 'v',
+        action = clap::ArgAction::Count,
+        global = true,
+        help = "Log to stderr (-v warn, -vv info, -vvv debug)"
+    )]
+    verbose: u8,
+    #[arg(long, global = true, help = "Compact JSON on stdout, no next: footer")]
+    short: bool,
     #[command(subcommand)]
     command: Option<CliCommand>,
 }
@@ -128,9 +143,21 @@ struct ShowCli {
     tx: bool,
     #[arg(long, help = "List accounts in the input state")]
     state: bool,
-    #[arg(long, value_name = "PUBKEY", help = "Print one account")]
-    account: Option<String>,
-    #[arg(long, help = "Print traces")]
+    #[arg(
+        long,
+        value_name = "PUBKEY",
+        action = clap::ArgAction::Append,
+        help = "Account meta keyed by pubkey"
+    )]
+    account: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PUBKEY",
+        action = clap::ArgAction::Append,
+        help = "Account data hex keyed by pubkey"
+    )]
+    data: Vec<String>,
+    #[arg(long, help = "Print stored traces")]
     trace: bool,
 }
 
@@ -139,6 +166,28 @@ struct ShowCli {
 struct LsCli {
     #[arg(long, help = "Show fork lineage")]
     tree: bool,
+    #[arg(
+        long,
+        value_name = "RUN",
+        help = "Children of this run (subtree with --tree)"
+    )]
+    from: Option<i64>,
+    #[arg(long, value_enum, help = "Filter by status")]
+    status: Option<LsStatus>,
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 20,
+        help = "First N of the top-level array (0 = all)"
+    )]
+    head: usize,
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 0,
+        help = "Drop first N of the top-level array"
+    )]
+    skip: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -165,11 +214,16 @@ pub enum Command {
         id: i64,
         tx: bool,
         state: bool,
-        account: Option<Pubkey>,
+        account: Vec<Pubkey>,
+        data: Vec<Pubkey>,
         trace: bool,
     },
     Ls {
         tree: bool,
+        head: usize,
+        skip: usize,
+        from: Option<i64>,
+        status: Option<LsStatus>,
     },
     Diff {
         a: i64,
@@ -189,10 +243,25 @@ impl TryFrom<Cli> for Command {
                 id: args.id,
                 tx: args.tx,
                 state: args.state,
-                account: args.account.as_deref().map(parse_pubkey).transpose()?,
+                account: args
+                    .account
+                    .iter()
+                    .map(|s| parse_pubkey(s))
+                    .collect::<Result<Vec<_>>>()?,
+                data: args
+                    .data
+                    .iter()
+                    .map(|s| parse_pubkey(s))
+                    .collect::<Result<Vec<_>>>()?,
                 trace: args.trace,
             }),
-            Some(CliCommand::Ls(args)) => Ok(Self::Ls { tree: args.tree }),
+            Some(CliCommand::Ls(args)) => Ok(Self::Ls {
+                tree: args.tree,
+                head: args.head,
+                skip: args.skip,
+                from: args.from,
+                status: args.status,
+            }),
             Some(CliCommand::Diff(args)) => Ok(Self::Diff {
                 a: args.a,
                 b: args.b,
@@ -271,79 +340,153 @@ fn parse_pubkey(s: &str) -> Result<Pubkey> {
     s.parse().context("pubkey")
 }
 
-fn status(storage: &Storage, json: bool) -> Result<()> {
+fn status(storage: &Storage, short: bool) -> Result<()> {
     let runs = storage.db.list_runs()?;
     let start = runs.len().saturating_sub(10);
-    let recent = &runs[start..];
-    if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "runs": recent.iter().map(run_json).collect::<Vec<_>>(),
-            }))?
-        );
-        return Ok(());
-    }
-    print!("{ORIENT}");
-    if recent.is_empty() {
-        print!("\nno runs yet\nnext: seer run --sig <SIGNATURE> --url <RPC>\n");
+    let recent: Vec<serde_json::Value> = runs[start..].iter().map(run_json).collect();
+    let footer = if recent.is_empty() {
+        vec!["seer run --sig <SIGNATURE> --url <RPC>".into()]
     } else {
-        print!("\n{}", ls_text(recent, false));
-    }
-    Ok(())
+        vec!["seer ls".into(), format!("seer show {}", runs[start].id)]
+    };
+    emit(serde_json::Value::Array(recent), &footer, short)
 }
 
-fn emit_run(storage: &Storage, id: i64, json: bool) -> Result<()> {
+fn emit_run(storage: &Storage, id: i64, short: bool) -> Result<()> {
     let row = storage.db.get_run(id)?;
-    emit(json, run_json(&row), run_card(&row))
+    emit(
+        run_json(&row),
+        &[
+            format!("seer show {id}"),
+            format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
+            "seer ls".into(),
+        ],
+        short,
+    )
 }
 
-fn ls(storage: &Storage, tree: bool, json: bool) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+fn ls(
+    storage: &Storage,
+    tree: bool,
+    head: usize,
+    skip: usize,
+    from: Option<i64>,
+    status: Option<LsStatus>,
+    short: bool,
+) -> Result<()> {
     let runs = storage.db.list_runs()?;
-    if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&runs.iter().map(run_json).collect::<Vec<_>>())?
-        );
-        return Ok(());
+    if let Some(id) = from {
+        let _ = storage.db.get_run(id)?;
     }
-    print!("{}", ls_text(&runs, tree));
-    Ok(())
+    let selected = ls_select(&runs, from, tree, status);
+    let values = if tree {
+        ls_tree_json(&selected)
+    } else {
+        let mut flat: Vec<serde_json::Value> = selected.iter().map(run_json).collect();
+        flat.reverse();
+        flat
+    };
+    let page = slice_json_array(values, skip, head);
+    let first_id = page
+        .first()
+        .and_then(|v| v.get("id"))
+        .and_then(|id| id.as_i64());
+    let footer = ls_footer(from, status, tree, skip, head, page.len(), first_id);
+    emit(serde_json::Value::Array(page), &footer, short)
 }
 
+fn ls_footer(
+    from: Option<i64>,
+    status: Option<LsStatus>,
+    tree: bool,
+    skip: usize,
+    head: usize,
+    page_len: usize,
+    first_id: Option<i64>,
+) -> Vec<String> {
+    let mut flags = String::from("seer ls");
+    if let Some(id) = from {
+        flags.push_str(&format!(" --from {id}"));
+    }
+    if let Some(st) = status {
+        flags.push_str(&format!(
+            " --status {}",
+            match st {
+                LsStatus::Ok => "ok",
+                LsStatus::Error => "error",
+            }
+        ));
+    }
+    if tree {
+        flags.push_str(" --tree");
+    }
+    let mut out = Vec::new();
+    if head != 0 && page_len == head {
+        let next_skip = skip.saturating_add(head);
+        out.push(format!("{flags} --skip {next_skip} --head {head}"));
+    }
+    match first_id {
+        Some(id) => out.push(format!("seer show {id}")),
+        None if out.is_empty() => out.push("seer run --sig <SIGNATURE> --url <RPC>".into()),
+        None => {}
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
 fn show(
     storage: &Storage,
     id: i64,
     tx: bool,
     state: bool,
-    account: Option<Pubkey>,
+    account: &[Pubkey],
+    data: &[Pubkey],
     trace: bool,
-    json: bool,
+    short: bool,
 ) -> Result<()> {
     let row = storage.db.get_run(id)?;
-    if !tx && !state && account.is_none() && !trace {
-        return emit(json, run_json(&row), run_card(&row));
+    if !tx && !state && account.is_empty() && data.is_empty() && !trace {
+        return emit(
+            run_json(&row),
+            &[
+                format!("seer show {id} --tx"),
+                format!("seer show {id} --state"),
+                format!("seer show {id} --account <PUBKEY>"),
+                format!("seer show {id} --data <PUBKEY>"),
+                format!("seer show {id} --trace"),
+                format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
+            ],
+            short,
+        );
     }
-    let mut text = String::new();
     let mut value = serde_json::Map::new();
     if tx {
-        let printed = crate::print::transaction(&storage.blob.read(&row.transaction_blob_hash)?)?;
-        value.insert("tx".into(), serde_json::from_str(&printed)?);
-        text.push_str(&printed);
-        if !printed.ends_with('\n') {
-            text.push('\n');
-        }
+        value.insert(
+            "tx".into(),
+            crate::print::transaction(&storage.blob.read(&row.transaction_blob_hash)?)?,
+        );
     }
     if state {
-        let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
-        let (printed, parsed) = state_listing(row.id, &state);
-        value.insert("state".into(), parsed);
-        text.push_str(&printed);
+        let accounts = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+        value.insert("state".into(), state_catalog(&accounts));
     }
-    if let Some(pk) = account {
-        let (printed, parsed) = show_account(storage, &row, &pk)?;
-        value.insert("account".into(), parsed);
-        text.push_str(&printed);
+    if !account.is_empty() {
+        let mut map = serde_json::Map::new();
+        for pk in account {
+            map.insert(pk.to_string(), account_meta(storage, &row, pk)?);
+        }
+        value.insert("accounts".into(), serde_json::Value::Object(map));
+    }
+    if !data.is_empty() {
+        let mut map = serde_json::Map::new();
+        for pk in data {
+            map.insert(
+                pk.to_string(),
+                serde_json::Value::String(account_hex(storage, &row, pk)?),
+            );
+        }
+        value.insert("data".into(), serde_json::Value::Object(map));
     }
     if trace {
         let mut traces = Vec::new();
@@ -351,16 +494,24 @@ fn show(
             let Some(hash) = hash else {
                 continue;
             };
-            let printed = crate::print::trace(&storage.blob.read(&hash)?)?;
-            traces.push(serde_json::json!({"ix": ix, "trace": printed}));
-            text.push_str(&format!("ix {ix}\n{printed}"));
+            traces.push(serde_json::json!({
+                "ix": ix,
+                "tree": crate::print::trace(&storage.blob.read(&hash)?)?,
+            }));
         }
         value.insert("trace".into(), serde_json::Value::Array(traces));
     }
-    emit(json, serde_json::Value::Object(value), text)
+    emit(
+        serde_json::Value::Object(value),
+        &[
+            format!("seer show {id}"),
+            format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
+        ],
+        short,
+    )
 }
 
-fn diff(storage: &Storage, a: i64, b: i64, json: bool) -> Result<()> {
+fn diff(storage: &Storage, a: i64, b: i64, short: bool) -> Result<()> {
     let a = storage.db.get_run(a)?;
     let b = storage.db.get_run(b)?;
     let value = serde_json::json!({
@@ -369,37 +520,51 @@ fn diff(storage: &Storage, a: i64, b: i64, json: bool) -> Result<()> {
         "tx": if a.transaction_blob_hash == b.transaction_blob_hash { "same" } else { "different" },
         "state": if a.state_blob_hash == b.state_blob_hash { "same" } else { "different" },
     });
-    emit(json, value, diff_text(&a, &b))
+    emit(
+        value,
+        &[format!("seer show {}", a.id), format!("seer show {}", b.id)],
+        short,
+    )
 }
 
-fn show_account(
-    storage: &Storage,
-    row: &RunRow,
-    pk: &Pubkey,
-) -> Result<(String, serde_json::Value)> {
-    let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
-    let acct = state
-        .0
-        .get(pk)
-        .with_context(|| format!("{pk} not in run {}", row.id))?;
-    let data = storage.blob.read(&acct.data)?;
-    let value = serde_json::json!({
+fn account_meta(storage: &Storage, row: &RunRow, pk: &Pubkey) -> Result<serde_json::Value> {
+    let (acct, data) = load_account(storage, row, pk)?;
+    Ok(serde_json::json!({
         "lamports": acct.lamports.to_string(),
         "owner": acct.owner.to_string(),
         "executable": acct.executable,
         "data_len": data.len(),
-    });
-    Ok((
-        format!("{}\n", serde_json::to_string_pretty(&value)?),
-        value,
-    ))
+    }))
 }
 
-fn emit(json: bool, value: serde_json::Value, text: String) -> Result<()> {
-    if json {
-        println!("{}", serde_json::to_string_pretty(&value)?);
+fn account_hex(storage: &Storage, row: &RunRow, pk: &Pubkey) -> Result<String> {
+    let (_, data) = load_account(storage, row, pk)?;
+    Ok(hex::encode(data))
+}
+
+fn load_account(
+    storage: &Storage,
+    row: &RunRow,
+    pk: &Pubkey,
+) -> Result<(crate::state_accounts::StateAccount, Vec<u8>)> {
+    let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+    let acct = state
+        .0
+        .get(pk)
+        .cloned()
+        .with_context(|| format!("{pk} not in run {}", row.id))?;
+    let data = storage.blob.read(&acct.data)?;
+    Ok((acct, data))
+}
+
+fn emit(value: serde_json::Value, footer: &[String], short: bool) -> Result<()> {
+    if short {
+        println!("{}", serde_json::to_string(&value)?);
     } else {
-        print!("{text}");
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        for line in footer {
+            println!("next: {line}");
+        }
     }
     Ok(())
 }

@@ -23,6 +23,7 @@ pub struct Db {
     conn: Connection,
 }
 
+#[derive(Clone)]
 pub struct RunRow {
     pub id: i64,
     pub transaction_blob_hash: [u8; 32],
