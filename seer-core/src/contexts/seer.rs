@@ -267,7 +267,7 @@ impl SeerContext {
         }
     }
 
-    pub fn step<M: GuestMemory>(&mut self, i: u64, _: &mut M, reg: &[u64; 12]) {
+    pub fn step<M: GuestMemory + ?Sized>(&mut self, i: u64, _: &mut M, reg: &[u64; 12]) {
         let pending_reg = {
             let tx = self
                 .transaction_context

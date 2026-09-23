@@ -242,14 +242,22 @@ fn disassemble_elf_bytes_for_program(
     let so_path = temp_dir.path().join(format!("{program_id}.so"));
     file_writer.replace_bytes(&so_path, elf_bytes);
 
-    let stats = disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
-        .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))?;
-    seer_debug!(
-        "disasm {} insns={} peak_rss_bytes={:?}",
-        program_id,
-        stats.insn_count,
-        stats.peak_rss_bytes
-    );
+    #[cfg(feature = "disasm")]
+    {
+        let stats = disasm::disassemble_to_json_chunks(&so_path, programs_output_dir)
+            .map_err(|e| format!("disassemble {}: {}", so_path.display(), e))?;
+        seer_debug!(
+            "disasm {} insns={} peak_rss_bytes={:?}",
+            program_id,
+            stats.insn_count,
+            stats.peak_rss_bytes
+        );
+    }
+    #[cfg(not(feature = "disasm"))]
+    {
+        let _ = programs_output_dir;
+        seer_debug!("disasm skipped (feature off) for {}", program_id);
+    }
     Ok(())
 }
 

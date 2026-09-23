@@ -18,9 +18,16 @@ pub struct UnsafeAccountBackdoor {
 
 impl UnsafeAccountBackdoor {
     pub unsafe fn new(bd: &dyn GuestAccountBackdoor) -> Self {
+        let ptr: *const dyn GuestAccountBackdoor = bd;
         Self {
             accounts: bd.get_accounts(),
-            mirror_ptr: Some(std::ptr::from_ref(bd) as *const dyn GuestAccountBackdoor),
+            // SAFETY: caller keeps `bd` alive until `clear` (start_program through
+            // close_account_backdoor). rustc 1.96 refuses the implicit lifetime-to-'static
+            // trait-object pointer cast.
+            mirror_ptr: Some(std::mem::transmute::<
+                *const dyn GuestAccountBackdoor,
+                *const (dyn GuestAccountBackdoor + 'static),
+            >(ptr)),
         }
     }
 

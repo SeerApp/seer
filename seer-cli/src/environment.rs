@@ -7,7 +7,7 @@ use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_hash::Hash;
 use solana_pubkey::Pubkey;
 use solana_slot_hashes::SlotHashes;
-use solana_stake_interface::stake_history::{StakeHistory, StakeHistoryEntry};
+use solana_stake_history::{StakeHistory, StakeHistoryEntry};
 #[allow(deprecated)]
 use solana_sysvar::{
     fees::Fees,
@@ -96,7 +96,7 @@ impl Environment {
         {
             return None;
         }
-        let mut budget = ComputeBudget::new_with_defaults(false, false);
+        let mut budget = ComputeBudget::new_with_defaults(false);
         if let Some(v) = self.compute_unit_limit {
             budget.compute_unit_limit = v;
         }

@@ -26,14 +26,14 @@ fn ensure_seer_logger() {
 fn token_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/global_program_context/known_programs/token_program.json"
+        "../../src/program_manager/known_programs/token_program.json"
     ))
     .expect("token program Codama IDL must parse")
 }
 
 fn token_2022_json() -> Value {
     serde_json::from_str(include_str!(
-        "../../src/global_program_context/known_programs/token_2022_program.json"
+        "../../src/program_manager/known_programs/token_2022_program.json"
     ))
     .expect("token-2022 Codama JSON must parse")
 }
@@ -48,7 +48,7 @@ fn lookup_from_json_value(v: &Value) -> CodamaIdlLookup {
 fn system_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/global_program_context/known_programs/system_program.json"
+        "../../src/program_manager/known_programs/system_program.json"
     ))
     .expect("system program Codama IDL must parse")
 }

@@ -5,3 +5,5 @@ pub mod known_programs;
 pub mod program_manager;
 pub(crate) mod types;
 mod utils;
+
+pub use types::GlobalProgramContext;

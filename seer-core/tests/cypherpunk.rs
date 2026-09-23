@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use seer_core::{
     artifacts::{layout::load_trace_tree, AtomicFileWriter},
     init_seer_logger,
-    program_manager::types::GlobalProgramContext,
+    program_manager::GlobalProgramContext,
     SeerLogger,
 };
 use solana_pubkey::Pubkey;
@@ -29,7 +29,7 @@ fn test_instruction_context() {
         .unwrap();
 
     let file_writer = Arc::new(Mutex::new(AtomicFileWriter::new()));
-    let (global_program_context, _warnings) =
+    let global_program_context =
         GlobalProgramContext::init(&cwd, &source_project_root, None, file_writer.clone())
             .expect("GlobalProgramContext::init");
 

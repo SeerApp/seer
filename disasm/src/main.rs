@@ -5,7 +5,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use agave_syscalls::create_program_runtime_environment_v1;
+use solana_syscalls::create_program_runtime_environment;
 use anyhow::{Context, Result};
 use object::{File as ObjectFile, Object, ObjectSection, ObjectSymbol, SymbolKind, SymbolSection};
 use serde_json::{Map, Value};
@@ -712,9 +712,9 @@ pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Resul
     let text_syms = TextFnSymbols::build(&bytes)?;
     let feature_set = SVMFeatureSet::all_enabled();
     let compute_budget = SVMTransactionExecutionBudget::new_with_defaults(false);
-    let loader = create_program_runtime_environment_v1(&feature_set, &compute_budget, false, true)
-        .map_err(|e| anyhow::anyhow!("create_program_runtime_environment_v1: {e:?}"))?;
-    let loader = Arc::new(loader);
+    let env = create_program_runtime_environment(&feature_set, &compute_budget, false, true)
+        .map_err(|e| anyhow::anyhow!("create_program_runtime_environment: {e:?}"))?;
+    let loader = Arc::clone(&*env);
     let executable = Executable::<InvokeContext>::load(&bytes, loader)
         .map_err(|e| anyhow::anyhow!("ELF load failed: {e:?}"))?;
     // Skip `Analysis::from_executable`: it builds a full CFG + bidirectional DFG we never

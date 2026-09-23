@@ -20,36 +20,37 @@ seer-core = { path = "../seer-core" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
 storage = { path = "../storage" }
-agave-feature-set = "=3.1.6"
-agave-reserved-account-keys = "=3.1.6"
-agave-syscalls = "=3.1.6"
-solana-account = "3.2"
-solana-address = "2.0"
-solana-address-lookup-table-interface = { version = "4", features = ["bincode", "bytemuck"] }
-solana-bpf-loader-program = "=3.1.6"
-solana-builtins = "=3.1.6"
-solana-clock = "3"
-solana-compute-budget = "=3.1.6"
-solana-compute-budget-instruction = "=3.1.6"
-solana-fee = "=3.1.6"
+wincode = "0.5.5"
+agave-feature-set = { version = "=4.2.1", features = ["agave-unstable-api"] }
+agave-reserved-account-keys = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-syscalls = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-account = ">=4.3.1,<4.4.0"
+solana-address = "~2.6.1"
+solana-address-lookup-table-interface = { version = "~3.1.0", features = ["bincode", "bytemuck"] }
+solana-bpf-loader-program = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-builtins = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-clock = "~3.1.1"
+solana-compute-budget = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-compute-budget-instruction = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-fee = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-hash = { version = "4", features = ["decode"] }
-solana-loader-v3-interface = { version = "6", features = ["serde"] }
-solana-message = "3"
-solana-program-runtime = "=3.1.6"
-solana-pubkey = { version = "4", features = ["serde"] }
+solana-loader-v3-interface = { version = "8.0.1", features = ["serde"] }
+solana-message = "4.2.4"
+solana-program-runtime = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-pubkey = { version = ">=4.2.0,<4.3.0", features = ["serde"] }
 solana-rpc-client = { path = "../../agave/rpc-client", default-features = false }
 solana-sdk-ids = "3"
-solana-signature = "3.0.12"
+solana-signature = "~3.4.1"
 solana-slot-hashes = "3"
-solana-stake-interface = "2.0.1"
-solana-svm-callback = "=3.1.6"
-solana-svm-log-collector = "=3.1.6"
-solana-svm-timings = "=3.1.6"
-solana-svm-transaction = "=3.1.6"
-solana-system-program = "=3.1.6"
-solana-sysvar = "3"
-solana-transaction = { version = "3.0.0", features = ["serde"] }
-solana-transaction-context = "=3.1.6"
+solana-stake-history = "1.0.0"
+solana-svm-callback = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-svm-log-collector = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-svm-timings = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-svm-transaction = ">=4.2.0,<4.3.0"
+solana-system-program = { version = "=4.2.1", features = ["agave-unstable-api"] }
+solana-sysvar = "~4.1.0"
+solana-transaction = { version = "4.1.5", features = ["serde", "wincode", "verify"] }
+solana-transaction-context = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-transaction-status-client-types = { path = "../../agave/transaction-status-client-types", features = ["agave-unstable-api"] }
 
 [lints]

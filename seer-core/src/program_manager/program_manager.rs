@@ -291,6 +291,7 @@ mod tests {
 
     #[test]
     fn idl_rpc_failure_is_graceful_and_does_not_block_execution() {
+        crate::init_seer_logger(crate::SeerLogger::from_env());
         let (tx, _rx) = mpsc::channel();
         let manager = GlobalProgramContext {
             inner: Mutex::new(HashMap::<Pubkey, ProgramInfo>::new()),

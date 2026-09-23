@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use seer_core::{
     analysis::{Analysis, ExecutionEvent},
     contexts::tracer::Tracer,
-    global_program_context::global_program_context::GlobalProgramContext,
+    program_manager::GlobalProgramContext,
     tree::nodes::root::{RootViewChildren, TreeRoot},
 };
 use solana_pubkey::Pubkey;
@@ -77,20 +77,12 @@ pub fn _run_tx(
 
     let analysis_trace = Analysis::load(analysis_root, signature.clone(), index);
 
-    let mut next_uid = 0u64;
     let mut trace_order = 0u64;
 
     for e in analysis_trace.events {
         match e {
             ExecutionEvent::StartProgram(program_address) => {
-                tracer.start_program(
-                    Vec::new(),
-                    Vec::new(),
-                    program_address,
-                    next_uid,
-                    trace_order,
-                );
-                next_uid += 1;
+                tracer.start_program(Vec::new(), Vec::new(), program_address, trace_order);
             }
             ExecutionEvent::EndProgram(err) => tracer.end_program(err, trace_order),
             ExecutionEvent::AccountDiff(mut data) => {

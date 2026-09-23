@@ -106,6 +106,7 @@ where
 }
 
 pub fn set(run_id: i64) {
+    install_vm_hooks();
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
         seer.set(run_id);
@@ -150,4 +151,18 @@ where
     T: Default + PartialEq,
 {
     value == &T::default()
+}
+
+pub fn install_vm_hooks() {
+    seer_interface::install_hooks(seer_interface::SeerVmHooks {
+        start_instruction: |ix, fee| get(|s| s.start_instruction(ix, fee)),
+        end_instruction: || get(|s| s.end_instruction()),
+        start_program: |accounts, data, program, bd| {
+            get(|s| unsafe { s.start_program(accounts, data, program, bd) })
+        },
+        end_program: |program, err| get(|s| s.end_program(program, err)),
+        close_account_backdoor: || get(|s| s.close_account_backdoor()),
+        log: |msg| get(|s| s.log(msg)),
+        step: |pc, mem, reg| get(|s| s.step(pc, mem, reg)),
+    });
 }

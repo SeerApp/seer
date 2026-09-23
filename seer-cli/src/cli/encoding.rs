@@ -39,7 +39,9 @@ impl Encoding {
                 bs58::decode(text.trim()).into_vec().context("base58")?
             }
         };
-        bincode::deserialize(&payload).context("transaction wire")
+        // Cluster wire is wincode (v1 is 0x81 and is not bincode-compatible).
+        // Internal blobs stay bincode of VersionedTransaction.
+        wincode::deserialize(&payload).context("transaction wire")
     }
 }
 
