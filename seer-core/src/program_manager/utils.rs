@@ -166,8 +166,8 @@ pub(super) fn fetch_program_elf_from_rpc(
             if upgrade_authority_address.is_some() {
                 UpgradeableLoaderState::size_of_programdata_metadata()
             } else {
-                    UpgradeableLoaderState::size_of_programdata_metadata()
-                        .saturating_sub(serialized_size(&Pubkey::default()).unwrap_or(0) as usize)
+                UpgradeableLoaderState::size_of_programdata_metadata()
+                    .saturating_sub(serialized_size(&Pubkey::default()).unwrap_or(0) as usize)
             }
         }
         _ => {

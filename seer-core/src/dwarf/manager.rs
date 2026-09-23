@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fs, io, path::{Path, PathBuf}};
+use std::{
+    collections::HashSet,
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use gimli::{Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
@@ -24,10 +28,7 @@ impl DwarfManager {
 
     pub fn get_dwarf(&self) -> Option<Dwarf<impl Reader + use<'_>>> {
         let sections = self.sections.as_ref()?;
-        Some(
-            sections
-                .borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little)),
-        )
+        Some(sections.borrow(|bytes| EndianSlice::new(bytes, RunTimeEndian::Little)))
     }
 
     pub fn get_all_source_files(&self, path_resolver: &PathResolver) -> HashSet<PathBuf> {
@@ -81,9 +82,7 @@ impl DwarfManager {
             };
 
             let runtime_path = if resolved_path.is_absolute() {
-                if let Ok(runtime_path) = path_resolver
-                    .dwarf_path_to_runtime_path(&resolved_path)
-                {
+                if let Ok(runtime_path) = path_resolver.dwarf_path_to_runtime_path(&resolved_path) {
                     runtime_path
                 } else {
                     continue;

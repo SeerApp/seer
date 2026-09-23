@@ -29,7 +29,6 @@ impl Default for TxMetadata {
 }
 
 impl TxMetadata {
-
     pub fn push_warning(&mut self, warning: impl Into<String>) {
         self.data.notes.warnings.push(warning.into());
     }

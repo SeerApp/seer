@@ -334,11 +334,7 @@ fn test_token_2022_instructions_allow_single_and_multiple_discriminators() {
         .to_string();
     let multiple = instructions
         .iter()
-        .find(|ix| {
-            ix["discriminators"]
-                .as_array()
-                .is_some_and(|d| d.len() > 1)
-        })
+        .find(|ix| ix["discriminators"].as_array().is_some_and(|d| d.len() > 1))
         .and_then(|ix| ix["name"].as_str())
         .expect("token-2022 must contain at least one multi-discriminator instruction")
         .to_string();

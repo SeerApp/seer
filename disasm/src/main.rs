@@ -5,7 +5,6 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use solana_syscalls::create_program_runtime_environment;
 use anyhow::{Context, Result};
 use object::{File as ObjectFile, Object, ObjectSection, ObjectSymbol, SymbolKind, SymbolSection};
 use serde_json::{Map, Value};
@@ -18,6 +17,7 @@ use solana_program_runtime::{
     },
 };
 use solana_svm_feature_set::SVMFeatureSet;
+use solana_syscalls::create_program_runtime_environment;
 
 /// `.text` section VMA (`sh_addr`) from the ELF file alone — same basis as llvm-objdump's address
 /// column, without extending `solana-sbpf`.
@@ -122,7 +122,10 @@ impl TextFnSymbols {
         entries.sort_by_key(|e| e.0);
 
         for i in 0..entries.len() {
-            let next_start = entries.get(i.saturating_add(1)).map(|e| e.0).unwrap_or(text_end);
+            let next_start = entries
+                .get(i.saturating_add(1))
+                .map(|e| e.0)
+                .unwrap_or(text_end);
             let (start, sz, _) = &entries[i];
             let own_end = start.saturating_add(*sz).max(start.saturating_add(insn_sz));
             let end = next_start.min(own_end).max(start.saturating_add(insn_sz));
@@ -823,7 +826,10 @@ fn build_lifted_blocks_json(lift_rows: &[LiftRow]) -> Map<String, Value> {
     let leaders = build_block_starts(lift_rows);
 
     for (i, start) in leaders.iter().enumerate() {
-        let end_exclusive = leaders.get(i.saturating_add(1)).copied().unwrap_or(u64::MAX);
+        let end_exclusive = leaders
+            .get(i.saturating_add(1))
+            .copied()
+            .unwrap_or(u64::MAX);
         let block_rows: Vec<&LiftRow> = lift_rows
             .iter()
             .filter(|r| r.pc >= *start && r.pc < end_exclusive)

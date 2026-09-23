@@ -57,10 +57,12 @@ impl<T: Clone> LookupNode<T> {
         let mut best: Option<&LookupInterval<T>> = None;
 
         for iv in &self.overlaps {
-            if iv.begin <= pc_lookup && pc_lookup < iv.end
-                && best.is_none_or(|b| iv.depth > b.depth) {
-                    best = Some(iv);
-                }
+            if iv.begin <= pc_lookup
+                && pc_lookup < iv.end
+                && best.is_none_or(|b| iv.depth > b.depth)
+            {
+                best = Some(iv);
+            }
         }
 
         if pc_lookup < self.center {

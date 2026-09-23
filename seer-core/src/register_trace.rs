@@ -418,15 +418,24 @@ mod tests {
 
         assert_eq!(completed.tree_uid, UID);
         assert_eq!(completed.min_order, 0);
-        assert_eq!(completed.max_order, (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_sub(1));
-        assert_eq!(completed.chunk.trace.len(), REGISTER_TRACE_CHUNK_SIZE.saturating_sub(1));
+        assert_eq!(
+            completed.max_order,
+            (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_sub(1)
+        );
+        assert_eq!(
+            completed.chunk.trace.len(),
+            REGISTER_TRACE_CHUNK_SIZE.saturating_sub(1)
+        );
         assert_eq!(completed.chunk.snapshot.reg[&0], "100");
         assert!(!completed.chunk.snapshot.reg.contains_key(&11));
 
         let tail = collector.finalize().expect("tail chunk");
         assert_eq!(tail.tree_uid, UID);
         assert_eq!(tail.min_order, REGISTER_TRACE_CHUNK_SIZE as u64);
-        assert_eq!(tail.max_order, (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_add(1));
+        assert_eq!(
+            tail.max_order,
+            (REGISTER_TRACE_CHUNK_SIZE as u64).saturating_add(1)
+        );
         assert_eq!(tail.chunk.snapshot.reg[&2], reg[2].to_string());
         assert!(!tail.chunk.snapshot.reg.contains_key(&11));
         assert_eq!(tail.chunk.trace.len(), 2);

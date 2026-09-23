@@ -5,11 +5,7 @@ use super::{as32, Db};
 type Lookup = ([u8; 32], [u8; 32], String);
 
 impl Db {
-    pub fn lookup_sig(
-        &self,
-        sig: &[u8; 64],
-        network: Option<&str>,
-    ) -> Result<Option<Lookup>> {
+    pub fn lookup_sig(&self, sig: &[u8; 64], network: Option<&str>) -> Result<Option<Lookup>> {
         let mut stmt = self.conn.prepare(
             "SELECT transaction_blob_hash, state_blob_hash, environment FROM historical_transaction WHERE sig = ?1 AND (?2 IS NULL OR network = ?2) LIMIT 1",
         )?;
