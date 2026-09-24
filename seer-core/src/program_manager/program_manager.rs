@@ -9,8 +9,8 @@ use std::{
 use solana_pubkey::Pubkey;
 
 use crate::{
-    artifacts::AtomicFileWriter, errors::IrrecoverableError, path_resolver::PathResolver,
-    program_manager::types::ProgramInfo, seer_warn, target_reader::get_targets,
+    errors::IrrecoverableError, path_resolver::PathResolver, program_manager::types::ProgramInfo,
+    seer_warn, target_reader::get_targets,
 };
 
 impl super::types::GlobalProgramContext {
@@ -19,20 +19,13 @@ impl super::types::GlobalProgramContext {
     ///
     /// `dwarf_compile_dir` — root of the tree referenced by paths embedded in DWARF (the build
     /// workspace). Used with `runtime_dir` when resolving sources at runtime.
-    pub fn init(
-        runtime_dir: &Path,
-        dwarf_compile_dir: &Path,
-        file_writer: Arc<Mutex<AtomicFileWriter>>,
-    ) -> Result<Self, IrrecoverableError> {
+    pub fn init(runtime_dir: &Path, dwarf_compile_dir: &Path) -> Result<Self, IrrecoverableError> {
         let mut inner: HashMap<Pubkey, ProgramInfo> = HashMap::new();
 
         let target_dir = runtime_dir.join("target");
         let targets = get_targets(&target_dir)?;
         let path_resolver =
             PathResolver::new(dwarf_compile_dir.to_path_buf(), runtime_dir.to_path_buf());
-        let file_writer_guard = file_writer
-            .lock()
-            .expect("file writer lock should not be poisoned");
 
         for (key, target) in &targets {
             let key_str = key.to_string();
@@ -40,7 +33,6 @@ impl super::types::GlobalProgramContext {
             let (new_entrypoint_lookup, entrypoint_detail) = match super::entrypoints::get_entrypoint(
                 target,
                 path_resolver.clone(),
-                &file_writer_guard,
             ) {
                 Ok(entrypoint_lookup) => (
                     entrypoint_lookup,

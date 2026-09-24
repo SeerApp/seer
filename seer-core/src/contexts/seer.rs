@@ -54,7 +54,7 @@ impl SeerContext {
 
         let file_writer = Arc::new(Mutex::new(file_writer));
         let global_program_context =
-            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir, file_writer.clone())?;
+            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir)?;
         let global_account_context = GlobalAccountContext::new();
 
         Ok(Self {

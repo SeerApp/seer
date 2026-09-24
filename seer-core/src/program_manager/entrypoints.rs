@@ -1,7 +1,6 @@
 //! Purpose: resolve DWARF data into entrypoint lookups.
 
 use crate::{
-    artifacts::AtomicFileWriter,
     dwarf::{manager::DwarfManager, source_die::SourceDieTrace},
     entrypoint_lookup::EntrypointLookup,
     errors::IrrecoverableError,
@@ -14,7 +13,6 @@ use crate::{
 pub fn get_entrypoint(
     target: &Target,
     path_resolver: PathResolver,
-    file_writer: &AtomicFileWriter,
 ) -> Result<Option<EntrypointLookup>, IrrecoverableError> {
     let mut dwarf_manager = DwarfManager::new();
 
@@ -44,14 +42,6 @@ pub fn get_entrypoint(
         sizes.1,
         sizes.2
     );
-
-    if std::env::var("SEER_SOURCE_TRACE").ok().is_some() {
-        seer_debug!("Saving source trace for program {}", target.base);
-        let data = serde_json::to_string_pretty(&source_die_trace)
-            .ok()
-            .unwrap();
-        file_writer.save_loose_json_if_missing(&data, &target.base, "json", false);
-    }
 
     let entrypoint_lookup: EntrypointLookup = source_die_trace.into();
 
