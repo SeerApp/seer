@@ -114,10 +114,10 @@ pub fn store_transaction_accounts(
     keys.dedup();
     let already = (!already.is_empty()).then_some(&already);
     let programs = program_ids(tx, loaded.as_ref());
-    store_state(
-        storage,
-        &store_accounts(storage, &keys, url, already, &programs)?,
-    )
+    let state = store_accounts(storage, &keys, url, already, &programs)?;
+    ingest_programs(storage, &state)?;
+    ingest_idls(storage, url, &programs, &state)?;
+    store_state(storage, &state)
 }
 
 pub fn store_simulation(
@@ -317,6 +317,78 @@ fn programdata(account: &Account) -> Option<Pubkey> {
 
 fn pk(addr: &solana_address::Address) -> Pubkey {
     Pubkey::from(addr.to_bytes())
+}
+
+pub(crate) fn account_datas(
+    storage: &Storage,
+    state: &StateAccounts,
+) -> Result<Vec<(Pubkey, Vec<u8>)>> {
+    state
+        .0
+        .iter()
+        .map(|(key, account)| Ok((*key, storage.blob.read(&account.data)?)))
+        .collect()
+}
+
+fn ingest_programs(storage: &Storage, state: &StateAccounts) -> Result<()> {
+    let accounts = account_datas(storage, state)?;
+    for (key, account) in &state.0 {
+        if !account.executable {
+            continue;
+        }
+        let elf = seer_core::program_elf::program_elf_bytes(&accounts, key);
+        if elf.is_empty() {
+            continue;
+        }
+        let hash = storage.blob.store(&elf)?;
+        storage.db.insert_program(&hash)?;
+    }
+    Ok(())
+}
+
+fn ingest_idls(
+    storage: &Storage,
+    url: &str,
+    programs: &BTreeSet<Pubkey>,
+    state: &StateAccounts,
+) -> Result<()> {
+    let accounts = account_datas(storage, state)?;
+    let mut missing = Vec::new();
+    let mut pending = Vec::new();
+    for program_id in programs {
+        if idl::builtin(program_id).is_some() {
+            continue;
+        }
+        let elf = seer_core::program_elf::program_elf_bytes(&accounts, program_id);
+        if elf.is_empty() {
+            continue;
+        }
+        let elf_hash = storage.blob.store(&elf)?;
+        storage.db.insert_program(&elf_hash)?;
+        if storage.db.program_idl_blob_hash(&elf_hash)?.is_some() {
+            continue;
+        }
+        let Ok(addr) = idl::anchor_idl_address(program_id) else {
+            continue;
+        };
+        missing.push(addr);
+        pending.push((elf_hash, addr));
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let fetched = get_multiple_accounts(url, &missing)?;
+    for ((elf_hash, _), account) in pending.into_iter().zip(fetched) {
+        let Some(account) = account else {
+            continue;
+        };
+        let Ok(json) = idl::idl_json_from_anchor_account(&account.data) else {
+            continue;
+        };
+        let idl_hash = storage.blob.store(json.as_bytes())?;
+        storage.db.set_program_idl_blob_hash(&elf_hash, &idl_hash)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

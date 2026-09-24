@@ -1,16 +1,15 @@
 #[macro_use]
-#[path = "../common/mod.rs"]
 mod common;
 
 use std::fs;
 use std::sync::Once;
 
-use codama_nodes::NumberFormat;
 use common::{anchor_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
-use seer_core::idl::anchor::AnchorIdlLookup;
-use seer_core::idl::parsed_arg::ParsedArgValue;
-use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
-use seer_core::idl::IdlTreeParser;
+use idl::anchor::AnchorIdlLookup;
+use idl::IdlTreeParser;
+use seer_core::tree::parsed::NumberFormat;
+use seer_core::tree::parsed::ParsedArgValue;
+use seer_core::tree::parsed::{ParsedAccount, ParsedInstruction};
 use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use solana_instruction_error::InstructionError;
@@ -25,7 +24,7 @@ fn ensure_seer_logger() {
 
 fn mytest_lookup() -> AnchorIdlLookup {
     ensure_seer_logger();
-    AnchorIdlLookup::from_json_str(include_tests_fixture!("idl/anchor/idls/mytest.json"))
+    AnchorIdlLookup::from_json_str(include_tests_fixture!("anchor/idls/mytest.json"))
         .expect("mytest Anchor IDL must parse")
 }
 
@@ -74,7 +73,7 @@ struct ErrorFixture {
 #[test]
 fn test_truncated_anchor_instruction_parse_no_panic() {
     ensure_seer_logger();
-    let idl = AnchorIdlLookup::from_json_str(include_tests_fixture!("idl/anchor/idls/mytest.json"))
+    let idl = AnchorIdlLookup::from_json_str(include_tests_fixture!("anchor/idls/mytest.json"))
         .expect("mytest Anchor IDL must parse");
     // `approve`: 8-byte discriminator + u64 `milestone_idx`; only 4 bytes of payload after disc.
     let invoke_data: Vec<u8> = vec![

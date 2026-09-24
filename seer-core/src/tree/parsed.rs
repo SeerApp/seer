@@ -1,7 +1,45 @@
-use codama_nodes::{Docs, NumberFormat};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_pubkey::Pubkey;
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct ParsedInstruction {
+    pub id: ProgramIdentifier,
+    pub name: String,
+    pub account_names: Vec<String>,
+    pub args: Vec<ParsedArg>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ParsedAccount {
+    pub id: ProgramIdentifier,
+    pub data: ParsedArg,
+}
+
+/// Identifier to inform UI. Used for special cases which require unique
+/// display options.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum ProgramIdentifier {
+    Default,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumberFormat {
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    F32,
+    F64,
+    ShortU16,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ParsedArg {
@@ -25,7 +63,6 @@ pub enum ParsedArgValue {
     Struct(ViewStructTypeNode),
     Option(ViewOptionTypeNode),
     PublicKey(ViewPublicKeyTypeNode),
-    // Sentinel(ViewSentinelTypeNode),
     Tuple(ViewTupleTypeNode),
     String(ViewStringTypeNode),
     Set(ViewSetTypeNode),
@@ -45,11 +82,10 @@ pub struct ViewStructTypeNode {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewStructFieldTypeNode {
     pub name: String,
-    #[serde(default, skip_serializing_if = "crate::is_default")]
-    pub docs: Docs,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub docs: Vec<String>,
     #[serde(skip, default)]
     pub byte_offset: Option<usize>,
-
     pub value: ParsedArgValue,
 }
 
@@ -119,23 +155,6 @@ pub struct ViewHiddenSuffixTypeNode {
     pub suffix: Vec<ParsedArgValue>,
     pub value: Box<ParsedArgValue>,
 }
-
-// #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
-// pub struct ViewSentinelTypeNode {
-//     pub value: Box<ParsedArgValue>,
-//     pub sentinel: ConstantValueNode,
-// }
-
-// impl ViewSentinelTypeNode {
-//     pub fn from<'a>(origin: &SentinelTypeNode<TypeNode>, cur: &mut Cursor<'a>) -> Self {
-//         Self {
-//             value: Box::new(
-//                 ParsedArgValue::from(&origin.r#type, cur).expect("Sentinel values cannot be residual"),
-//             ),
-//             sentinel: origin.sentinel.clone(),
-//         }
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct ViewMapTypeNode {

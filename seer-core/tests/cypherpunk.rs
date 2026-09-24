@@ -30,7 +30,7 @@ fn test_instruction_context() {
 
     let file_writer = Arc::new(Mutex::new(AtomicFileWriter::new()));
     let global_program_context =
-        GlobalProgramContext::init(&cwd, &source_project_root, None, file_writer.clone())
+        GlobalProgramContext::init(&cwd, &source_project_root, file_writer.clone())
             .expect("GlobalProgramContext::init");
 
     let sig =

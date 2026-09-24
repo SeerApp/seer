@@ -1,6 +1,6 @@
 use anchor_lang_idl_spec::IdlDiscriminator;
 
-use crate::idl::cursor::Cursor;
+use crate::cursor::Cursor;
 
 impl<'a> Cursor<'a> {
     pub(crate) fn match_discriminator(&mut self, discriminator: &IdlDiscriminator) -> bool {

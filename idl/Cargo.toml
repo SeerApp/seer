@@ -1,0 +1,42 @@
+[package]
+name = "idl"
+version = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anchor-lang = { version = "0.32.1", default-features = false }
+anchor-lang-idl-spec = "0.1.0"
+anyhow = "1.0.99"
+base64 = "0.22.1"
+bs58 = "0.5.1"
+byteorder = "1.5.0"
+codama-nodes = "0.8.0"
+flate2 = "1.0"
+hex = "0.4.3"
+once_cell = "1.21.3"
+seer-core = { path = "../seer-core" }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+solana-instruction-error = { version = "2.0.0", features = ["serde"] }
+solana-pubkey = { version = ">=4.2.0,<4.3.0", default-features = false }
+solana-program = { version = "3.0.0", default-features = false }
+storage = { path = "../storage" }
+thiserror = "2.0.18"
+
+[[test]]
+name = "codama_idl"
+path = "tests/codama.rs"
+
+[[test]]
+name = "anchor_idl"
+path = "tests/anchor.rs"
+
+[[test]]
+name = "known_programs"
+path = "tests/known_programs.rs"
+
+[lints]
+workspace = true

@@ -86,19 +86,13 @@ impl Tracer {
             .account_diff(data);
     }
 
-    pub fn finalize_tree(&mut self, global_program_context: &GlobalProgramContext) {
+    pub fn finalize_tree(&mut self, _global_program_context: &GlobalProgramContext) {
         let invoke_context = self
             .invoke_context
             .as_mut()
             .expect("Finalizing tree on empty invoke context");
 
         invoke_context.flatten_account_diffs();
-
-        for tree in invoke_context.trees_iter_mut() {
-            if let Some(idl_lookup) = global_program_context.get_idl_lookup(&tree.receiver) {
-                idl_lookup.parse_tree(tree);
-            }
-        }
     }
 }
 

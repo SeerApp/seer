@@ -557,7 +557,8 @@
                                   },
                                   {
                                     "Error": {
-                                      "message": "Failed to serialize or deserialize account data"
+                                      "instruction_error": "BorshIoError",
+                                      "parsed": null
                                     }
                                   }
                                 ]
@@ -592,7 +593,8 @@
                 },
                 {
                   "Error": {
-                    "message": "Failed to serialize or deserialize account data"
+                    "instruction_error": "BorshIoError",
+                    "parsed": null
                   }
                 }
               ]

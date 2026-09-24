@@ -5,7 +5,6 @@ use solana_instruction_error::InstructionError;
 
 use crate::{
     dwarf::source_die::{SourceDie, SourceDieType},
-    idl::IdlTreeParser,
     tree::{
         loc::Loc,
         nodes::{
@@ -252,26 +251,6 @@ impl TreeEntrypoint<EntrypointChildren> {
                 }
                 _ => false,
             },
-        }
-    }
-
-    pub fn parse<T: IdlTreeParser>(&mut self, parser: &T) {
-        for c in &mut self.children {
-            match c {
-                EntrypointChildren::Entrypoint(e) => {
-                    e.parse(parser);
-                }
-                EntrypointChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                EntrypointChildren::Error(e) => {
-                    e.parse(parser);
-                }
-                EntrypointChildren::FnCall(f) => {
-                    f.parse(parser);
-                }
-                _ => continue,
-            }
         }
     }
 }

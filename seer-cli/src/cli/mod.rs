@@ -489,14 +489,17 @@ fn show(
         value.insert("data".into(), serde_json::Value::Object(map));
     }
     if trace {
+        let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+        let accounts = crate::runs::store::account_datas(storage, &state)?;
         let mut traces = Vec::new();
         for (ix, hash) in storage.db.list_run_ix(id)? {
             let Some(hash) = hash else {
                 continue;
             };
+            let tree = idl::decorate_bytes(&storage.blob.read(&hash)?, storage, &accounts)?;
             traces.push(serde_json::json!({
                 "ix": ix,
-                "tree": crate::print::trace(&storage.blob.read(&hash)?)?,
+                "tree": serde_json::to_value(&tree)?,
             }));
         }
         value.insert("trace".into(), serde_json::Value::Array(traces));

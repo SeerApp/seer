@@ -1,22 +1,19 @@
-use crate::idl::{
-    codama::cursor::CodamaCursor,
-    cursor::Cursor,
-    parsed_arg::{
-        ParsedArgValue, ViewAmountTypeNode, ViewArrayTypeNode, ViewBooleanTypeNode,
-        ViewBytesTypeNode, ViewDateTimeTypeNode, ViewEnumTypeNode, ViewEnumValue,
-        ViewHiddenPrefixTypeNode, ViewHiddenSuffixTypeNode, ViewMapEntryTypeNode, ViewMapTypeNode,
-        ViewNumberTypeNode, ViewOptionTypeNode, ViewPublicKeyTypeNode, ViewSetTypeNode,
-        ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, ViewTupleTypeNode,
-    },
-};
+use crate::{codama::cursor::CodamaCursor, cursor::Cursor, number_format};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use codama_nodes::{
     AmountTypeNode, ArrayTypeNode, BooleanTypeNode, BytesEncoding, BytesValueNode,
     DateTimeTypeNode, DefinedTypeNode, EnumTypeNode, EnumVariantTypeNode, HiddenPrefixTypeNode,
     HiddenSuffixTypeNode, InstructionInputValueNode, MapTypeNode, NestedTypeNodeTrait, Number,
-    NumberFormat, NumberTypeNode, NumberValueNode, OptionTypeNode, SentinelTypeNode, SetTypeNode,
-    StringTypeNode, StructTypeNode, TupleTypeNode, TypeNode, ValueNode, ZeroableOptionTypeNode,
+    NumberTypeNode, NumberValueNode, OptionTypeNode, SentinelTypeNode, SetTypeNode, StringTypeNode,
+    StructTypeNode, TupleTypeNode, TypeNode, ValueNode, ZeroableOptionTypeNode,
+};
+use seer_core::tree::parsed::{
+    NumberFormat, ParsedArgValue, ViewAmountTypeNode, ViewArrayTypeNode, ViewBooleanTypeNode,
+    ViewBytesTypeNode, ViewDateTimeTypeNode, ViewEnumTypeNode, ViewEnumValue,
+    ViewHiddenPrefixTypeNode, ViewHiddenSuffixTypeNode, ViewMapEntryTypeNode, ViewMapTypeNode,
+    ViewNumberTypeNode, ViewOptionTypeNode, ViewPublicKeyTypeNode, ViewSetTypeNode,
+    ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, ViewTupleTypeNode,
 };
 use solana_pubkey::Pubkey;
 
@@ -30,7 +27,7 @@ pub fn get_parsed_arg_value(
     match origin {
         TypeNode::Link(link) => {
             let Some(resolved) = defined_types.iter().find(|dt| dt.name == link.name) else {
-                crate::seer_warn!(
+                seer_core::seer_warn!(
                     "Codama decode: unresolved defined type link '{:?}'",
                     link.name.as_ref()
                 );
@@ -48,7 +45,7 @@ pub fn get_parsed_arg_value(
         TypeNode::Boolean(b) => Some(ParsedArgValue::Boolean(get_view_boolean_type_node(b, cur)?)),
         TypeNode::Bytes(_) => {
             if !is_last && passed_len.is_none() {
-                crate::seer_warn!(
+                seer_core::seer_warn!(
                     "Codama decode: bytes/string without explicit length in non-last position"
                 );
                 return None;
@@ -102,7 +99,7 @@ pub fn get_parsed_arg_value(
         )?)),
         TypeNode::String(s) => {
             if !is_last && passed_len.is_none() {
-                crate::seer_warn!(
+                seer_core::seer_warn!(
                     "Codama decode: bytes/string without explicit length in non-last position"
                 );
                 return None;
@@ -116,7 +113,9 @@ pub fn get_parsed_arg_value(
         TypeNode::PreOffset(p) => cur.get_pre_offset_value(p, defined_types, is_last),
         TypeNode::RemainderOption(r) => {
             if !is_last {
-                crate::seer_warn!("Codama decode: remainder option found outside final position");
+                seer_core::seer_warn!(
+                    "Codama decode: remainder option found outside final position"
+                );
                 return None;
             }
             if !cur.is_empty() {
@@ -200,7 +199,8 @@ fn eq_number_value(arg: &ViewNumberTypeNode, node_number: Number) -> bool {
             | NumberFormat::U16
             | NumberFormat::U32
             | NumberFormat::U64
-            | NumberFormat::U128,
+            | NumberFormat::U128
+            | NumberFormat::ShortU16,
             Number::UnsignedInteger(node_number),
         ) => arg.value.parse::<u64>().ok() == Some(node_number),
         (
@@ -224,7 +224,7 @@ pub fn get_view_number_type_node<'a>(
 ) -> Option<ViewNumberTypeNode> {
     Some(ViewNumberTypeNode {
         value: cur.get_number_value(origin)?,
-        format: origin.format,
+        format: number_format(origin.format),
     })
 }
 
@@ -242,7 +242,7 @@ pub fn get_view_struct_type_node<'a>(
         let field_is_last = is_last && idx.saturating_add(1) == field_count;
         let value = get_parsed_arg_value(&field.r#type, cur, defined_types, field_is_last, None);
         let Some(value) = value else {
-            crate::seer_warn!(
+            seer_core::seer_warn!(
                 "Codama decode: failed to decode struct field '{}'",
                 field.name.as_ref()
             );
@@ -250,7 +250,7 @@ pub fn get_view_struct_type_node<'a>(
         };
         fields.push(ViewStructFieldTypeNode {
             name: String::from(field.name.clone()),
-            docs: field.docs.clone(),
+            docs: field.docs.to_vec(),
             byte_offset: Some(field_byte_offset),
             value,
         });
@@ -387,7 +387,7 @@ pub fn get_view_tuple_type_node<'a>(
     for (i, item) in origin.items.iter().enumerate() {
         let v = get_parsed_arg_value(item, cur, defined_types, is_last, None);
         let Some(v) = v else {
-            crate::seer_warn!("Codama decode: failed to decode tuple item index {}", i);
+            seer_core::seer_warn!("Codama decode: failed to decode tuple item index {}", i);
             return None;
         };
         items.push(v);
@@ -409,14 +409,14 @@ pub fn get_view_bytes_type_node_from_value(value: &BytesValueNode) -> Option<Vie
         BytesEncoding::Base16 => value.data.clone(),
         BytesEncoding::Base58 => {
             let Some(vec) = bs58::decode(&value.data).into_vec().ok() else {
-                crate::seer_warn!("Codama decode: failed decoding bytes literal as base58");
+                seer_core::seer_warn!("Codama decode: failed decoding bytes literal as base58");
                 return None;
             };
             hex::encode(vec)
         }
         BytesEncoding::Base64 => {
             let Ok(bytes) = STANDARD.decode(&value.data) else {
-                crate::seer_warn!("Codama decode: failed decoding bytes literal as base64");
+                seer_core::seer_warn!("Codama decode: failed decoding bytes literal as base64");
                 return None;
             };
             hex::encode(bytes)
@@ -433,7 +433,7 @@ pub fn get_view_date_time_type_node<'a>(
     let number = origin.number.get_nested_type_node();
     Some(ViewDateTimeTypeNode {
         value: cur.get_number_value(number)?,
-        format: number.format,
+        format: number_format(number.format),
     })
 }
 
@@ -512,7 +512,7 @@ pub fn get_view_enum_type_node<'a>(
     });
 
     let Some(variant) = variant else {
-        crate::seer_warn!(
+        seer_core::seer_warn!(
             "Codama decode: unresolved enum discriminant '{}'",
             discriminant
         );

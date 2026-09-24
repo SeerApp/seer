@@ -3,15 +3,15 @@ use serde_with::{serde_as, DisplayFromStr};
 use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 
-use crate::{
-    idl::{types::ParsedInstruction, IdlTreeParser},
-    tree::nodes::{
+use crate::tree::{
+    nodes::{
         account::TreeAccount,
         entrypoint::{EntrypointChildren, EntrypointViewChildren, TreeEntrypoint},
         error::TreeError,
         fn_call::FnCallChildren,
         log::TreeLog,
     },
+    parsed::ParsedInstruction,
 };
 
 #[serde_as]
@@ -295,23 +295,5 @@ impl TreeRoot<RootChildren> {
         }
 
         *children = new_children;
-    }
-
-    pub fn parse<T: IdlTreeParser>(&mut self, parser: &T) {
-        self.parsed = parser.get_instruction(&self.data);
-        for c in &mut self.children {
-            match c {
-                RootChildren::Entrypoint(e) => {
-                    e.parse(parser);
-                }
-                RootChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                RootChildren::Error(e) => {
-                    e.parse(parser);
-                }
-                _ => continue,
-            }
-        }
     }
 }

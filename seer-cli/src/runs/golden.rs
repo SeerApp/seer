@@ -59,10 +59,19 @@ fn replay(name: &str, dir: &Path) -> Result<(i64, Storage, PathBuf)> {
 }
 
 fn traces_json(storage: &Storage, run_id: i64) -> Result<serde_json::Value> {
+    let row = storage.db.get_run(run_id)?;
+    let state = crate::state_accounts::StateAccounts::from_bytes(
+        &storage.blob.read(&row.state_blob_hash)?,
+    )?;
+    let accounts = super::store::account_datas(storage, &state)?;
     let mut out = Vec::new();
     for (ix, hash) in storage.db.list_run_ix(run_id)? {
         let tree = match hash {
-            Some(hash) => serde_json::from_slice(&storage.blob.read(&hash)?)?,
+            Some(hash) => {
+                let decorated =
+                    idl::decorate_bytes(&storage.blob.read(&hash)?, storage, &accounts)?;
+                serde_json::to_value(&decorated)?
+            }
             None => serde_json::Value::Null,
         };
         out.push(serde_json::json!({"ix": ix, "tree": tree}));

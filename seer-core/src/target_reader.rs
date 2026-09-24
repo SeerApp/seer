@@ -13,7 +13,6 @@ pub struct Target {
     pub base: String,
     pub executable: Option<PathBuf>,
     pub dwarf: Option<PathBuf>,
-    pub idl: Option<PathBuf>,
 }
 
 fn collect_target_bases(dir: &Path, bases: &mut HashSet<String>) {
@@ -56,7 +55,6 @@ pub fn get_targets(target_dir: &Path) -> Result<HashMap<Pubkey, Target>, Irrecov
             .join(format!("{base}-pubkey.json"));
         let executable_path = target_dir.join("deploy").join(format!("{base}.so"));
         let dwarf_path = target_dir.join("deploy").join(format!("{base}.debug"));
-        let idl_path = target_dir.join("idl").join(format!("{base}.json"));
 
         let pubkey = if keypair_path.exists() {
             let keypair = solana_keypair::read_keypair_file(&keypair_path).map_err(|e| {
@@ -99,7 +97,6 @@ pub fn get_targets(target_dir: &Path) -> Result<HashMap<Pubkey, Target>, Irrecov
                 base,
                 executable: executable_path.exists().then_some(executable_path),
                 dwarf: dwarf_path.exists().then_some(dwarf_path),
-                idl: idl_path.exists().then_some(idl_path),
             },
         );
     }

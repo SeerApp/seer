@@ -5,18 +5,14 @@ use anchor_lang_idl_spec::{
     IdlTypeDefTy,
 };
 use byteorder::{ByteOrder, LittleEndian};
-use codama_nodes::NumberFormat;
+use seer_core::tree::parsed::{
+    NumberFormat, ParsedArgValue, ViewArrayTypeNode, ViewBooleanTypeNode, ViewBytesTypeNode,
+    ViewEnumTypeNode, ViewEnumValue, ViewNumberTypeNode, ViewOptionTypeNode, ViewPublicKeyTypeNode,
+    ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, ViewTupleTypeNode,
+};
 use solana_pubkey::Pubkey;
 
-use crate::idl::{
-    cursor::Cursor,
-    parsed_arg::{
-        ParsedArgValue, ViewArrayTypeNode, ViewBooleanTypeNode, ViewBytesTypeNode,
-        ViewEnumTypeNode, ViewEnumValue, ViewNumberTypeNode, ViewOptionTypeNode,
-        ViewPublicKeyTypeNode, ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode,
-        ViewTupleTypeNode,
-    },
-};
+use crate::cursor::Cursor;
 
 #[derive(Clone)]
 pub struct ConstHolder {
@@ -36,7 +32,7 @@ fn take_bytes<'a, 'b>(
     operation: &'static str,
 ) -> Option<&'b [u8]> {
     cursor.take_or_else(n, |rem| {
-        crate::seer_warn!(
+        seer_core::seer_warn!(
             "Anchor decode: insufficient bytes for {} (need {}, {} remaining)",
             operation,
             n,
@@ -183,7 +179,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                 let inner =
                     get_parsed_arg_value_from_ty(types, o.as_ref(), cursor, generics_maps.clone());
                 if inner.is_none() {
-                    crate::seer_warn!("Anchor decode: failed to decode option some payload");
+                    seer_core::seer_warn!("Anchor decode: failed to decode option some payload");
                 }
                 Some(ParsedArgValue::Option(ViewOptionTypeNode {
                     value: Box::new(inner),
@@ -254,7 +250,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                                     IdlGenericArg::Type { ty } => format!("type `{ty:?}`"),
                                 };
 
-                                crate::seer_warn!(
+                                seer_core::seer_warn!(
                                     "Anchor decode: generic arg mismatch on defined type `{}`: expected {}, got {}",
                                     name,
                                     expected,
@@ -459,7 +455,7 @@ fn get_struct<'a>(
                         get_parsed_arg_value_from_ty(types, &f.ty, cursor, generics_maps.clone())?;
                     return_struct.fields.push(ViewStructFieldTypeNode {
                         name: f.name.clone(),
-                        docs: f.docs.clone().into(),
+                        docs: f.docs.clone(),
                         byte_offset: Some(field_byte_offset),
                         value,
                     });

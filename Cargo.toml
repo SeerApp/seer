@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "disasm",
+    "idl",
     "seer-core",
     "seer-cli",
     "seer-interface",

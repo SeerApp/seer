@@ -4,7 +4,7 @@ use solana_account::{AccountSharedData, ReadableAccount};
 use solana_program::clock::Epoch;
 use solana_pubkey::Pubkey;
 
-use crate::idl::{types::ParsedAccount, IdlTreeParser};
+use crate::tree::parsed::ParsedAccount;
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -56,6 +56,10 @@ impl AccountSharedDataWrapper {
         self.rent_epoch
     }
 
+    pub fn parsed(&self) -> Option<&ParsedAccount> {
+        self.parsed.as_ref()
+    }
+
     pub fn set_parsed(&mut self, parsed: Option<ParsedAccount>) {
         self.parsed = parsed;
     }
@@ -71,13 +75,5 @@ impl From<AccountSharedData> for AccountSharedDataWrapper {
             rent_epoch: value.rent_epoch(),
             parsed: None,
         }
-    }
-}
-
-impl TreeAccount {
-    pub fn parse<T: IdlTreeParser>(&mut self, parser: &T) {
-        self.before
-            .set_parsed(parser.get_account(self.before.data()));
-        self.after.set_parsed(parser.get_account(self.after.data()));
     }
 }

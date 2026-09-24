@@ -142,7 +142,7 @@ fn run_simulation(
         storage
             .db
             .insert_run(tx_hash, state_hash, environment, parent_id, patches, source)?;
-    seer_core::init(fee_payer.to_bytes(), None, storage)?;
+    seer_core::init(fee_payer.to_bytes(), storage)?;
     seer_core::set(run_id);
     let error = svm
         .send_transaction(tx)

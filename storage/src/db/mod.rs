@@ -46,6 +46,9 @@ impl Db {
         for sql in TABLES {
             conn.execute_batch(sql)?;
         }
+        let _ = conn.execute_batch(
+            "ALTER TABLE program ADD COLUMN idl_blob_hash BLOB CHECK (idl_blob_hash IS NULL OR length(idl_blob_hash) = 32);",
+        );
         Ok(Self { conn })
     }
 

@@ -1,16 +1,15 @@
 #[macro_use]
-#[path = "../common/mod.rs"]
 mod common;
 
 use std::fs;
 use std::sync::Once;
 
-use codama_nodes::NumberFormat;
 use common::{codama_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
-use seer_core::idl::codama::CodamaIdlLookup;
-use seer_core::idl::parsed_arg::ParsedArgValue;
-use seer_core::idl::types::{ParsedAccount, ParsedInstruction};
-use seer_core::idl::IdlTreeParser;
+use idl::codama::CodamaIdlLookup;
+use idl::IdlTreeParser;
+use seer_core::tree::parsed::NumberFormat;
+use seer_core::tree::parsed::ParsedArgValue;
+use seer_core::tree::parsed::{ParsedAccount, ParsedInstruction};
 use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use serde_json::Value;
@@ -25,17 +24,13 @@ fn ensure_seer_logger() {
 
 fn token_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
-    CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/program_manager/known_programs/token_program.json"
-    ))
-    .expect("token program Codama IDL must parse")
+    CodamaIdlLookup::from_json_str(include_str!("../src/known/token_program.json"))
+        .expect("token program Codama IDL must parse")
 }
 
 fn token_2022_json() -> Value {
-    serde_json::from_str(include_str!(
-        "../../src/program_manager/known_programs/token_2022_program.json"
-    ))
-    .expect("token-2022 Codama JSON must parse")
+    serde_json::from_str(include_str!("../src/known/token_2022_program.json"))
+        .expect("token-2022 Codama JSON must parse")
 }
 
 fn lookup_from_json_value(v: &Value) -> CodamaIdlLookup {
@@ -47,22 +42,20 @@ fn lookup_from_json_value(v: &Value) -> CodamaIdlLookup {
 
 fn system_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
-    CodamaIdlLookup::from_json_str(include_str!(
-        "../../src/program_manager/known_programs/system_program.json"
-    ))
-    .expect("system program Codama IDL must parse")
+    CodamaIdlLookup::from_json_str(include_str!("../src/known/system_program.json"))
+        .expect("system program Codama IDL must parse")
 }
 
 fn mytest_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
-    CodamaIdlLookup::from_json_str(include_tests_fixture!("idl/codama/idls/mytest.json"))
+    CodamaIdlLookup::from_json_str(include_tests_fixture!("codama/idls/mytest.json"))
         .expect("mytest Codama IDL must parse")
 }
 
 fn bad_layout_instruction_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_tests_fixture!(
-        "idl/codama/idls/bad_layout_instruction.json"
+        "codama/idls/bad_layout_instruction.json"
     ))
     .expect("bad layout Codama IDL must parse")
 }
@@ -70,7 +63,7 @@ fn bad_layout_instruction_lookup() -> CodamaIdlLookup {
 fn two_discriminators_instruction_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_tests_fixture!(
-        "idl/codama/idls/two_field_discriminators.json"
+        "codama/idls/two_field_discriminators.json"
     ))
     .expect("two-discriminator Codama IDL must parse")
 }
@@ -78,7 +71,7 @@ fn two_discriminators_instruction_lookup() -> CodamaIdlLookup {
 fn zeroable_option_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_tests_fixture!(
-        "idl/codama/idls/zeroable_option_instruction.json"
+        "codama/idls/zeroable_option_instruction.json"
     ))
     .expect("zeroable-option Codama IDL must parse")
 }
@@ -86,7 +79,7 @@ fn zeroable_option_lookup() -> CodamaIdlLookup {
 fn sentinel_lookup() -> CodamaIdlLookup {
     ensure_seer_logger();
     CodamaIdlLookup::from_json_str(include_tests_fixture!(
-        "idl/codama/idls/sentinel_instruction.json"
+        "codama/idls/sentinel_instruction.json"
     ))
     .expect("sentinel Codama IDL must parse")
 }
@@ -128,7 +121,7 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 
 fn token_2022_read_411_bytes() -> Vec<u8> {
     serde_json::from_str(include_tests_fixture!(
-        "idl/codama/samples/token_2022_read_411_bytes.json"
+        "codama/samples/token_2022_read_411_bytes.json"
     ))
     .expect("token-2022 read sample bytes must parse")
 }

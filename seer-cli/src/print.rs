@@ -6,10 +6,6 @@ pub fn transaction(bytes: &[u8]) -> Result<serde_json::Value> {
     Ok(pretty_tx(&tx))
 }
 
-pub fn trace(bytes: &[u8]) -> Result<serde_json::Value> {
-    serde_json::from_slice(bytes).context("trace json")
-}
-
 fn pretty_tx(tx: &VersionedTransaction) -> serde_json::Value {
     serde_json::json!({
         "signatures": tx.signatures.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -64,7 +60,7 @@ mod test {
     #[test]
     fn trace_is_stored_json() {
         let blob = br#"{"receiver":"11111111111111111111111111111111","children":[{"Log":{"message":"ok"}}],"loc":{"file":"lib.rs","line":12}}"#;
-        let value = super::trace(blob).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(blob).unwrap();
         assert_eq!(value["loc"]["file"], "lib.rs");
         assert_eq!(value["children"][0]["Log"]["message"], "ok");
     }

@@ -45,6 +45,10 @@ impl Blob {
         Ok(bytes)
     }
 
+    pub fn hash(&self, bytes: &[u8]) -> [u8; 32] {
+        digest(bytes)
+    }
+
     fn path(&self, hash: &[u8; 32]) -> PathBuf {
         self.dir.join(hex::encode(hash))
     }

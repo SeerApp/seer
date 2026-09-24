@@ -9,10 +9,6 @@
 //! of asserting. Review the diff, then commit.
 //!
 //! Layout:
-//! - **`tests/fixtures/idl/codama/idls/`** — Codama IDL JSON inputs (`codama_idl` test).
-//! - **`tests/fixtures/idl/codama/canonical_result/`** — Codama parse goldens (`codama_idl` test).
-//! - **`tests/fixtures/idl/anchor/idls/`** — Anchor IDL JSON inputs (`anchor_idl` test).
-//! - **`tests/fixtures/idl/anchor/canonical_result/`** — Anchor parse goldens (`anchor_idl` test).
 //! - **`tests/fixtures/<scenario>/canonical_result/tx/<signature>/<instruction>/trace.json`** — trace tree goldens (`puppets`, `cypherpunk`, …).
 
 #![allow(dead_code)]
@@ -54,16 +50,6 @@ macro_rules! include_tests_fixture {
             $path
         ))
     };
-}
-
-/// Codama IDL parse goldens: `tests/fixtures/idl/codama/canonical_result/`.
-pub fn codama_idl_golden_dir() -> PathBuf {
-    tests_fixtures_dir().join("idl/codama/canonical_result")
-}
-
-/// Anchor IDL parse goldens: `tests/fixtures/idl/anchor/canonical_result/`.
-pub fn anchor_idl_golden_dir() -> PathBuf {
-    tests_fixtures_dir().join("idl/anchor/canonical_result")
 }
 
 pub fn _run_tx(

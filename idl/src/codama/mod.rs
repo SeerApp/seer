@@ -5,7 +5,7 @@ mod schema;
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-use crate::idl::{
+use crate::{
     codama::{
         parsed_arg::{
             eq_instruciton_input_value_node, eq_value_node, get_parsed_arg_value,
@@ -14,14 +14,14 @@ use crate::idl::{
         schema::analyze_codama_program,
     },
     cursor::Cursor,
-    display_error_name,
-    parsed_arg::{ParsedArg, ParsedArgValue},
-    types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
-    IdlTreeParser,
+    display_error_name, IdlTreeParser,
 };
 use codama_nodes::{
     DefaultValueStrategy, DiscriminatorNode, InstructionNode, NestedTypeNodeTrait, RootNode,
     StructTypeNode, TypeNode, ValueNode,
+};
+use seer_core::tree::parsed::{
+    ParsedAccount, ParsedArg, ParsedArgValue, ParsedInstruction, ProgramIdentifier,
 };
 use solana_instruction_error::InstructionError;
 
@@ -124,7 +124,7 @@ impl IdlTreeParser for CodamaIdlLookup {
         match best_match {
             Some((_, _, parsed)) => Some(parsed),
             None => {
-                crate::seer_warn!(
+                seer_core::seer_warn!(
                     "Codama account decode: no account type matched ({} bytes)",
                     data_len
                 );
@@ -350,7 +350,7 @@ impl CodamaIdlLookup {
 
 #[cfg(test)]
 mod tests {
-    use crate::idl::display_error_name;
+    use crate::display_error_name;
 
     #[test]
     fn display_error_name_promotes_camel_case_to_pascal_case() {

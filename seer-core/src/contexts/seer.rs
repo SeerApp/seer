@@ -4,11 +4,9 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use bincode::serialized_size;
 use seer_interface::{GuestAccountBackdoor, GuestMemory};
-use solana_account::{AccountSharedData, ReadableAccount};
+use solana_account::ReadableAccount;
 use solana_instruction::error::InstructionError;
-use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_pubkey::Pubkey;
 use storage::Storage;
 
@@ -36,11 +34,7 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new(
-        authority: Pubkey,
-        network_rpc_url: Option<String>,
-        storage: &Storage,
-    ) -> Result<Self, IrrecoverableError> {
+    pub fn new(authority: Pubkey, storage: &Storage) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -59,12 +53,8 @@ impl SeerContext {
         }
 
         let file_writer = Arc::new(Mutex::new(file_writer));
-        let global_program_context = GlobalProgramContext::init(
-            &runtime_dir,
-            &dwarf_compile_dir,
-            network_rpc_url,
-            file_writer.clone(),
-        )?;
+        let global_program_context =
+            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir, file_writer.clone())?;
         let global_account_context = GlobalAccountContext::new();
 
         Ok(Self {
@@ -90,7 +80,13 @@ impl SeerContext {
 
     fn persist_reg(&self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
         let (start_step, end_step) = register_trace_steps_on_disk(chunk);
-        let elf = elf_bytes(&self.global_account_context.live_accounts(), program);
+        let accounts: Vec<(Pubkey, Vec<u8>)> = self
+            .global_account_context
+            .live_accounts()
+            .iter()
+            .map(|(k, a)| (*k, a.data().to_vec()))
+            .collect();
+        let elf = crate::program_elf::program_elf_bytes(&accounts, program);
         let run_id = self.run_id;
         let storage = self.storage();
         let self_hash = storage
@@ -248,14 +244,9 @@ impl SeerContext {
                 .transaction_context
                 .as_mut()
                 .expect("Ending program before transaction context exists");
-            let global_program_context = &self.global_program_context;
 
             if let Some(err) = err.clone() {
-                let idl_lookup = global_program_context.get_idl_lookup(&program_address);
-                let idl = idl_lookup
-                    .as_deref()
-                    .map(|l| l as &dyn crate::idl::IdlTreeParser);
-                tx.set_execution_error(err, idl);
+                tx.set_execution_error(err);
             }
 
             let ix = tx.instruction();
@@ -312,41 +303,4 @@ impl SeerContext {
             tx.account_diff(acc);
         }
     }
-}
-
-fn elf_bytes(accounts: &[(Pubkey, AccountSharedData)], program_id: &Pubkey) -> Vec<u8> {
-    const ELF_MAGIC: &[u8; 4] = b"\x7FELF";
-    let Some((_, program)) = accounts.iter().find(|(k, _)| k == program_id) else {
-        return Vec::new();
-    };
-    let data = program.data();
-    if data.starts_with(ELF_MAGIC) {
-        return data.to_vec();
-    }
-    let Ok(UpgradeableLoaderState::Program {
-        programdata_address,
-    }) = bincode::deserialize(data)
-    else {
-        return data.to_vec();
-    };
-    let programdata_address = Pubkey::new_from_array(programdata_address.to_bytes());
-    let Some((_, programdata)) = accounts.iter().find(|(k, _)| k == &programdata_address) else {
-        return Vec::new();
-    };
-    let bytes = programdata.data();
-    let offset = match bincode::deserialize(bytes) {
-        Ok(UpgradeableLoaderState::ProgramData {
-            upgrade_authority_address,
-            ..
-        }) => {
-            if upgrade_authority_address.is_some() {
-                UpgradeableLoaderState::size_of_programdata_metadata()
-            } else {
-                UpgradeableLoaderState::size_of_programdata_metadata()
-                    .saturating_sub(serialized_size(&Pubkey::default()).unwrap_or(0) as usize)
-            }
-        }
-        _ => return Vec::new(),
-    };
-    bytes.get(offset..).unwrap_or(&[]).to_vec()
 }

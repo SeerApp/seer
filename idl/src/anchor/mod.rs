@@ -8,16 +8,11 @@ use anchor_lang_idl_spec::{Idl, IdlInstructionAccountItem};
 use solana_instruction_error::InstructionError;
 
 use crate::{
-    idl::{
-        anchor::parsed_arg::{get_idl_type_def_ty, get_parsed_arg_value},
-        cursor::Cursor,
-        display_error_name,
-        parsed_arg::ParsedArg,
-        types::{ParsedAccount, ParsedInstruction, ProgramIdentifier},
-        IdlTreeParser,
-    },
-    tree::nodes::root::{RootChildren, TreeRoot},
+    anchor::parsed_arg::{get_idl_type_def_ty, get_parsed_arg_value},
+    cursor::Cursor,
+    display_error_name, IdlTreeParser,
 };
+use seer_core::tree::parsed::{ParsedAccount, ParsedArg, ParsedInstruction, ProgramIdentifier};
 
 pub struct AnchorIdlLookup {
     idl: Idl,
@@ -109,10 +104,6 @@ impl IdlTreeParser for AnchorIdlLookup {
 }
 
 impl AnchorIdlLookup {
-    pub fn parse_tree_root(&self, root: &mut TreeRoot<RootChildren>) {
-        root.parsed = self.get_instruction(&root.data);
-    }
-
     pub fn from_json_str(idl_json: &str) -> Result<Self, serde_json::Error> {
         let idl: Idl = serde_json::from_str(idl_json)?;
         Ok(Self { idl })

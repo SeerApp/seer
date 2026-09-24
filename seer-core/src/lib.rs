@@ -6,10 +6,10 @@ pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod errors;
 pub mod failure;
-pub mod idl;
 pub mod logger;
 pub mod meta;
 pub mod path_resolver;
+pub mod program_elf;
 pub mod program_manager;
 pub mod register_trace;
 pub mod runbook;
@@ -80,14 +80,10 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub fn init(
-    authority: [u8; 32],
-    network_rpc_url: Option<String>,
-    storage: &Storage,
-) -> Result<(), IrrecoverableError> {
+pub fn init(authority: [u8; 32], storage: &Storage) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), network_rpc_url, storage)?;
+    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), storage)?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
@@ -150,13 +146,6 @@ pub fn push_warning(warning: impl Into<String>) {
 
 pub fn get_cwd() -> PathBuf {
     env::current_dir().expect("env::curnet_dir failed!")
-}
-
-pub fn is_default<T>(value: &T) -> bool
-where
-    T: Default + PartialEq,
-{
-    value == &T::default()
 }
 
 pub fn install_vm_hooks() {

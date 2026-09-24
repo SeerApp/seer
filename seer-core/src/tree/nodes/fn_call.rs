@@ -1,17 +1,14 @@
 use serde::{Deserialize, Serialize};
 use solana_instruction_error::InstructionError;
 
-use crate::{
-    idl::IdlTreeParser,
-    tree::{
-        loc::Loc,
-        nodes::{
-            account::TreeAccount,
-            entrypoint::{EntrypointChildren, EntrypointViewChildren, TreeEntrypoint},
-            error::TreeError,
-            log::TreeLog,
-            root::{RootChildren, RootViewChildren, TreeRoot},
-        },
+use crate::tree::{
+    loc::Loc,
+    nodes::{
+        account::TreeAccount,
+        entrypoint::{EntrypointChildren, EntrypointViewChildren, TreeEntrypoint},
+        error::TreeError,
+        log::TreeLog,
+        root::{RootChildren, RootViewChildren, TreeRoot},
     },
 };
 
@@ -245,26 +242,6 @@ impl TreeFnCall<FnCallChildren> {
                 }
                 _ => false,
             },
-        }
-    }
-
-    pub fn parse<T: IdlTreeParser>(&mut self, parser: &T) {
-        for c in &mut self.children {
-            match c {
-                FnCallChildren::Entrypoint(e) => {
-                    e.parse(parser);
-                }
-                FnCallChildren::Account(a) => {
-                    a.parse(parser);
-                }
-                FnCallChildren::Error(e) => {
-                    e.parse(parser);
-                }
-                FnCallChildren::FnCall(f) => {
-                    f.parse(parser);
-                }
-                _ => continue,
-            }
         }
     }
 }
