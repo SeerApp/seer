@@ -1,5 +1,3 @@
-pub mod analysis;
-pub mod artifacts;
 pub mod binary_lookup_tree;
 pub mod contexts;
 pub mod dwarf;
@@ -12,7 +10,6 @@ pub mod path_resolver;
 pub mod program_elf;
 pub mod program_manager;
 pub mod register_trace;
-pub mod runbook;
 pub mod sources;
 pub mod step_mirror;
 pub mod target_reader;
@@ -136,7 +133,7 @@ pub fn record_execution_failure_if_empty(
     });
 }
 
-/// Append a warning to the active tx's `meta.json` notes. No-op if no tx is active.
+/// Append a warning to the active tx's in-memory notes. No-op if no tx is active.
 pub fn push_warning(warning: impl Into<String>) {
     let warning = warning.into();
     get(|ctx| {

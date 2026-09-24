@@ -2,7 +2,6 @@ use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    artifacts::AtomicFileWriter,
     contexts::instruction::InstructionContext,
     failure::Failure,
     meta::TxMetadata,
@@ -82,13 +81,12 @@ impl TransactionContext {
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
-        self.instruction_context = Some(InstructionContext::new(instruction, fee_payer, None));
+        self.instruction_context = Some(InstructionContext::new(instruction, fee_payer));
     }
 
     pub fn end_instruction(
         &mut self,
         global_program_context: &GlobalProgramContext,
-        file_writer: &AtomicFileWriter,
     ) -> Option<(u8, TreeRoot<RootViewChildren>)> {
         let mut ix = self
             .instruction_context
@@ -96,7 +94,7 @@ impl TransactionContext {
             .expect("Ending instruction before it exists");
 
         ix.finalize_tree(global_program_context);
-        ix.into_trace_tree(file_writer)
+        ix.into_trace_tree()
     }
 
     /// # Safety

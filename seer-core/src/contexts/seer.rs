@@ -1,8 +1,4 @@
-use std::{
-    env,
-    path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::{env, path::PathBuf};
 
 use seer_interface::{GuestAccountBackdoor, GuestMemory};
 use solana_account::ReadableAccount;
@@ -11,7 +7,6 @@ use solana_pubkey::Pubkey;
 use storage::Storage;
 
 use crate::{
-    artifacts::{layout::register_trace_steps_on_disk, AtomicFileWriter},
     contexts::{
         account::global::GlobalAccountContext, register::RegisterContext,
         register::TransactionRegisterContext, transaction::TransactionContext,
@@ -19,14 +14,12 @@ use crate::{
     errors::IrrecoverableError,
     get_cwd,
     program_manager::types::GlobalProgramContext,
-    runbook::generate_runbooks,
     seer_debug,
 };
 
 pub struct SeerContext {
     storage: *const Storage,
     run_id: i64,
-    pub file_writer: Arc<Mutex<AtomicFileWriter>>,
     pub transaction_context: Option<TransactionContext>,
     pub register_context: RegisterContext,
     pub global_program_context: GlobalProgramContext,
@@ -34,7 +27,7 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new(authority: Pubkey, storage: &Storage) -> Result<Self, IrrecoverableError> {
+    pub fn new(_authority: Pubkey, storage: &Storage) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -45,22 +38,12 @@ impl SeerContext {
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_cwd());
 
-        let file_writer = AtomicFileWriter::new();
-        if let Some((txtx, main)) = generate_runbooks(authority, &runtime_dir) {
-            file_writer.save_runbooks(&runtime_dir, txtx, main);
-        } else {
-            seer_debug!("Starting without target.");
-        }
-
-        let file_writer = Arc::new(Mutex::new(file_writer));
-        let global_program_context =
-            GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir)?;
+        let global_program_context = GlobalProgramContext::init(&runtime_dir, &dwarf_compile_dir)?;
         let global_account_context = GlobalAccountContext::new();
 
         Ok(Self {
             storage,
             run_id: 0,
-            file_writer,
             transaction_context: None,
             register_context: RegisterContext::new(),
             global_program_context,
@@ -72,14 +55,12 @@ impl SeerContext {
         unsafe { &*self.storage }
     }
 
-    fn lock_file_writer(writer: &Arc<Mutex<AtomicFileWriter>>) -> MutexGuard<'_, AtomicFileWriter> {
-        writer
-            .lock()
-            .expect("file writer lock should not be poisoned")
-    }
-
     fn persist_reg(&self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
-        let (start_step, end_step) = register_trace_steps_on_disk(chunk);
+        let (start_step, end_step) =
+            match (chunk.trace.first_key_value(), chunk.trace.last_key_value()) {
+                (Some((&first, _)), Some((&last, _))) => (first, last),
+                _ => (chunk.min_order, chunk.min_order),
+            };
         let accounts: Vec<(Pubkey, Vec<u8>)> = self
             .global_account_context
             .live_accounts()
@@ -174,10 +155,9 @@ impl SeerContext {
                 tx.account_diff(acc);
             }
 
-            let w = Self::lock_file_writer(&self.file_writer);
             let ix = tx.instruction();
             let tree = tx
-                .end_instruction(&self.global_program_context, &w)
+                .end_instruction(&self.global_program_context)
                 .map(|(_, tree)| serde_json::to_vec(&tree).expect("serialize trace"));
             (ix, tree)
         };

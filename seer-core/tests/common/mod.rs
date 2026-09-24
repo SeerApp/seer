@@ -13,14 +13,21 @@
 
 #![allow(dead_code)]
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use seer_core::{
-    analysis::{Analysis, ExecutionEvent},
     contexts::tracer::Tracer,
     program_manager::GlobalProgramContext,
-    tree::nodes::root::{RootViewChildren, TreeRoot},
+    tree::nodes::{
+        account::TreeAccount,
+        root::{RootViewChildren, TreeRoot},
+    },
 };
+use serde::{Deserialize, Serialize};
+use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 
 /// When set, golden tests write updated JSON under [`tests_fixtures_dir`] (see module docs).
@@ -52,6 +59,54 @@ macro_rules! include_tests_fixture {
     };
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
+enum ExecutionEvent {
+    StartProgram(Pubkey),
+    EndProgram(Option<InstructionError>),
+    Step(u64),
+    Log(String),
+    AccountDiff(TreeAccount),
+}
+
+fn load_analysis(folder: &Path, sig: &str, instruction: u8) -> Vec<ExecutionEvent> {
+    let path = folder.join(format!("analysis_{}_{}.json", sig, instruction));
+    if !path.is_file() {
+        return Vec::new();
+    }
+    let content = fs::read_to_string(&path).unwrap_or_default();
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
+pub fn load_trace_tree(
+    folder: &Path,
+    instruction: u8,
+    signature: &str,
+) -> TreeRoot<RootViewChildren> {
+    let path = folder
+        .join("tx")
+        .join(signature)
+        .join(instruction.to_string())
+        .join("trace.json");
+    let json = fs::read_to_string(&path).expect("Failed to read trace tree");
+    serde_json::from_str(&json).expect("Failed to deserialize tree")
+}
+
+pub fn save_trace_tree(
+    folder: &Path,
+    signature: &str,
+    instruction: u8,
+    trace_tree: TreeRoot<RootViewChildren>,
+) {
+    let dir = folder
+        .join("tx")
+        .join(signature)
+        .join(instruction.to_string());
+    fs::create_dir_all(&dir).expect("create trace tree output dir");
+    let json = serde_json::to_string_pretty(&trace_tree).expect("serialize trace tree");
+    fs::write(dir.join("trace.json"), json).expect("write trace tree");
+}
+
 pub fn _run_tx(
     analysis_root: &Path,
     fee_payer: Pubkey,
@@ -61,11 +116,9 @@ pub fn _run_tx(
 ) -> TreeRoot<RootViewChildren> {
     let mut tracer = Tracer::new(fee_payer);
 
-    let analysis_trace = Analysis::load(analysis_root, signature.to_string(), index);
-
     let mut trace_order = 0u64;
 
-    for e in analysis_trace.events {
+    for e in load_analysis(analysis_root, signature, index) {
         match e {
             ExecutionEvent::StartProgram(program_address) => {
                 tracer.start_program(Vec::new(), Vec::new(), program_address, trace_order);
