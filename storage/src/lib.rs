@@ -3,7 +3,7 @@ mod db;
 mod home;
 
 pub use blobs::Blob;
-pub use db::{Db, RunRow};
+pub use db::{Db, ProgramChunk, RunRow};
 pub use home::default_root;
 
 use anyhow::Result;
@@ -155,6 +155,51 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(storage.db.lookup_sig(&[8u8; 64], None).unwrap().is_none());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn program_chunk_rows_are_transactional_and_lazy() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        let elf = storage.blob.store(b"elf").unwrap();
+        storage.db.insert_program(&elf).unwrap();
+        let a = storage.blob.store(b"chunk-a").unwrap();
+        let b = storage.blob.store(b"chunk-b").unwrap();
+        storage
+            .db
+            .insert_program_disasm(
+                &elf,
+                &[
+                    crate::ProgramChunk {
+                        start_pc: 64,
+                        end_pc: 8072,
+                        blob_hash: a,
+                    },
+                    crate::ProgramChunk {
+                        start_pc: 8080,
+                        end_pc: 16000,
+                        blob_hash: b,
+                    },
+                ],
+            )
+            .unwrap();
+        storage
+            .db
+            .insert_program_disasm(
+                &elf,
+                &[crate::ProgramChunk {
+                    start_pc: 0,
+                    end_pc: 1,
+                    blob_hash: a,
+                }],
+            )
+            .unwrap();
+        let rows = storage.db.program_disasm_chunks(&elf).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].start_pc, 64);
+        assert_eq!(rows[1].start_pc, 8080);
+        assert!(storage.db.program_lifted_chunks(&elf).unwrap().is_empty());
         std::fs::remove_dir_all(root).ok();
     }
 }

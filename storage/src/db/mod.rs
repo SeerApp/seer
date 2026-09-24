@@ -4,6 +4,8 @@ mod program;
 mod run;
 mod simulation;
 
+pub use program::ProgramChunk;
+
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -12,6 +14,8 @@ use rusqlite::Connection;
 const TABLES: &[&str] = &[
     include_str!("../tables/simulation.sql"),
     include_str!("../tables/program.sql"),
+    include_str!("../tables/program_disasm.sql"),
+    include_str!("../tables/program_lifted.sql"),
     include_str!("../tables/historical_transaction.sql"),
     include_str!("../tables/run.sql"),
     include_str!("../tables/run_ix.sql"),
@@ -46,9 +50,6 @@ impl Db {
         for sql in TABLES {
             conn.execute_batch(sql)?;
         }
-        let _ = conn.execute_batch(
-            "ALTER TABLE program ADD COLUMN idl_blob_hash BLOB CHECK (idl_blob_hash IS NULL OR length(idl_blob_hash) = 32);",
-        );
         Ok(Self { conn })
     }
 

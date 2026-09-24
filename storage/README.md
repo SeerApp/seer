@@ -49,8 +49,21 @@ erDiagram
 
     program {
         blob self_blob_hash PK
-        blob disasm_blob_hash
-        blob lifted_blob_hash
+        blob idl_blob_hash
+    }
+
+    program_disasm {
+        blob program_blob_hash PK, FK
+        int start_pc PK
+        int end_pc
+        blob blob_hash
+    }
+
+    program_lifted {
+        blob program_blob_hash PK, FK
+        int start_pc PK
+        int end_pc
+        blob blob_hash
     }
 
     reg {
@@ -71,4 +84,6 @@ erDiagram
     run_ix ||--o| glassbox : "1:1"
     run_ix ||--o{ reg : registers
     program ||--o{ reg : "program blob"
+    program ||--o{ program_disasm : disasm chunks
+    program ||--o{ program_lifted : lifted chunks
 ```
