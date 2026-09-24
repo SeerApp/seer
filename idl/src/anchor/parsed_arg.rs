@@ -5,12 +5,12 @@ use anchor_lang_idl_spec::{
     IdlTypeDefTy,
 };
 use byteorder::{ByteOrder, LittleEndian};
-use seer_core::tree::parsed::{
+use solana_pubkey::Pubkey;
+use trace::tree::parsed::{
     NumberFormat, ParsedArgValue, ViewArrayTypeNode, ViewBooleanTypeNode, ViewBytesTypeNode,
     ViewEnumTypeNode, ViewEnumValue, ViewNumberTypeNode, ViewOptionTypeNode, ViewPublicKeyTypeNode,
     ViewStringTypeNode, ViewStructFieldTypeNode, ViewStructTypeNode, ViewTupleTypeNode,
 };
-use solana_pubkey::Pubkey;
 
 use crate::cursor::Cursor;
 
@@ -32,7 +32,7 @@ fn take_bytes<'a, 'b>(
     operation: &'static str,
 ) -> Option<&'b [u8]> {
     cursor.take_or_else(n, |rem| {
-        seer_core::seer_warn!(
+        trace::seer_warn!(
             "Anchor decode: insufficient bytes for {} (need {}, {} remaining)",
             operation,
             n,
@@ -179,7 +179,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                 let inner =
                     get_parsed_arg_value_from_ty(types, o.as_ref(), cursor, generics_maps.clone());
                 if inner.is_none() {
-                    seer_core::seer_warn!("Anchor decode: failed to decode option some payload");
+                    trace::seer_warn!("Anchor decode: failed to decode option some payload");
                 }
                 Some(ParsedArgValue::Option(ViewOptionTypeNode {
                     value: Box::new(inner),
@@ -250,7 +250,7 @@ fn get_parsed_arg_value_from_ty<'a>(
                                     IdlGenericArg::Type { ty } => format!("type `{ty:?}`"),
                                 };
 
-                                seer_core::seer_warn!(
+                                trace::seer_warn!(
                                     "Anchor decode: generic arg mismatch on defined type `{}`: expected {}, got {}",
                                     name,
                                     expected,

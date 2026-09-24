@@ -89,7 +89,7 @@ pub fn analyze_codama_program(
         let has_valid_instruction_discriminator_shape =
             discriminator_count > 0 || (single_instruction_program && discriminator_count == 0);
         if !has_valid_instruction_discriminator_shape {
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama schema: skipping instruction {:?}: invalid discriminator layout (count={}, single_instruction_program={})",
                 ix_name,
                 discriminator_count,
@@ -158,7 +158,7 @@ fn validate_type_tree(
     match ty {
         TypeNode::Link(link) => {
             let Some(dt) = defined_types.iter().find(|d| d.name == link.name) else {
-                seer_core::seer_warn!(
+                trace::seer_warn!(
                     "Codama schema: missing defined type link {:?} at {}",
                     link.name.to_string(),
                     loc
@@ -172,14 +172,14 @@ fn validate_type_tree(
             validate_type_tree(&dt.r#type, defined_types, is_last, inner)
         }
         TypeNode::Bytes(_) | TypeNode::String(_) if !is_last => {
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama schema: bytes/string field must be last in layout at {}",
                 loc
             );
             false
         }
         TypeNode::RemainderOption(_) if !is_last => {
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama schema: remainderOption must be last field at {}",
                 loc
             );

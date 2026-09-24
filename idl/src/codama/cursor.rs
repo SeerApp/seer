@@ -11,7 +11,7 @@ use solana_program::short_vec::decode_shortu16_len;
 use solana_pubkey::Pubkey;
 
 use crate::{codama::parsed_arg::get_parsed_arg_value, cursor::Cursor};
-use seer_core::tree::parsed::ParsedArgValue;
+use trace::tree::parsed::ParsedArgValue;
 pub trait CodamaCursor {
     fn decode_with_count_node<T, F>(
         &mut self,
@@ -98,7 +98,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             CountNode::Prefixed(prefix) => {
                 let len_raw = self.get_number_value(prefix.prefix.get_nested_type_node())?;
                 let Ok(len) = len_raw.parse::<usize>() else {
-                    seer_core::seer_warn!("Codama decode: invalid prefixed count '{}'", len_raw);
+                    trace::seer_warn!("Codama decode: invalid prefixed count '{}'", len_raw);
                     return None;
                 };
 
@@ -116,7 +116,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                     if after == before {
                         break;
                     } else if after < before {
-                        seer_core::seer_warn!("Codama decode: remainder cursor regressed");
+                        trace::seer_warn!("Codama decode: remainder cursor regressed");
                         break;
                     }
 
@@ -133,7 +133,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         match origin.format {
             NumberFormat::U8 => {
                 let s = self.take_or_else(1, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number U8 (need {}, remaining {})",
                         1,
                         rem
@@ -143,7 +143,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             }
             NumberFormat::I8 => {
                 let s = self.take_or_else(1, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number I8 (need {}, remaining {})",
                         1,
                         rem
@@ -153,7 +153,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             }
             NumberFormat::U16 => {
                 let slice = self.take_or_else(2, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number U16 (need {}, remaining {})",
                         2,
                         rem
@@ -166,7 +166,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             }
             NumberFormat::I16 => {
                 let slice = self.take_or_else(2, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number I16 (need {}, remaining {})",
                         2,
                         rem
@@ -180,7 +180,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::U32 => {
                 let slice = self.take_or_else(4, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number U32 (need {}, remaining {})",
                         4,
                         rem
@@ -194,7 +194,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::I32 => {
                 let slice = self.take_or_else(4, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number I32 (need {}, remaining {})",
                         4,
                         rem
@@ -208,7 +208,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::F32 => {
                 let slice = self.take_or_else(4, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number F32 (need {}, remaining {})",
                         4,
                         rem
@@ -222,7 +222,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::U64 => {
                 let slice = self.take_or_else(8, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number U64 (need {}, remaining {})",
                         8,
                         rem
@@ -236,7 +236,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::I64 => {
                 let slice = self.take_or_else(8, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number I64 (need {}, remaining {})",
                         8,
                         rem
@@ -250,7 +250,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::F64 => {
                 let slice = self.take_or_else(8, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number F64 (need {}, remaining {})",
                         8,
                         rem
@@ -264,7 +264,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::U128 => {
                 let slice = self.take_or_else(16, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number U128 (need {}, remaining {})",
                         16,
                         rem
@@ -278,7 +278,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
 
             NumberFormat::I128 => {
                 let slice = self.take_or_else(16, |rem| {
-                    seer_core::seer_warn!(
+                    trace::seer_warn!(
                         "Codama decode: insufficient bytes for number I128 (need {}, remaining {})",
                         16,
                         rem
@@ -296,7 +296,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                     decode_shortu16_len(remaining)
                         .map(|(value, consumed)| {
                             if !self.set_pos_relative(consumed as i32) {
-                                seer_core::seer_warn!(
+                                trace::seer_warn!(
                                     "Codama decode: cursor offset out of bounds after short_u16 decode"
                                 );
                             }
@@ -311,7 +311,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
     fn get_pubkey_value(&mut self) -> Option<Pubkey> {
         let Some(slice) = self.take(32) else {
             let rem = self.remaining();
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama decode: insufficient bytes for pubkey (need {}, remaining {})",
                 32,
                 rem
@@ -339,11 +339,11 @@ impl<'a> CodamaCursor for Cursor<'a> {
         } else if number_value == "1" {
             let inner = get_parsed_arg_value(&origin.item, self, defined_types, is_last, None);
             if inner.is_none() {
-                seer_core::seer_warn!("Codama decode: option payload failed to decode");
+                trace::seer_warn!("Codama decode: option payload failed to decode");
             }
             Some(Some(inner?))
         } else {
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama decode: invalid option discriminant '{}'",
                 number_value
             );
@@ -355,7 +355,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         let len = len.unwrap_or(self.remaining());
         let Some(bytes) = self.take(len) else {
             let rem = self.remaining();
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama decode: insufficient bytes for string payload (need {}, remaining {})",
                 len,
                 rem
@@ -413,7 +413,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         let len = len.unwrap_or(self.remaining());
         let Some(bytes) = self.take(len) else {
             let rem = self.remaining();
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama decode: insufficient bytes for bytes payload (need {}, remaining {})",
                 len,
                 rem
@@ -431,7 +431,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
         let fixed_start_offset = self.absolute_pos();
         let Some(bytes) = self.take(origin.size) else {
             let rem = self.remaining();
-            seer_core::seer_warn!(
+            trace::seer_warn!(
                 "Codama decode: insufficient bytes for fixedSize slice (need {}, remaining {})",
                 origin.size,
                 rem
@@ -459,7 +459,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                 let value =
                     get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
                 if !self.set_pos_relative(origin.offset) {
-                    seer_core::seer_warn!("Codama decode: cursor offset out of bounds");
+                    trace::seer_warn!("Codama decode: cursor offset out of bounds");
                 }
                 value
             }
@@ -468,7 +468,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
                 let value =
                     get_parsed_arg_value(&origin.r#type, self, defined_types, is_last, None);
                 if !self.set_pos_relative_from(origin.offset, start_pos) {
-                    seer_core::seer_warn!("Codama decode: cursor offset out of bounds");
+                    trace::seer_warn!("Codama decode: cursor offset out of bounds");
                 }
                 value
             }
@@ -487,7 +487,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
             }
             PreOffsetStrategy::Padded | PreOffsetStrategy::Relative => {
                 if !self.set_pos_relative(origin.offset) {
-                    seer_core::seer_warn!("Codama decode: cursor offset out of bounds");
+                    trace::seer_warn!("Codama decode: cursor offset out of bounds");
                 }
             }
         }
@@ -503,7 +503,7 @@ impl<'a> CodamaCursor for Cursor<'a> {
     ) -> Option<ParsedArgValue> {
         let string_number = self.get_number_value(origin.prefix.get_nested_type_node())?;
         let Ok(passed_len) = string_number.parse::<usize>() else {
-            seer_core::seer_warn!("Codama decode: invalid sizePrefix '{}'", string_number);
+            trace::seer_warn!("Codama decode: invalid sizePrefix '{}'", string_number);
             return None;
         };
         get_parsed_arg_value(

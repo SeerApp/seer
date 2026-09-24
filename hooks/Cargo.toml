@@ -1,0 +1,16 @@
+[package]
+name = "hooks"
+version = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+solana-account = ">=4.3.1,<4.4.0"
+solana-instruction = "3.1"
+solana-pubkey = { version = ">=4.2.0,<4.3.0", default-features = false }
+
+[lints]
+workspace = true

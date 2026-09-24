@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "disasm",
+    "cli",
+    "decode",
+    "hooks",
     "idl",
-    "seer-core",
-    "seer-cli",
-    "seer-interface",
     "storage",
+    "trace",
 ]
 
 [workspace.package]
@@ -14,7 +14,7 @@ edition = "2021"
 version = "1.1.1"
 
 [workspace.dependencies]
-seer-interface = { path = "seer-interface" }
+hooks = { path = "hooks" }
 
 [workspace.lints.rust]
 warnings = "deny"

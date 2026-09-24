@@ -7,12 +7,12 @@ use std::sync::Once;
 use common::{anchor_idl_golden_dir, seer_test_save_enabled, SEER_TEST_SAVE_ENV};
 use idl::anchor::AnchorIdlLookup;
 use idl::IdlTreeParser;
-use seer_core::tree::parsed::NumberFormat;
-use seer_core::tree::parsed::ParsedArgValue;
-use seer_core::tree::parsed::{ParsedAccount, ParsedInstruction};
-use seer_core::{init_seer_logger, SeerLogger};
 use serde::Serialize;
 use solana_instruction_error::InstructionError;
+use trace::tree::parsed::NumberFormat;
+use trace::tree::parsed::ParsedArgValue;
+use trace::tree::parsed::{ParsedAccount, ParsedInstruction};
+use trace::{init_seer_logger, SeerLogger};
 
 static INIT_SEER_LOG: Once = Once::new();
 

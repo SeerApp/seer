@@ -7,10 +7,10 @@ mod known;
 use std::{fs, io::Read, path::Path};
 
 use flate2::read::ZlibDecoder;
-use seer_core::tree::parsed::{ParsedAccount, ParsedInstruction};
 use solana_instruction_error::InstructionError;
 use solana_pubkey::Pubkey;
 use thiserror::Error;
+use trace::tree::parsed::{ParsedAccount, ParsedInstruction};
 
 use crate::anchor::AnchorIdlLookup;
 use crate::codama::CodamaIdlLookup;
@@ -145,11 +145,9 @@ fn extract_anchor_idl_compressed_bytes(account_data: &[u8]) -> Result<Vec<u8>, S
     Ok(account_data[data_start..data_end].to_vec())
 }
 
-pub(crate) fn number_format(
-    f: codama_nodes::NumberFormat,
-) -> seer_core::tree::parsed::NumberFormat {
+pub(crate) fn number_format(f: codama_nodes::NumberFormat) -> trace::tree::parsed::NumberFormat {
     use codama_nodes::NumberFormat as C;
-    use seer_core::tree::parsed::NumberFormat as S;
+    use trace::tree::parsed::NumberFormat as S;
     match f {
         C::U8 => S::U8,
         C::U16 => S::U16,

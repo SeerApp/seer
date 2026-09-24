@@ -12,7 +12,7 @@ use crate::{
     cursor::Cursor,
     display_error_name, IdlTreeParser,
 };
-use seer_core::tree::parsed::{ParsedAccount, ParsedArg, ParsedInstruction, ProgramIdentifier};
+use trace::tree::parsed::{ParsedAccount, ParsedArg, ParsedInstruction, ProgramIdentifier};
 
 pub struct AnchorIdlLookup {
     idl: Idl,

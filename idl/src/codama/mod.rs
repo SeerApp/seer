@@ -20,10 +20,10 @@ use codama_nodes::{
     DefaultValueStrategy, DiscriminatorNode, InstructionNode, NestedTypeNodeTrait, RootNode,
     StructTypeNode, TypeNode, ValueNode,
 };
-use seer_core::tree::parsed::{
+use solana_instruction_error::InstructionError;
+use trace::tree::parsed::{
     ParsedAccount, ParsedArg, ParsedArgValue, ParsedInstruction, ProgramIdentifier,
 };
-use solana_instruction_error::InstructionError;
 
 pub struct CodamaIdlLookup {
     root_node: RootNode,
@@ -124,7 +124,7 @@ impl IdlTreeParser for CodamaIdlLookup {
         match best_match {
             Some((_, _, parsed)) => Some(parsed),
             None => {
-                seer_core::seer_warn!(
+                trace::seer_warn!(
                     "Codama account decode: no account type matched ({} bytes)",
                     data_len
                 );

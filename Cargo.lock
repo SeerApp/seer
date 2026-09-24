@@ -1370,6 +1370,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "decode"
+version = "1.1.1"
+dependencies = [
+ "anyhow",
+ "object",
+ "serde_json",
+ "solana-program-runtime",
+ "solana-svm-feature-set",
+ "solana-syscalls",
+ "storage",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1466,19 +1479,6 @@ dependencies = [
  "option-ext",
  "redox_users",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "disasm"
-version = "1.1.1"
-dependencies = [
- "anyhow",
- "object",
- "serde_json",
- "solana-program-runtime",
- "solana-svm-feature-set",
- "solana-syscalls",
- "storage",
 ]
 
 [[package]]
@@ -2017,6 +2017,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hooks"
+version = "1.1.1"
+dependencies = [
+ "solana-account 4.3.2",
+ "solana-instruction 3.4.1",
+ "solana-pubkey 4.2.1",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2240,7 +2249,6 @@ dependencies = [
  "flate2",
  "hex",
  "once_cell",
- "seer-core",
  "serde",
  "serde_json",
  "solana-instruction-error",
@@ -2248,6 +2256,7 @@ dependencies = [
  "solana-pubkey 4.2.1",
  "storage",
  "thiserror 2.0.20",
+ "trace",
 ]
 
 [[package]]
@@ -2546,10 +2555,10 @@ dependencies = [
  "agave-feature-set",
  "agave-reserved-account-keys",
  "ansi_term",
+ "hooks",
  "indexmap 2.14.2",
  "itertools 0.15.0",
  "log",
- "seer-interface",
  "serde",
  "solana-account 4.3.2",
  "solana-address 2.6.1",
@@ -3472,7 +3481,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seer-cli"
+name = "seer"
 version = "1.1.1"
 dependencies = [
  "agave-feature-set",
@@ -3482,12 +3491,11 @@ dependencies = [
  "bincode",
  "bs58",
  "clap",
- "disasm",
+ "decode",
  "hex",
  "idl",
  "litesvm",
  "rusqlite",
- "seer-core",
  "serde",
  "serde_json",
  "solana-account 4.3.2",
@@ -3520,49 +3528,8 @@ dependencies = [
  "solana-transaction-context",
  "solana-transaction-status-client-types",
  "storage",
+ "trace",
  "wincode",
-]
-
-[[package]]
-name = "seer-core"
-version = "1.1.1"
-dependencies = [
- "anyhow",
- "bincode",
- "chrono",
- "fallible-iterator",
- "gimli",
- "log",
- "memmap2",
- "object",
- "path-clean",
- "pathdiff",
- "regex",
- "rustc-demangle",
- "seer-interface",
- "serde",
- "serde_json",
- "serde_with",
- "solana-account 4.3.2",
- "solana-instruction 3.4.1",
- "solana-instruction-error",
- "solana-keypair",
- "solana-loader-v3-interface 8.0.1",
- "solana-program",
- "solana-pubkey 4.2.1",
- "solana-signer",
- "storage",
- "thiserror 2.0.20",
- "typed-arena",
-]
-
-[[package]]
-name = "seer-interface"
-version = "1.1.1"
-dependencies = [
- "solana-account 4.3.2",
- "solana-instruction 3.4.1",
- "solana-pubkey 4.2.1",
 ]
 
 [[package]]
@@ -5040,11 +5007,11 @@ dependencies = [
  "base64 0.22.1",
  "bincode",
  "cfg-if",
+ "hooks",
  "itertools 0.14.0",
  "log",
  "percentage",
  "rand 0.9.4",
- "seer-interface",
  "serde",
  "solana-account 4.3.2",
  "solana-account-info 3.1.1",
@@ -5298,11 +5265,11 @@ dependencies = [
  "byteorder",
  "combine",
  "hash32",
+ "hooks",
  "libc",
  "log",
  "rand 0.8.5",
  "rustc-demangle",
- "seer-interface",
  "thiserror 2.0.20",
  "winapi",
 ]
@@ -5638,8 +5605,8 @@ version = "4.2.1"
 name = "solana-svm-log-collector"
 version = "4.2.1"
 dependencies = [
+ "hooks",
  "log",
- "seer-interface",
 ]
 
 [[package]]
@@ -5936,7 +5903,7 @@ name = "solana-transaction-context"
 version = "4.2.1"
 dependencies = [
  "bincode",
- "seer-interface",
+ "hooks",
  "serde",
  "solana-account 4.3.2",
  "solana-instruction 3.4.1",
@@ -6704,6 +6671,39 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+
+[[package]]
+name = "trace"
+version = "1.1.1"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "fallible-iterator",
+ "gimli",
+ "hooks",
+ "log",
+ "memmap2",
+ "object",
+ "path-clean",
+ "pathdiff",
+ "regex",
+ "rustc-demangle",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "solana-account 4.3.2",
+ "solana-instruction 3.4.1",
+ "solana-instruction-error",
+ "solana-keypair",
+ "solana-loader-v3-interface 8.0.1",
+ "solana-program",
+ "solana-pubkey 4.2.1",
+ "solana-signer",
+ "storage",
+ "thiserror 2.0.20",
+ "typed-arena",
+]
 
 [[package]]
 name = "tracing"
