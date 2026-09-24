@@ -207,9 +207,6 @@ impl SeerContext {
     ) {
         seer_debug!("Starting program: {:?}", program_address);
 
-        self.global_program_context
-            .queue_disasm_if_needed(program_address);
-
         self.global_account_context
             .open_account_backdoor_idempotent(bd);
 

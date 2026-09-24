@@ -34,14 +34,9 @@ serde_with = "3.16.1"
 chrono = "0.4.42"
 pathdiff = "0.2"
 thiserror = "2.0.18"
-disasm = { path = "../disasm", optional = true }
 solana-loader-v3-interface = { version = "8.0.1", features = ["serde"] }
 tempfile = "3"
 storage = { path = "../storage" }
-
-[features]
-default = ["disasm"]
-disasm = ["dep:disasm"]
 
 [lints]
 workspace = true

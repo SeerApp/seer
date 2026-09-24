@@ -3,18 +3,14 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     path::Path,
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 
 use solana_pubkey::Pubkey;
 
 use crate::{
-    artifacts::AtomicFileWriter,
-    errors::IrrecoverableError,
-    path_resolver::PathResolver,
-    program_manager::types::{DisasmStatus, ProgramInfo},
-    seer_warn,
-    target_reader::get_targets,
+    artifacts::AtomicFileWriter, errors::IrrecoverableError, path_resolver::PathResolver,
+    program_manager::types::ProgramInfo, seer_warn, target_reader::get_targets,
 };
 
 impl super::types::GlobalProgramContext {
@@ -75,33 +71,8 @@ impl super::types::GlobalProgramContext {
             }
         }
 
-        drop(file_writer_guard);
-
-        let disasm_status = Arc::new(Mutex::new(HashMap::new()));
-        let (disasm_requests_tx, disasm_requests_rx) = mpsc::channel::<Pubkey>();
-        let programs_output_dir = runtime_dir.join("seer").join("programs");
-        {
-            let file_writer_guard = file_writer
-                .lock()
-                .expect("file writer lock should not be poisoned");
-            super::utils::preload_local_disasm_for_targets(
-                &targets,
-                &disasm_status,
-                &programs_output_dir,
-                &file_writer_guard,
-            );
-        }
-        super::utils::start_disasm_worker(
-            disasm_requests_rx,
-            disasm_status.clone(),
-            programs_output_dir,
-            file_writer,
-        );
-
         Ok(Self {
             inner: Mutex::new(inner),
-            disasm_requests_tx,
-            disasm_status,
         })
     }
 
@@ -114,28 +85,5 @@ impl super::types::GlobalProgramContext {
             .expect("program manager inner lock should not be poisoned")
             .get(key)
             .and_then(|program_info| program_info.entrypoint_lookup.clone())
-    }
-
-    pub fn queue_disasm_if_needed(&self, program_id: Pubkey) {
-        let mut guard = self
-            .disasm_status
-            .lock()
-            .expect("disasm status lock should not be poisoned");
-        if guard.contains_key(&program_id) {
-            return;
-        }
-        guard.insert(program_id, DisasmStatus::Pending);
-        drop(guard);
-
-        if let Err(err) = self.disasm_requests_tx.send(program_id) {
-            seer_warn!(
-                "failed to queue background disasm for {}: {}",
-                program_id,
-                err
-            );
-            if let Ok(mut status_guard) = self.disasm_status.lock() {
-                status_guard.insert(program_id, DisasmStatus::Failed);
-            }
-        }
     }
 }

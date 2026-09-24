@@ -1473,12 +1473,12 @@ name = "disasm"
 version = "1.1.1"
 dependencies = [
  "anyhow",
- "libc",
  "object",
  "serde_json",
  "solana-program-runtime",
  "solana-svm-feature-set",
  "solana-syscalls",
+ "storage",
 ]
 
 [[package]]
@@ -3507,6 +3507,7 @@ dependencies = [
  "bincode",
  "bs58",
  "clap",
+ "disasm",
  "hex",
  "idl",
  "litesvm",
@@ -3554,7 +3555,6 @@ dependencies = [
  "anyhow",
  "bincode",
  "chrono",
- "disasm",
  "fallible-iterator",
  "gimli",
  "log",

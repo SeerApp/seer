@@ -13,7 +13,7 @@ use super::layout::staging_path_for;
 /// Stages each write as `<filename>.tmp` beside the final path, then publishes with `rename`
 /// so source and target stay on the same filesystem.
 ///
-/// Owned by [`crate::contexts::seer::SeerContext`] (shared with the disasm worker via `Arc<Mutex<_>>`).
+/// Owned by [`crate::contexts::seer::SeerContext`].
 pub struct AtomicFileWriter;
 
 impl Default for AtomicFileWriter {

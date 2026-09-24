@@ -1,4 +1,4 @@
-//! Goldens for `disassemble_to_json_chunks` (per-PC disasm strings + lifted CFG).
+//! Goldens for in-memory disasm / lifted chunks (per-PC strings + lifted CFG).
 //!
 //! Set `SEER_TEST_SAVE` to rewrite `tests/fixtures/canonical_result/` instead of asserting.
 
@@ -256,16 +256,27 @@ fn load_json_dir(dir: &Path) -> BTreeMap<String, Value> {
     out
 }
 
-fn assert_or_update_dir(kind: &str, actual_dir: &Path) {
+fn chunks_map(chunks: &[disasm::JsonChunk]) -> BTreeMap<String, Value> {
+    chunks
+        .iter()
+        .map(|chunk| {
+            (
+                format!("{}_{}.json", chunk.start_pc, chunk.end_pc),
+                chunk.json.clone(),
+            )
+        })
+        .collect()
+}
+
+fn assert_or_update_map(kind: &str, actual: &BTreeMap<String, Value>) {
     let expected_dir = golden_dir().join("jumps").join(kind);
-    let actual = load_json_dir(actual_dir);
 
     if seer_test_save_enabled() {
         if expected_dir.exists() {
             fs::remove_dir_all(&expected_dir).expect("clear golden dir");
         }
         fs::create_dir_all(&expected_dir).expect("create golden dir");
-        for (name, value) in &actual {
+        for (name, value) in actual {
             let pretty = serde_json::to_string_pretty(value).expect("pretty json");
             fs::write(expected_dir.join(name), pretty).expect("write golden");
         }
@@ -274,31 +285,23 @@ fn assert_or_update_dir(kind: &str, actual_dir: &Path) {
 
     let expected = load_json_dir(&expected_dir);
     assert_eq!(
-        expected, actual,
+        expected, *actual,
         "{kind} golden mismatch (set {SEER_TEST_SAVE_ENV} to regenerate)"
     );
 }
 
 #[test]
 fn jumps_disasm_and_lifted_cfg_goldens() {
-    let work = std::env::temp_dir().join(format!("seer-disasm-golden-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&work);
-    fs::create_dir_all(&work).expect("temp dir");
-    let so_path = work.join("jumps.so");
-    fs::write(&so_path, jumps_elf()).expect("write elf");
-
-    let programs_out = work.join("programs");
-    disasm::disassemble_to_json_chunks(&so_path, &programs_out)
-        .expect("disassemble_to_json_chunks");
-
-    let program_dir = programs_out.join("jumps");
-    assert_or_update_dir("disasm", &program_dir.join("disasm"));
-    assert_or_update_dir("lifted", &program_dir.join("lifted"));
+    let elf = jumps_elf();
+    let disasm = disasm::disasm_chunks(&elf).expect("disasm_chunks");
+    let lifted = disasm::lifted_chunks(&elf).expect("lifted_chunks");
+    assert_or_update_map("disasm", &chunks_map(&disasm));
+    assert_or_update_map("lifted", &chunks_map(&lifted));
 
     if !seer_test_save_enabled() {
-        let lifted = load_json_dir(&program_dir.join("lifted"));
+        assert_eq!(disasm.len(), 1, "tiny program should be one disasm chunk");
         assert_eq!(lifted.len(), 1, "tiny program should be one lifted chunk");
-        let chunk = lifted.values().next().expect("chunk");
+        let chunk = &lifted[0].json;
         let blocks = chunk
             .get("blocks")
             .and_then(Value::as_object)
@@ -315,4 +318,39 @@ fn jumps_disasm_and_lifted_cfg_goldens() {
         });
         assert!(has_branch, "expected a conditional block with two succs");
     }
+}
+
+#[test]
+fn store_is_lazy_and_covers_decoded_pcs() {
+    let root = std::env::temp_dir().join(format!(
+        "seer-disasm-store-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let storage = storage::Storage::open_at(&root).expect("storage");
+    let elf = jumps_elf();
+    let hash = storage.blob.store(&elf).expect("store elf");
+    disasm::store_disasm(&storage, &hash).expect("store disasm");
+    disasm::store_disasm(&storage, &hash).expect("store disasm again");
+    let rows = storage.db.program_disasm_chunks(&hash).expect("rows");
+    assert_eq!(rows.len(), 1);
+    let decoded = disasm::disasm_chunks(&elf).expect("decode");
+    assert_eq!(decoded.len(), 1);
+    let stored: Value =
+        serde_json::from_slice(&storage.blob.read(&rows[0].blob_hash).expect("blob"))
+            .expect("json");
+    assert_eq!(stored, decoded[0].json);
+    disasm::store_lifted(&storage, &hash).expect("store lifted");
+    assert_eq!(
+        storage
+            .db
+            .program_lifted_chunks(&hash)
+            .expect("lifted")
+            .len(),
+        1
+    );
+    let _ = fs::remove_dir_all(root);
 }

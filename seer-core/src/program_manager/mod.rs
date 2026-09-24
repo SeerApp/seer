@@ -4,6 +4,5 @@ pub mod entrypoints;
 #[allow(clippy::module_inception)]
 pub mod program_manager;
 pub(crate) mod types;
-mod utils;
 
 pub use types::GlobalProgramContext;

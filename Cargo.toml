@@ -23,7 +23,7 @@ warnings = "deny"
 level = "warn"
 check-cfg = [
     'cfg(target_os, values("solana"))',
-    'cfg(feature, values("frozen-abi", "no-entrypoint", "disasm"))',
+    'cfg(feature, values("frozen-abi", "no-entrypoint"))',
 ]
 
 # Clippy lint configuration that can not be applied in clippy.toml

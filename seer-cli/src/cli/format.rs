@@ -139,6 +139,28 @@ pub(crate) fn slice_json_array(
     values
 }
 
+/// `head == 0` means no cap. `tail` is exclusive with a non-zero head.
+pub(crate) fn slice_skip_head_tail<T>(
+    mut values: Vec<T>,
+    skip: usize,
+    head: usize,
+    tail: Option<usize>,
+) -> Vec<T> {
+    if skip >= values.len() {
+        return Vec::new();
+    }
+    values.drain(..skip);
+    if let Some(n) = tail {
+        let start = values.len().saturating_sub(n);
+        values.drain(..start);
+        return values;
+    }
+    if head != 0 {
+        values.truncate(head);
+    }
+    values
+}
+
 pub(crate) fn status_text(row: &RunRow) -> String {
     match (row.status.as_str(), row.error.as_deref()) {
         ("finished", None) => "ok".into(),

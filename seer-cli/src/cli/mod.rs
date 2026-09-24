@@ -10,6 +10,7 @@ use crate::state_accounts::{Patch, StateAccounts};
 mod encoding;
 mod format;
 mod input;
+mod program;
 #[cfg(test)]
 mod test;
 
@@ -50,7 +51,18 @@ pub fn run() -> Result<()> {
             account,
             data,
             trace,
-        } => show(&storage, id, tx, state, &account, &data, trace, short),
+            program,
+        } => show(
+            &storage,
+            id,
+            tx,
+            state,
+            &account,
+            &data,
+            trace,
+            program.as_deref(),
+            short,
+        ),
         Command::Ls {
             tree,
             head,
@@ -63,6 +75,7 @@ pub fn run() -> Result<()> {
             println!("{}", storage.db.query(&sql)?);
             Ok(())
         }
+        cmd @ Command::Program { .. } => program_cmd(&storage, cmd, short),
     }
 }
 
@@ -96,6 +109,7 @@ enum CliCommand {
     Diff(DiffCli),
     #[command(hide = true)]
     Query(QueryArgs),
+    Program(ProgramCli),
 }
 
 #[derive(Parser, Debug)]
@@ -159,6 +173,15 @@ struct ShowCli {
     data: Vec<String>,
     #[arg(long, help = "Print stored traces")]
     trace: bool,
+    #[arg(
+        long,
+        value_name = "PUBKEY",
+        num_args = 0..=1,
+        action = clap::ArgAction::Append,
+        default_missing_value = "",
+        help = "Program index: elf + idl hashes, keyed by pubkey"
+    )]
+    program: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -205,6 +228,38 @@ struct QueryArgs {
     sql: String,
 }
 
+#[derive(Parser, Debug)]
+#[command(about = "Show a program's disassembly or lifted CFG")]
+struct ProgramCli {
+    #[arg(value_name = "HASH|PUBKEY")]
+    target: Option<String>,
+    #[arg(long, value_name = "RUN", help = "Resolve pubkey through this run")]
+    run: Option<i64>,
+    #[arg(long, help = "Print disassembly")]
+    disasm: bool,
+    #[arg(long, help = "Print lifted CFG")]
+    lifted: bool,
+    #[arg(
+        long,
+        value_name = "N",
+        help = "First N insns or blocks after the window (0 = all). Default 20"
+    )]
+    head: Option<usize>,
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 0,
+        help = "Drop first N of the window"
+    )]
+    skip: usize,
+    #[arg(long, value_name = "N", help = "Last N of the window")]
+    tail: Option<usize>,
+    #[arg(long, value_name = "PC", help = "Inclusive start PC")]
+    start: Option<u64>,
+    #[arg(long, value_name = "PC", help = "Inclusive end PC")]
+    end: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Command {
@@ -217,6 +272,7 @@ pub enum Command {
         account: Vec<Pubkey>,
         data: Vec<Pubkey>,
         trace: bool,
+        program: Option<Vec<Pubkey>>,
     },
     Ls {
         tree: bool,
@@ -230,6 +286,16 @@ pub enum Command {
         b: i64,
     },
     Query(String),
+    Program {
+        target: Option<String>,
+        run: Option<i64>,
+        disasm: bool,
+        skip: usize,
+        head: usize,
+        tail: Option<usize>,
+        start: Option<u64>,
+        end: Option<u64>,
+    },
 }
 
 impl TryFrom<Cli> for Command {
@@ -254,6 +320,7 @@ impl TryFrom<Cli> for Command {
                     .map(|s| parse_pubkey(s))
                     .collect::<Result<Vec<_>>>()?,
                 trace: args.trace,
+                program: parse_program_flag(&args.program)?,
             }),
             Some(CliCommand::Ls(args)) => Ok(Self::Ls {
                 tree: args.tree,
@@ -267,6 +334,26 @@ impl TryFrom<Cli> for Command {
                 b: args.b,
             }),
             Some(CliCommand::Query(args)) => Ok(Self::Query(args.sql)),
+            Some(CliCommand::Program(args)) => {
+                if args.disasm == args.lifted {
+                    bail!("exactly one of --disasm or --lifted");
+                }
+                if args.head.is_some() && args.tail.is_some() {
+                    bail!("--head and --tail are mutually exclusive");
+                }
+                Ok(Self::Program {
+                    target: args.target,
+                    run: args.run,
+                    disasm: args.disasm,
+                    skip: args.skip,
+                    head: args
+                        .head
+                        .unwrap_or(if args.tail.is_some() { 0 } else { 20 }),
+                    tail: args.tail,
+                    start: args.start,
+                    end: args.end,
+                })
+            }
         }
     }
 }
@@ -336,8 +423,21 @@ impl TryFrom<RunCli> for Request {
     }
 }
 
-fn parse_pubkey(s: &str) -> Result<Pubkey> {
+pub(super) fn parse_pubkey(s: &str) -> Result<Pubkey> {
     s.parse().context("pubkey")
+}
+
+fn parse_program_flag(raw: &[String]) -> Result<Option<Vec<Pubkey>>> {
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if raw.iter().any(|s| s.is_empty()) {
+        return Ok(Some(Vec::new()));
+    }
+    raw.iter()
+        .map(|s| parse_pubkey(s))
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 fn status(storage: &Storage, short: bool) -> Result<()> {
@@ -443,10 +543,11 @@ fn show(
     account: &[Pubkey],
     data: &[Pubkey],
     trace: bool,
+    program: Option<&[Pubkey]>,
     short: bool,
 ) -> Result<()> {
     let row = storage.db.get_run(id)?;
-    if !tx && !state && account.is_empty() && data.is_empty() && !trace {
+    if !tx && !state && account.is_empty() && data.is_empty() && !trace && program.is_none() {
         return emit(
             run_json(&row),
             &[
@@ -455,6 +556,7 @@ fn show(
                 format!("seer show {id} --account <PUBKEY>"),
                 format!("seer show {id} --data <PUBKEY>"),
                 format!("seer show {id} --trace"),
+                format!("seer show {id} --program"),
                 format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
             ],
             short,
@@ -504,14 +606,60 @@ fn show(
         }
         value.insert("trace".into(), serde_json::Value::Array(traces));
     }
-    emit(
-        serde_json::Value::Object(value),
-        &[
-            format!("seer show {id}"),
-            format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
-        ],
-        short,
-    )
+    if let Some(subset) = program {
+        value.insert(
+            "program".into(),
+            program::show_programs(storage, &row, subset)?,
+        );
+    }
+    let mut footer = vec![
+        format!("seer show {id}"),
+        format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
+    ];
+    if program.is_some() {
+        footer.insert(1, "seer program <HASH> --disasm".into());
+    }
+    emit(serde_json::Value::Object(value), &footer, short)
+}
+
+fn program_cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
+    let Command::Program {
+        target,
+        run,
+        disasm,
+        skip,
+        head,
+        tail,
+        start,
+        end,
+    } = cmd
+    else {
+        bail!("internal: program_cmd");
+    };
+    let hash = program::resolve_hash(storage, target.as_deref(), run)?;
+    let value = program::emit_body(
+        storage,
+        &program::ProgramRequest {
+            hash,
+            disasm,
+            skip,
+            head,
+            tail,
+            start,
+            end,
+        },
+    )?;
+    let flag = if disasm { "--disasm" } else { "--lifted" };
+    let next = if head != 0 && tail.is_none() {
+        format!(
+            "seer program {} {flag} --skip {} --head {head}",
+            hex::encode(hash),
+            skip.saturating_add(head)
+        )
+    } else {
+        format!("seer show {}", run.unwrap_or(1))
+    };
+    emit(value, &[next], short)
 }
 
 fn diff(storage: &Storage, a: i64, b: i64, short: bool) -> Result<()> {

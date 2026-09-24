@@ -6,11 +6,7 @@ edition = { workspace = true }
 rust-version = "1.89"
 
 [lib]
-path = "src/main.rs"
-
-[[bin]]
-name = "disasm"
-path = "src/main.rs"
+path = "src/lib.rs"
 
 [dependencies]
 # Same release line as the Seer-patched Agave.
@@ -20,9 +16,7 @@ object = "0.38.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 solana-program-runtime = { version = "4.2.1", default-features = false, features = ["agave-unstable-api"] }
 solana-svm-feature-set = { version = "4.2.1", features = ["agave-unstable-api"] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
+storage = { path = "../storage" }
 
 [lints]
 workspace = true

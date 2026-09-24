@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 
 use solana_pubkey::Pubkey;
@@ -25,13 +25,4 @@ impl ProgramInfo {
 /// Collects ProgramInfo from local targets at Seer initialization.
 pub struct GlobalProgramContext {
     pub(super) inner: Mutex<HashMap<Pubkey, ProgramInfo>>,
-    pub(super) disasm_requests_tx: mpsc::Sender<Pubkey>,
-    pub(super) disasm_status: Arc<Mutex<HashMap<Pubkey, DisasmStatus>>>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum DisasmStatus {
-    Pending,
-    Succeeded,
-    Failed,
 }

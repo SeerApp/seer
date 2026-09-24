@@ -139,6 +139,7 @@ fn parses_run_sig_tx_from_show_ls_diff() {
             account: vec![],
             data: vec![],
             trace: true,
+            program: None,
         }
     );
     let pk = Pubkey::from_str("11111111111111111111111111111111").unwrap();
@@ -196,6 +197,60 @@ fn parses_run_sig_tx_from_show_ls_diff() {
         parse_from(["seer", "diff", "1", "2"]).unwrap(),
         Command::Diff { a: 1, b: 2 }
     );
+}
+
+#[test]
+fn parses_program() {
+    assert_eq!(
+        parse_from(["seer", "show", "1", "--program"]).unwrap(),
+        Command::Show {
+            id: 1,
+            tx: false,
+            state: false,
+            account: vec![],
+            data: vec![],
+            trace: false,
+            program: Some(vec![]),
+        }
+    );
+    let pk = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    let Command::Show { program, .. } = parse_from([
+        "seer",
+        "show",
+        "1",
+        "--program",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    ])
+    .unwrap() else {
+        panic!("expected show --program pubkey");
+    };
+    assert_eq!(program, Some(vec![pk]));
+    assert!(parse_from(["seer", "show", "1", "--disasm"]).is_err());
+    let Command::Program {
+        disasm,
+        head,
+        skip,
+        tail,
+        ..
+    } = parse_from(["seer", "program", "ab", "--disasm"]).unwrap() else {
+        panic!("expected program --disasm");
+    };
+    assert!(disasm);
+    assert_eq!(head, 20);
+    assert_eq!(skip, 0);
+    assert_eq!(tail, None);
+    assert!(parse_from(["seer", "program", "ab"]).is_err());
+    assert!(parse_from(["seer", "program", "ab", "--disasm", "--lifted"]).is_err());
+    assert!(
+        parse_from(["seer", "program", "ab", "--disasm", "--head", "1", "--tail", "1"]).is_err()
+    );
+    let Command::Program { head, tail, .. } =
+        parse_from(["seer", "program", "ab", "--lifted", "--tail", "5"]).unwrap()
+    else {
+        panic!("expected program --tail");
+    };
+    assert_eq!(head, 0);
+    assert_eq!(tail, Some(5));
 }
 
 #[test]

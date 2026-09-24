@@ -1,8 +1,5 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -640,36 +637,12 @@ fn build_block_starts(rows: &[LiftRow]) -> Vec<u64> {
 }
 
 const CHUNK_INSTRUCTIONS: usize = 1000;
+const CHUNK_BLOCKS: usize = 1000;
 
-pub fn main() {
-    if let Err(e) = run_cli() {
-        eprintln!("{e:#}");
-        std::process::exit(1);
-    }
-}
-
-pub fn run_cli() -> Result<()> {
-    let path = std::env::args_os()
-        .nth(1)
-        .context("usage: disasm <path-to-program.so>")?;
-    let path = Path::new(&path);
-    let out_root = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let programs_out_dir = out_root.join("programs");
-    let stats = disassemble_to_json_chunks(path, &programs_out_dir)?;
-    match stats.peak_rss_bytes {
-        Some(rss) => eprintln!("disasm insns={} peak_rss_bytes={rss}", stats.insn_count),
-        None => eprintln!("disasm insns={}", stats.insn_count),
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct DisasmStats {
-    pub insn_count: usize,
-    pub peak_rss_bytes: Option<u64>,
+pub struct JsonChunk {
+    pub start_pc: u64,
+    pub end_pc: u64,
+    pub json: Value,
 }
 
 /// Decode `.text` the same way `Analysis::from_executable` does, without building CFG/DFG.
@@ -711,64 +684,179 @@ fn decode_text_instructions(program: &[u8]) -> Result<Vec<ebpf::Insn>> {
     Ok(instructions)
 }
 
-pub fn disassemble_to_json_chunks(path: &Path, programs_out_dir: &Path) -> Result<DisasmStats> {
-    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let text_vma = text_section_vma_from_elf(&bytes)?;
-    let text_syms = TextFnSymbols::build(&bytes)?;
+fn decode_program(bytes: &[u8]) -> Result<(Vec<JsonChunk>, Vec<LiftRow>)> {
+    let text_vma = text_section_vma_from_elf(bytes)?;
+    let text_syms = TextFnSymbols::build(bytes)?;
     let feature_set = SVMFeatureSet::all_enabled();
     let compute_budget = SVMTransactionExecutionBudget::new_with_defaults(false);
     let env = create_program_runtime_environment(&feature_set, &compute_budget, false, true)
         .map_err(|e| anyhow::anyhow!("create_program_runtime_environment: {e:?}"))?;
     let loader = Arc::clone(&*env);
-    let executable = Executable::<InvokeContext>::load(&bytes, loader)
+    let executable = Executable::<InvokeContext>::load(bytes, loader)
         .map_err(|e| anyhow::anyhow!("ELF load failed: {e:?}"))?;
-    // Skip `Analysis::from_executable`: it builds a full CFG + bidirectional DFG we never
-    // read. Jump labels from that CFG (`lbb_*`) are overwritten with VMAs in embellish.
     let (_program_vm_addr, program) = executable.get_text_bytes();
     let instructions = decode_text_instructions(program)?;
     let cfg_nodes = BTreeMap::<usize, CfgNode>::new();
-
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .context("input path must have a UTF-8 filename")?;
-    let (disasm_program_dir, lifted_program_dir) =
-        create_program_output_dirs(programs_out_dir, stem)?;
-
-    for chunk in instructions.chunks(CHUNK_INSTRUCTIONS) {
-        let (start_byte, end_byte) = chunk_range(text_vma, chunk)?;
-        let (disasm_json, lift_rows) =
-            build_chunk_outputs(chunk, &executable, text_vma, &text_syms, &cfg_nodes)?;
-        let lifted_json = serde_json::json!({
-            "blocks": Value::Object(build_lifted_blocks_json(&lift_rows)),
+    let mut chunks = Vec::new();
+    let mut lift_rows = Vec::with_capacity(instructions.len());
+    for slice in instructions.chunks(CHUNK_INSTRUCTIONS) {
+        let (start_pc, end_pc) = chunk_range(text_vma, slice)?;
+        let (disasm_json, slice_lifts) =
+            build_chunk_outputs(slice, &executable, text_vma, &text_syms, &cfg_nodes)?;
+        lift_rows.extend(slice_lifts);
+        chunks.push(JsonChunk {
+            start_pc,
+            end_pc,
+            json: Value::Object(disasm_json),
         });
-
-        let file_name = format!("{start_byte}_{end_byte}.json");
-        write_json_file(
-            &disasm_program_dir.join(&file_name),
-            &Value::Object(disasm_json),
-        )?;
-        write_json_file(&lifted_program_dir.join(file_name), &lifted_json)?;
     }
-
-    Ok(DisasmStats {
-        insn_count: instructions.len(),
-        peak_rss_bytes: peak_rss_bytes(),
-    })
+    let want: Vec<u64> = instructions
+        .iter()
+        .map(|insn| instruction_objdump_byte_offset(text_vma, insn))
+        .collect::<Result<Vec<_>>>()?;
+    check_disasm_coverage_pcs(&want, &chunks)?;
+    Ok((chunks, lift_rows))
 }
 
-fn create_program_output_dirs(
-    programs_out_dir: &Path,
-    program_stem: &str,
-) -> Result<(PathBuf, PathBuf)> {
-    let program_dir = programs_out_dir.join(program_stem);
-    let disasm_program_dir = program_dir.join("disasm");
-    let lifted_program_dir = program_dir.join("lifted");
-    std::fs::create_dir_all(&disasm_program_dir)
-        .with_context(|| format!("create {}", disasm_program_dir.display()))?;
-    std::fs::create_dir_all(&lifted_program_dir)
-        .with_context(|| format!("create {}", lifted_program_dir.display()))?;
-    Ok((disasm_program_dir, lifted_program_dir))
+pub fn disasm_chunks(elf: &[u8]) -> Result<Vec<JsonChunk>> {
+    let (chunks, _) = decode_program(elf)?;
+    Ok(chunks)
+}
+
+pub fn lifted_chunks(elf: &[u8]) -> Result<Vec<JsonChunk>> {
+    let (_, lift_rows) = decode_program(elf)?;
+    let chunks = lift_rows_to_chunks(&lift_rows)?;
+    check_lifted_coverage(&lift_rows, &chunks)?;
+    Ok(chunks)
+}
+
+pub fn store_disasm(storage: &storage::Storage, elf_hash: &[u8; 32]) -> Result<()> {
+    if !storage.db.program_disasm_chunks(elf_hash)?.is_empty() {
+        return Ok(());
+    }
+    let elf = storage.blob.read(elf_hash)?;
+    storage.db.insert_program(elf_hash)?;
+    write_chunks(storage, elf_hash, &disasm_chunks(&elf)?, true)
+}
+
+pub fn store_lifted(storage: &storage::Storage, elf_hash: &[u8; 32]) -> Result<()> {
+    if !storage.db.program_lifted_chunks(elf_hash)?.is_empty() {
+        return Ok(());
+    }
+    let elf = storage.blob.read(elf_hash)?;
+    storage.db.insert_program(elf_hash)?;
+    write_chunks(storage, elf_hash, &lifted_chunks(&elf)?, false)
+}
+
+fn write_chunks(
+    storage: &storage::Storage,
+    elf_hash: &[u8; 32],
+    chunks: &[JsonChunk],
+    disasm: bool,
+) -> Result<()> {
+    let mut rows = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        let bytes = serde_json::to_vec(&chunk.json)?;
+        let blob_hash = storage.blob.store(&bytes)?;
+        rows.push(storage::ProgramChunk {
+            start_pc: i64::try_from(chunk.start_pc).context("start_pc fits i64")?,
+            end_pc: i64::try_from(chunk.end_pc).context("end_pc fits i64")?,
+            blob_hash,
+        });
+    }
+    if disasm {
+        storage.db.insert_program_disasm(elf_hash, &rows)?;
+    } else {
+        storage.db.insert_program_lifted(elf_hash, &rows)?;
+    }
+    Ok(())
+}
+
+fn lift_rows_to_chunks(lift_rows: &[LiftRow]) -> Result<Vec<JsonChunk>> {
+    let blocks = build_lifted_blocks_json(lift_rows);
+    let keys: Vec<String> = blocks.keys().cloned().collect();
+    let mut chunks = Vec::new();
+    for slice in keys.chunks(CHUNK_BLOCKS) {
+        let mut part = Map::new();
+        for key in slice {
+            if let Some(block) = blocks.get(key) {
+                part.insert(key.clone(), block.clone());
+            }
+        }
+        let start_pc = slice
+            .first()
+            .and_then(|k| k.parse::<u64>().ok())
+            .context("lifted chunk start")?;
+        let end_pc = part
+            .values()
+            .filter_map(|b| b.get("end").and_then(Value::as_u64))
+            .max()
+            .unwrap_or(start_pc);
+        chunks.push(JsonChunk {
+            start_pc,
+            end_pc,
+            json: serde_json::json!({ "blocks": Value::Object(part) }),
+        });
+    }
+    Ok(chunks)
+}
+
+fn check_disasm_coverage_pcs(want: &[u64], chunks: &[JsonChunk]) -> Result<()> {
+    let mut got = Vec::with_capacity(want.len());
+    let mut prev_end: Option<u64> = None;
+    for chunk in chunks {
+        let obj = chunk
+            .json
+            .as_object()
+            .context("disasm chunk is an object")?;
+        if obj.len() > CHUNK_INSTRUCTIONS {
+            anyhow::bail!("disasm chunk exceeds {CHUNK_INSTRUCTIONS} insns");
+        }
+        if let Some(end) = prev_end {
+            if chunk.start_pc <= end {
+                anyhow::bail!(
+                    "disasm chunks overlap or are out of order: {end} then {}",
+                    chunk.start_pc
+                );
+            }
+        }
+        prev_end = Some(chunk.end_pc);
+        let mut pcs: Vec<u64> = obj
+            .keys()
+            .map(|k| k.parse::<u64>().context("disasm pc key"))
+            .collect::<Result<Vec<_>>>()?;
+        pcs.sort_unstable();
+        got.extend(pcs);
+    }
+    if got.as_slice() != want {
+        anyhow::bail!("disasm chunks do not cover decoded insns");
+    }
+    Ok(())
+}
+
+fn check_lifted_coverage(lift_rows: &[LiftRow], chunks: &[JsonChunk]) -> Result<()> {
+    let want: Vec<String> = build_lifted_blocks_json(lift_rows)
+        .keys()
+        .cloned()
+        .collect();
+    let mut got = Vec::new();
+    for chunk in chunks {
+        let blocks = chunk
+            .json
+            .get("blocks")
+            .and_then(Value::as_object)
+            .context("lifted chunk has blocks")?;
+        if blocks.len() > CHUNK_BLOCKS {
+            anyhow::bail!("lifted chunk exceeds {CHUNK_BLOCKS} blocks");
+        }
+        let mut keys: Vec<String> = blocks.keys().cloned().collect();
+        keys.sort_by_key(|k| k.parse::<u64>().unwrap_or(0));
+        got.extend(keys);
+    }
+    if got != want {
+        anyhow::bail!("lifted chunks do not cover decoded blocks");
+    }
+    Ok(())
 }
 
 fn chunk_range(text_vma: u64, chunk: &[ebpf::Insn]) -> Result<(u64, u64)> {
@@ -866,37 +954,4 @@ fn build_lifted_blocks_json(lift_rows: &[LiftRow]) -> Map<String, Value> {
     }
 
     blocks_json
-}
-
-fn write_json_file(path: &Path, value: &Value) -> Result<()> {
-    let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut writer = BufWriter::new(file);
-    serde_json::to_writer(&mut writer, value)
-        .with_context(|| format!("write {}", path.display()))?;
-    writer
-        .flush()
-        .with_context(|| format!("flush {}", path.display()))
-}
-
-/// Peak RSS of this process. `ru_maxrss` is bytes on macOS and kilobytes on Linux.
-fn peak_rss_bytes() -> Option<u64> {
-    #[cfg(unix)]
-    {
-        let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
-        let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
-        if rc != 0 {
-            return None;
-        }
-        let usage = unsafe { usage.assume_init() };
-        let raw = u64::try_from(usage.ru_maxrss).ok()?;
-        if cfg!(target_os = "macos") {
-            Some(raw)
-        } else {
-            raw.checked_mul(1024)
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        None
-    }
 }
