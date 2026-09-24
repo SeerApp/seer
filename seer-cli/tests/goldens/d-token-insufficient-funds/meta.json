@@ -1,0 +1,10 @@
+{
+  "name": "d-token-insufficient-funds",
+  "source": "sig:5P7HxC7N5REiXy68UggZhDzXsPGjMLJ4QAeQ3WSGuzhGNysHQnJZTv77V8GcStCuFzfPuXjqAAMAmkXppLy8B61T",
+  "environment": "{}",
+  "tx_hash": "3dc5f7825abdf95fd42c4c45b04890ff4fe5609126c3a76574854a524201d588",
+  "state_hash": "3fd893d1e6a5bd16d4ccd99aa76fec9759a0e35163ad11de4bcfbb85fa568d85",
+  "error": "Error processing Instruction 3: custom program error: 0x1",
+  "n_traces": 4,
+  "n_regs": 4
+}

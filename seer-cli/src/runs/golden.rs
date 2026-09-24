@@ -100,14 +100,35 @@ fn assert_golden(name: &str) {
         .join(name);
     let (run_id, storage, tmp) = replay(name, &dir).unwrap();
     let row = storage.db.get_run(run_id).unwrap();
-    assert_eq!(row.error, None, "{name} status {:?}", row.error);
+    let meta: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.join("meta.json")).unwrap()).unwrap();
+    let want_error = meta.get("error").and_then(|v| {
+        if v.is_null() {
+            None
+        } else {
+            v.as_str().map(str::to_string)
+        }
+    });
+    assert_eq!(row.error, want_error, "{name} status {:?}", row.error);
+    let got_traces = traces_json(&storage, run_id).unwrap();
+    let got_regs = regs_json(&storage, run_id).unwrap();
+    if std::env::var("SEER_TEST_SAVE").is_ok() {
+        fs::write(
+            dir.join("traces.json"),
+            serde_json::to_vec(&got_traces).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("regs.json"),
+            serde_json::to_vec(&got_regs).unwrap(),
+        )
+        .unwrap();
+    }
     let want_traces: serde_json::Value =
         serde_json::from_slice(&fs::read(dir.join("traces.json")).unwrap()).unwrap();
-    let got_traces = traces_json(&storage, run_id).unwrap();
     assert_eq!(got_traces, want_traces, "{name} traces");
     let want_regs: serde_json::Value =
         serde_json::from_slice(&fs::read(dir.join("regs.json")).unwrap()).unwrap();
-    let got_regs = regs_json(&storage, run_id).unwrap();
     assert_eq!(got_regs, want_regs, "{name} regs");
     let _ = fs::remove_dir_all(tmp);
 }
@@ -125,4 +146,9 @@ fn golden_b_simple_legacy() {
 #[test]
 fn golden_c_complex_legacy_cpi() {
     assert_golden("c-complex-legacy-cpi");
+}
+
+#[test]
+fn golden_d_token_insufficient_funds() {
+    assert_golden("d-token-insufficient-funds");
 }
