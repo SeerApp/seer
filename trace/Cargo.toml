@@ -17,6 +17,7 @@ hooks = { workspace = true }
 gimli = "0.32.3"
 rustc-demangle = "0.1.26"
 anyhow = "1.0.99"
+hex = "0.4.3"
 object = "0.38.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"

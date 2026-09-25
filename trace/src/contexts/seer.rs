@@ -1,7 +1,6 @@
 use std::{env, path::PathBuf};
 
 use hooks::{GuestAccountBackdoor, GuestMemory};
-use solana_account::ReadableAccount;
 use solana_instruction::error::InstructionError;
 use solana_pubkey::Pubkey;
 use storage::Storage;
@@ -20,6 +19,7 @@ use crate::{
 pub struct SeerContext {
     storage: *const Storage,
     run_id: i64,
+    state_accounts: Vec<(Pubkey, Vec<u8>)>,
     pub transaction_context: Option<TransactionContext>,
     pub register_context: RegisterContext,
     pub global_program_context: GlobalProgramContext,
@@ -44,6 +44,7 @@ impl SeerContext {
         Ok(Self {
             storage,
             run_id: 0,
+            state_accounts: Vec::new(),
             transaction_context: None,
             register_context: RegisterContext::new(),
             global_program_context,
@@ -61,13 +62,12 @@ impl SeerContext {
                 (Some((&first, _)), Some((&last, _))) => (first, last),
                 _ => (chunk.min_order, chunk.min_order),
             };
-        let accounts: Vec<(Pubkey, Vec<u8>)> = self
-            .global_account_context
-            .live_accounts()
-            .iter()
-            .map(|(k, a)| (*k, a.data().to_vec()))
-            .collect();
-        let elf = crate::program_elf::program_elf_bytes(&accounts, program);
+        let elf = crate::program_elf::program_elf_bytes(&self.state_accounts, program);
+        assert!(
+            !elf.is_empty(),
+            "no ELF for {program} in run {} state",
+            self.run_id
+        );
         let run_id = self.run_id;
         let storage = self.storage();
         let self_hash = storage
@@ -97,6 +97,7 @@ impl SeerContext {
         seer_debug!("New run: {run_id}");
 
         self.run_id = run_id;
+        self.state_accounts = crate::program_elf::run_state_accounts(self.storage(), run_id);
         self.register_context.reset_for_new_transaction();
         self.transaction_context = Some(TransactionContext::new());
     }
@@ -106,6 +107,7 @@ impl SeerContext {
             seer_debug!("Run unset: {}", self.run_id);
             let _ = tx;
         }
+        self.state_accounts.clear();
     }
 
     pub fn record_execution_failure_if_empty(

@@ -6735,6 +6735,7 @@ dependencies = [
  "chrono",
  "fallible-iterator",
  "gimli",
+ "hex",
  "hooks",
  "log",
  "memmap2",
