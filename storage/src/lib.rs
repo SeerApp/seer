@@ -202,4 +202,24 @@ mod tests {
         assert!(storage.db.program_lifted_chunks(&elf).unwrap().is_empty());
         std::fs::remove_dir_all(root).ok();
     }
+
+    #[test]
+    fn glassbox_upsert_replaces_hash() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        let hash = storage.blob.store(b"tx").unwrap();
+        storage.db.insert_simulation(&hash, &hash).unwrap();
+        let id = storage
+            .db
+            .insert_run(&hash, &hash, "{}", None, "[]", "")
+            .unwrap();
+        storage.db.insert_run_ix(id, 0).unwrap();
+        let a = storage.blob.store(b"report-a").unwrap();
+        let b = storage.blob.store(b"report-b").unwrap();
+        storage.db.upsert_glassbox(id, 0, &a).unwrap();
+        assert_eq!(storage.db.glassbox_blob_hash(id, 0).unwrap(), Some(a));
+        storage.db.upsert_glassbox(id, 0, &b).unwrap();
+        assert_eq!(storage.db.glassbox_blob_hash(id, 0).unwrap(), Some(b));
+        std::fs::remove_dir_all(root).ok();
+    }
 }

@@ -81,7 +81,7 @@ fn traces_json(storage: &Storage, run_id: i64) -> Result<serde_json::Value> {
 
 fn regs_json(storage: &Storage, run_id: i64) -> Result<serde_json::Value> {
     let mut out = Vec::new();
-    for (ix, start, end, self_h, pk) in storage.db.list_reg(run_id)? {
+    for (ix, start, end, self_h, _prog, pk) in storage.db.list_reg(run_id)? {
         let chunk: serde_json::Value = serde_json::from_slice(&storage.blob.read(&self_h)?)?;
         out.push(serde_json::json!({
             "ix": ix,
