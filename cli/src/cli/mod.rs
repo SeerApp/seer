@@ -9,6 +9,7 @@ use crate::state_accounts::{Patch, StateAccounts};
 
 mod encoding;
 mod format;
+mod glassbox_cmd;
 mod input;
 mod program;
 #[cfg(test)]
@@ -26,6 +27,7 @@ Seer replays Solana transactions locally. You work in runs.
   seer run --sig <SIGNATURE> --url <RPC>
   seer show 1
   seer run --from 1 --account <PUBKEY> --lamports 0
+  seer glassbox 1 --ix 0
   seer ls
 ";
 
@@ -76,6 +78,7 @@ pub fn run() -> Result<()> {
             Ok(())
         }
         cmd @ Command::Program { .. } => program_cmd(&storage, cmd, short),
+        cmd @ Command::Glassbox { .. } => glassbox_cmd::cmd(&storage, cmd, short),
     }
 }
 
@@ -110,6 +113,7 @@ enum CliCommand {
     #[command(hide = true)]
     Query(QueryArgs),
     Program(ProgramCli),
+    Glassbox(GlassboxCli),
 }
 
 #[derive(Parser, Debug)]
@@ -260,6 +264,50 @@ struct ProgramCli {
     end: Option<u64>,
 }
 
+#[derive(Parser, Debug)]
+#[command(about = "Show symbolic path conditions for one instruction of a run")]
+struct GlassboxCli {
+    #[arg(value_name = "RUN")]
+    id: i64,
+    #[arg(long, value_name = "N", required = true, help = "Instruction index")]
+    ix: i64,
+    #[arg(long, help = "Recompute and replace the stored report")]
+    force: bool,
+    #[arg(
+        long,
+        value_name = "N",
+        help = "First N path conditions after filters (0 = all). Default 20"
+    )]
+    head: Option<usize>,
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 0,
+        help = "Drop first N path conditions"
+    )]
+    skip: usize,
+    #[arg(long, value_name = "N", help = "Last N path conditions")]
+    tail: Option<usize>,
+    #[arg(long, value_name = "ORDER", help = "Inclusive start step order")]
+    start: Option<u64>,
+    #[arg(long, value_name = "ORDER", help = "Inclusive end step order")]
+    end: Option<u64>,
+    #[arg(long, help = "Only taken branches")]
+    taken_only: bool,
+    #[arg(long, help = "Every stored load def, not only those in shown conditions")]
+    all_load_defs: bool,
+    #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
+    hide_num_account_children: Option<glassbox::HideMode>,
+    #[arg(long, value_name = "SPEC", value_parser = parse_hide_data_len)]
+    hide_data_len_children: Option<glassbox::HideDataLenChildren>,
+    #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
+    hide_signer: Option<glassbox::HideMode>,
+    #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
+    hide_writable: Option<glassbox::HideMode>,
+    #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
+    hide_executable: Option<glassbox::HideMode>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Command {
@@ -295,6 +343,23 @@ pub enum Command {
         tail: Option<usize>,
         start: Option<u64>,
         end: Option<u64>,
+    },
+    Glassbox {
+        id: i64,
+        ix: i64,
+        force: bool,
+        skip: usize,
+        head: usize,
+        tail: Option<usize>,
+        start: Option<u64>,
+        end: Option<u64>,
+        taken_only: bool,
+        all_load_defs: bool,
+        hide_num_account_children: glassbox::HideMode,
+        hide_data_len_children: glassbox::HideDataLenChildren,
+        hide_signer: glassbox::HideMode,
+        hide_writable: glassbox::HideMode,
+        hide_executable: glassbox::HideMode,
     },
 }
 
@@ -352,6 +417,30 @@ impl TryFrom<Cli> for Command {
                     tail: args.tail,
                     start: args.start,
                     end: args.end,
+                })
+            }
+            Some(CliCommand::Glassbox(args)) => {
+                if args.head.is_some() && args.tail.is_some() {
+                    bail!("--head and --tail are mutually exclusive");
+                }
+                Ok(Self::Glassbox {
+                    id: args.id,
+                    ix: args.ix,
+                    force: args.force,
+                    skip: args.skip,
+                    head: args
+                        .head
+                        .unwrap_or(if args.tail.is_some() { 0 } else { 20 }),
+                    tail: args.tail,
+                    start: args.start,
+                    end: args.end,
+                    taken_only: args.taken_only,
+                    all_load_defs: args.all_load_defs,
+                    hide_num_account_children: args.hide_num_account_children.unwrap_or_default(),
+                    hide_data_len_children: args.hide_data_len_children.unwrap_or_default(),
+                    hide_signer: args.hide_signer.unwrap_or_default(),
+                    hide_writable: args.hide_writable.unwrap_or_default(),
+                    hide_executable: args.hide_executable.unwrap_or_default(),
                 })
             }
         }
@@ -425,6 +514,16 @@ impl TryFrom<RunCli> for Request {
 
 pub(super) fn parse_pubkey(s: &str) -> Result<Pubkey> {
     s.parse().context("pubkey")
+}
+
+fn parse_hide_mode(s: &str) -> Result<glassbox::HideMode, String> {
+    glassbox::HideMode::parse(s)
+        .ok_or_else(|| format!("expected words, constraints, or full (got {s:?})"))
+}
+
+fn parse_hide_data_len(s: &str) -> Result<glassbox::HideDataLenChildren, String> {
+    glassbox::HideDataLenChildren::parse(s)
+        .ok_or_else(|| format!("expected full or comma-separated account indices < 128 (got {s:?})"))
 }
 
 fn parse_program_flag(raw: &[String]) -> Result<Option<Vec<Pubkey>>> {
@@ -616,6 +715,11 @@ fn show(
         format!("seer show {id}"),
         format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
     ];
+    if let Ok(ixs) = storage.db.list_run_ix(id) {
+        if let Some((ix, _)) = ixs.first() {
+            footer.insert(1, format!("seer glassbox {id} --ix {ix}"));
+        }
+    }
     if program.is_some() {
         footer.insert(1, "seer program <HASH> --disasm".into());
     }

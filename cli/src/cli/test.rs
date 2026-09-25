@@ -255,6 +255,49 @@ fn parses_program() {
 }
 
 #[test]
+fn parses_glassbox() {
+    let Command::Glassbox {
+        id,
+        ix,
+        force,
+        head,
+        skip,
+        taken_only,
+        ..
+    } = parse_from(["seer", "glassbox", "1", "--ix", "0"]).unwrap()
+    else {
+        panic!("expected glassbox");
+    };
+    assert_eq!(id, 1);
+    assert_eq!(ix, 0);
+    assert!(!force);
+    assert_eq!(head, 20);
+    assert_eq!(skip, 0);
+    assert!(!taken_only);
+    assert!(parse_from(["seer", "glassbox", "1"]).is_err());
+    assert!(parse_from([
+        "seer",
+        "glassbox",
+        "1",
+        "--ix",
+        "0",
+        "--head",
+        "1",
+        "--tail",
+        "1"
+    ])
+    .is_err());
+    let Command::Glassbox { force, head, tail, .. } =
+        parse_from(["seer", "glassbox", "2", "--ix", "1", "--force", "--tail", "3"]).unwrap()
+    else {
+        panic!("expected glassbox --force --tail");
+    };
+    assert!(force);
+    assert_eq!(head, 0);
+    assert_eq!(tail, Some(3));
+}
+
+#[test]
 fn run_rejects_bad_combinations() {
     assert!(parse_from(["seer", "run"]).is_err());
     assert!(parse_from(["seer", "run", "--lamports", "0"]).is_err());
