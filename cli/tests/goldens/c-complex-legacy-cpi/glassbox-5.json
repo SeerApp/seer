@@ -1,0 +1,14 @@
+{
+  "ix": 5,
+  "stepsApplied": 47312,
+  "pathConditions": 2449,
+  "skipped": {
+    "tautologies": 943,
+    "textNoise": 1
+  },
+  "orderSegments": [
+    {"first": 40298, "last": 42642, "n": 243},
+    {"first": 10129, "last": 56861, "n": 1770},
+    {"first": 32042, "last": 36050, "n": 436}
+  ]
+}
