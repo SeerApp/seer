@@ -50,8 +50,8 @@ fn at_path_only() {
 }
 
 #[test]
-fn bare_seer_is_status() {
-    assert_eq!(parse_from(["seer"]).unwrap(), Command::Status);
+fn bare_seer_is_help() {
+    assert!(parse_from(["seer"]).is_err());
 }
 
 #[test]

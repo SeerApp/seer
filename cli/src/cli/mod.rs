@@ -48,7 +48,6 @@ pub fn run() -> Result<()> {
     let storage = Storage::open_at(home)?;
     match cmd {
         Command::Skill { .. } => unreachable!(),
-        Command::Status => status(&storage, short),
         Command::Run(req) => {
             let id = execute(&storage, req)?;
             emit_run(&storage, id, short)
@@ -93,7 +92,8 @@ pub fn run() -> Result<()> {
 #[command(
     name = "seer",
     about = "Replay Solana transactions locally. You work in runs.",
-    before_help = ORIENT
+    before_help = ORIENT,
+    arg_required_else_help = true
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "DIR", help = "Storage root")]
@@ -108,7 +108,7 @@ struct Cli {
     #[arg(long, global = true, help = "Compact JSON on stdout, no next: footer")]
     short: bool,
     #[command(subcommand)]
-    command: Option<CliCommand>,
+    command: CliCommand,
 }
 
 #[derive(Subcommand, Debug)]
@@ -334,7 +334,6 @@ struct GlassboxCli {
 #[derive(Clone, Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Command {
-    Status,
     Run(Request),
     Show {
         id: i64,
@@ -394,9 +393,8 @@ impl TryFrom<Cli> for Command {
 
     fn try_from(cli: Cli) -> Result<Self> {
         match cli.command {
-            None => Ok(Self::Status),
-            Some(CliCommand::Run(args)) => Ok(Self::Run(Request::try_from(args)?)),
-            Some(CliCommand::Show(args)) => Ok(Self::Show {
+            CliCommand::Run(args) => Ok(Self::Run(Request::try_from(args)?)),
+            CliCommand::Show(args) => Ok(Self::Show {
                 id: args.id,
                 tx: args.tx,
                 state: args.state,
@@ -413,19 +411,19 @@ impl TryFrom<Cli> for Command {
                 trace: args.trace,
                 program: parse_program_flag(&args.program)?,
             }),
-            Some(CliCommand::Ls(args)) => Ok(Self::Ls {
+            CliCommand::Ls(args) => Ok(Self::Ls {
                 tree: args.tree,
                 head: args.head,
                 skip: args.skip,
                 from: args.from,
                 status: args.status,
             }),
-            Some(CliCommand::Diff(args)) => Ok(Self::Diff {
+            CliCommand::Diff(args) => Ok(Self::Diff {
                 a: args.a,
                 b: args.b,
             }),
-            Some(CliCommand::Query(args)) => Ok(Self::Query(args.sql)),
-            Some(CliCommand::Program(args)) => {
+            CliCommand::Query(args) => Ok(Self::Query(args.sql)),
+            CliCommand::Program(args) => {
                 if args.disasm == args.lifted {
                     bail!("exactly one of --disasm or --lifted");
                 }
@@ -445,7 +443,7 @@ impl TryFrom<Cli> for Command {
                     end: args.end,
                 })
             }
-            Some(CliCommand::Glassbox(args)) => {
+            CliCommand::Glassbox(args) => {
                 if args.head.is_some() && args.tail.is_some() {
                     bail!("--head and --tail are mutually exclusive");
                 }
@@ -469,7 +467,7 @@ impl TryFrom<Cli> for Command {
                     hide_executable: args.hide_executable.unwrap_or_default(),
                 })
             }
-            Some(CliCommand::Skill(args)) => Ok(Self::Skill {
+            CliCommand::Skill(args) => Ok(Self::Skill {
                 install: matches!(args.cmd, Some(SkillCmd::Install)),
             }),
         }
@@ -566,18 +564,6 @@ fn parse_program_flag(raw: &[String]) -> Result<Option<Vec<Pubkey>>> {
         .map(|s| parse_pubkey(s))
         .collect::<Result<Vec<_>>>()
         .map(Some)
-}
-
-fn status(storage: &Storage, short: bool) -> Result<()> {
-    let runs = storage.db.list_runs()?;
-    let start = runs.len().saturating_sub(10);
-    let recent: Vec<serde_json::Value> = runs[start..].iter().map(run_json).collect();
-    let footer = if recent.is_empty() {
-        vec!["seer run --sig <SIGNATURE> --url <RPC>".into()]
-    } else {
-        vec!["seer ls".into(), format!("seer show {}", runs[start].id)]
-    };
-    emit(serde_json::Value::Array(recent), &footer, short)
 }
 
 fn emit_run(storage: &Storage, id: i64, short: bool) -> Result<()> {
