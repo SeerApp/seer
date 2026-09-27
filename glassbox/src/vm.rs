@@ -1,5 +1,6 @@
 //! Concolic replay of a trace: owns the scratchpad and steps SBPF ops.
 
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::time::Instant;
 
@@ -8,8 +9,9 @@ use z3::ast::Ast;
 use crate::analysis::Analysis;
 use crate::coverage::Skip;
 use crate::parse::{parse_disasm, BinOp, Op, Operand};
-use crate::path_condition::{PathClass, PathCondition};
-use crate::state::SymbolicState;
+use crate::path_condition::PathCondition;
+use crate::regions::{input_offset, is_input};
+use crate::state::{InputFrame, Registers, SymbolicState};
 use crate::step::Step;
 use crate::syscalls;
 
@@ -40,6 +42,14 @@ pub struct Vm {
     pending_jumps: Vec<PendingJump>,
     /// When set, jumps wait until helper spans are known (see [`Vm::run`]).
     defer_jumps: bool,
+    /// Parked caller activations across CPI.
+    cpi_stack: Vec<CpiFrame>,
+}
+
+struct CpiFrame {
+    pubkey: [u8; 32],
+    registers: Registers,
+    input: InputFrame,
 }
 
 struct HelperFrame {
@@ -70,6 +80,7 @@ impl Vm {
             helper_spans: Vec::new(),
             pending_jumps: Vec::new(),
             defer_jumps: false,
+            cpi_stack: Vec::new(),
         }
     }
 
@@ -103,12 +114,7 @@ impl Vm {
 
     fn finish_jump(&mut self, mut pc: PathCondition, defs_len: usize) {
         pc.formula = crate::rewrite::branch(&pc.formula, &self.state.ledger.load_defs[..defs_len]);
-        let class = pc.classify(&self.state.ledger.load_defs[..defs_len]);
-        match class {
-            PathClass::Tautology => self.skipped_tautologies += 1,
-            PathClass::TextNoise => self.skipped_text_noise += 1,
-            PathClass::Keep => self.state.ledger.assert_path(pc),
-        }
+        self.state.ledger.assert_path(pc);
     }
 
     fn commit_pending_jumps(&mut self) {
@@ -256,29 +262,61 @@ impl Vm {
                     debug_line(format_args!("debug {} took {ms:.1}ms", step.order));
                 }
             }
-            let applied = i + 1;
-            if !self.debug && applied % 500 == 0 {
-                eprintln!("… applied {applied} steps");
-            }
         }
         skips
     }
 
     /// One replay: recover helpers, buffer jumps, then keep only jumps
     /// outside recovered `call`/`exit` spans. In-span jumps are dropped,
-    /// not counted as tautology skips.
+    /// not counted as tautology skips. Resets the scratchpad.
     pub fn run<'a>(&mut self, steps: impl IntoIterator<Item = &'a Step>) -> Vec<Skip> {
-        let steps: Vec<&Step> = steps.into_iter().collect();
         self.state = SymbolicState::new();
         self.skipped_tautologies = 0;
         self.skipped_text_noise = 0;
+        self.cpi_stack.clear();
+        self.run_stretch(steps)
+    }
+
+    /// Replay one program stretch. Keeps memory and path conditions.
+    /// Helper spans are this ELF only.
+    pub fn run_stretch<'a>(&mut self, steps: impl IntoIterator<Item = &'a Step>) -> Vec<Skip> {
+        let steps: Vec<&Step> = steps.into_iter().collect();
         self.helper_spans.clear();
         self.pending_jumps.clear();
+        self.call_stack.clear();
         self.defer_jumps = true;
         let skips = self.replay(&steps);
         self.defer_jumps = false;
         self.commit_pending_jumps();
         skips
+    }
+
+    pub(crate) fn enter_cpi(&mut self, caller_pk: [u8; 32], callee_steps: &[Step]) {
+        let overlay = harvest_input_concrete(callee_steps);
+        let input = self.state.memory.enter_cpi(&overlay);
+        let registers = std::mem::replace(&mut self.state.registers, Registers::new());
+        self.cpi_stack.push(CpiFrame {
+            pubkey: caller_pk,
+            registers,
+            input,
+        });
+        self.call_stack.clear();
+        self.helper_spans.clear();
+        self.pending_jumps.clear();
+    }
+
+    pub(crate) fn return_cpi(&mut self) {
+        if let Some(frame) = self.cpi_stack.pop() {
+            self.state.memory.return_cpi(frame.input);
+            self.state.registers = frame.registers;
+        }
+        self.call_stack.clear();
+        self.helper_spans.clear();
+        self.pending_jumps.clear();
+    }
+
+    pub(crate) fn parked_pubkey(&self) -> Option<[u8; 32]> {
+        self.cpi_stack.last().map(|f| f.pubkey)
     }
 
     /// Consume the machine into display data. Registers and live memory drop.
@@ -295,6 +333,43 @@ impl Vm {
             skipped_text_noise,
         }
     }
+}
+
+fn harvest_input_concrete(steps: &[Step]) -> HashMap<u64, u8> {
+    let mut m = HashMap::new();
+    let put = |m: &mut HashMap<u64, u8>, addr: u64, n: usize, value: u64| {
+        if !is_input(addr) {
+            return;
+        }
+        for i in 0..n {
+            let b = ((value >> (8 * i)) & 0xff) as u8;
+            m.insert(input_offset(addr).wrapping_add(i as u64), b);
+        }
+    };
+    for step in steps {
+        match parse_disasm(&step.disasm) {
+            Op::Load { width, dst, mem } => put(
+                &mut m,
+                mem.effective_addr(&step.pre_regs),
+                width.bytes(),
+                step.post_regs[dst],
+            ),
+            Op::StoreReg { width, mem, src } => put(
+                &mut m,
+                mem.effective_addr(&step.post_regs),
+                width.bytes(),
+                step.post_regs[src],
+            ),
+            Op::StoreImm { width, mem, imm } => put(
+                &mut m,
+                mem.effective_addr(&step.post_regs),
+                width.bytes(),
+                imm as u64,
+            ),
+            _ => {}
+        }
+    }
+    m
 }
 
 #[cfg(test)]
@@ -548,8 +623,8 @@ mod tests {
             post_regs: regs,
         });
         let analysis = vm.into_analysis();
-        assert!(analysis.ledger.path_conditions.is_empty());
-        assert_eq!(analysis.skipped_tautologies, 1);
+        assert_eq!(analysis.ledger.path_conditions.len(), 1);
+        assert_eq!(analysis.skipped_tautologies, 0);
     }
 
     #[test]
@@ -785,5 +860,20 @@ mod tests {
         let mut vm = Vm::new().debug(true);
         let step = bare_step("mov64 r0, 1");
         assert!(vm.run(std::iter::once(&step)).is_empty());
+    }
+
+    #[test]
+    fn cpi_parks_caller_registers() {
+        let mut vm = Vm::new();
+        vm.state.registers[7] = Some(SymVal::env(BV::new_const("w_caller", 64)));
+        let callee = [bare_step("mov64 r0, 1")];
+        vm.enter_cpi([1u8; 32], &callee);
+        assert!(vm.state.registers[7].is_none());
+        assert!(vm.run_stretch(callee.iter()).is_empty());
+        vm.return_cpi();
+        assert_eq!(
+            vm.state.registers[7].as_ref().unwrap().bv.to_string(),
+            "w_caller"
+        );
     }
 }

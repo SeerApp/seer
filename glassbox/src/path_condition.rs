@@ -7,7 +7,7 @@ use crate::ancestry::{
     is_text_without_interesting_input, provision_only_flags,
 };
 use crate::parse::RelOp;
-use crate::sym::is_tautology;
+use crate::sym::is_syntactic_tautology;
 
 /// Concrete sysvar bytes observed at a syscall, identified by producer PC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -93,9 +93,9 @@ impl ConstraintHide {
 }
 
 impl PathCondition {
-    /// Whether this formula is a tautology, text-only noise, or worth recording.
+    /// Capture bucket. SAT tautologies are [`PathClass::Keep`]; hide tags them later.
     pub fn classify(&self, load_defs: &[LoadDef]) -> PathClass {
-        if is_tautology(&self.formula) {
+        if is_syntactic_tautology(&self.formula) {
             PathClass::Tautology
         } else if is_text_without_interesting_input(&self.formula, load_defs) {
             PathClass::TextNoise
@@ -277,6 +277,8 @@ mod tests {
         assert_eq!(parent.noise_kind(&defs), NoiseKind::None);
         assert_eq!(child.noise_kind(&defs), NoiseKind::NumAccountsChild);
         assert_eq!(mixed.noise_kind(&defs), NoiseKind::None);
+        let same = pc(BV::new_const("w_acc0_data_len", 64).eq(&BV::new_const("w_acc0_data_len", 64)));
+        assert_eq!(same.classify(&defs), PathClass::Keep);
     }
 
     #[test]

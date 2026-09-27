@@ -53,6 +53,9 @@ fn keep_path(pc: &PathConditionJson, opts: &ViewOpts) -> bool {
             return false;
         }
     }
+    if pc.vacuous || pc.text_noise {
+        return false;
+    }
     !hide_constraint(pc, opts)
 }
 
@@ -123,6 +126,8 @@ mod tests {
             lhs: "0x0".into(),
             rhs: "0x0".into(),
             formula: formula.into(),
+            vacuous: false,
+            text_noise: false,
             noise: None,
             origins: vec![],
         }
@@ -180,5 +185,23 @@ mod tests {
         let out = view(report, &o);
         assert_eq!(out.path_conditions.len(), 1);
         assert_eq!(out.path_conditions[0].order, 1);
+    }
+
+    #[test]
+    fn hides_vacuous_rows() {
+        let mut report = empty_report(vec![pc(0, true, "real"), pc(1, true, "vacuous")]);
+        report.path_conditions[1].vacuous = true;
+        let out = view(report, &opts());
+        assert_eq!(out.path_conditions.len(), 1);
+        assert_eq!(out.path_conditions[0].order, 0);
+    }
+
+    #[test]
+    fn hides_text_noise_rows() {
+        let mut report = empty_report(vec![pc(0, true, "real"), pc(1, true, "noise")]);
+        report.path_conditions[1].text_noise = true;
+        let out = view(report, &opts());
+        assert_eq!(out.path_conditions.len(), 1);
+        assert_eq!(out.path_conditions[0].order, 0);
     }
 }

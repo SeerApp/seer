@@ -13,15 +13,17 @@ fn mentions_env_symbol(f: &Bool) -> bool {
     for_each_app(f, |_, name| is_env_ident(name))
 }
 
-/// Return true when the path condition carries no useful environmental constraint.
+/// Capture membership: bool constants and formulas with no env symbols.
+/// SAT does not belong here — a 50ms miss must not drop the row.
+pub(crate) fn is_syntactic_tautology(formula: &Bool) -> bool {
+    formula.as_bool().is_some() || !mentions_env_symbol(formula)
+}
+
+/// Hide-side: syntactic, or Z3 proved vacuous inside the think budget.
 /// `formula` is already the output of [`crate::rewrite::branch`] — do not
 /// `simplify` again.
 pub fn is_tautology(formula: &Bool) -> bool {
-    if formula.as_bool().is_some() {
-        return true;
-    }
-
-    if !mentions_env_symbol(formula) {
+    if is_syntactic_tautology(formula) {
         return true;
     }
 
@@ -68,5 +70,6 @@ mod tests {
         let f = w.eq(&BV::from_u64(0, 64)).not();
         assert!(!is_tautology(&f));
         assert!(mentions_env_symbol(&f));
+        assert!(!is_syntactic_tautology(&w.eq(&w)));
     }
 }

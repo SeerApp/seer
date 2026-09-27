@@ -72,6 +72,10 @@ pub struct PathConditionJson {
     pub lhs: String,
     pub rhs: String,
     pub formula: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vacuous: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub text_noise: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noise: Option<NoiseJson>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -174,6 +178,11 @@ fn path_condition_json(pc: &PathCondition, load_defs: &[LoadDef]) -> PathConditi
         lhs: fmt_u64_const(pc.lhs, 64),
         rhs: fmt_u64_const(pc.rhs, 64),
         formula: fmt_ast(&Dynamic::from(&pc.formula), CANONICAL_OPTS),
+        vacuous: crate::sym::is_tautology(&pc.formula),
+        text_noise: crate::ancestry::is_text_without_interesting_input(
+            &pc.formula,
+            load_defs,
+        ),
         noise: noise_json(pc.noise_kind(load_defs)),
         origins: pc.origins.iter().copied().map(origin_json).collect(),
     }
@@ -187,17 +196,15 @@ pub(crate) fn build(
     text_bytes: usize,
     input_bytes: usize,
     memory_cells: usize,
-    skipped_tautologies: u64,
-    skipped_text_noise: u64,
+    _skipped_tautologies: u64,
+    _skipped_text_noise: u64,
     path_conditions: &[PathCondition],
     load_defs: &[LoadDef],
 ) -> Report {
-    eprintln!("… printing {} path conditions", path_conditions.len());
-    let mut pcs = Vec::with_capacity(path_conditions.len());
-    for (i, pc) in path_conditions.iter().enumerate() {
-        eprintln!("… printing path condition {i}/{}", path_conditions.len());
-        pcs.push(path_condition_json(pc, load_defs));
-    }
+    let pcs: Vec<_> = path_conditions
+        .iter()
+        .map(|pc| path_condition_json(pc, load_defs))
+        .collect();
 
     let shown_defs = load_defs_to_show(
         path_conditions.iter(),
@@ -205,9 +212,6 @@ pub(crate) fn build(
         false,
         HideFilters::default(),
     );
-    if !shown_defs.is_empty() {
-        eprintln!("… printing {} load definitions", shown_defs.len());
-    }
     let defs = shown_defs
         .into_iter()
         .map(|def| LoadDefJson {
@@ -230,8 +234,11 @@ pub(crate) fn build(
             memory_cells,
         },
         skipped: Skipped {
-            tautologies: skipped_tautologies,
-            text_noise: skipped_text_noise,
+            tautologies: pcs.iter().filter(|p| p.vacuous).count() as u64,
+            text_noise: pcs
+                .iter()
+                .filter(|p| p.text_noise && !p.vacuous)
+                .count() as u64,
         },
         path_conditions: pcs,
         load_defs: defs,

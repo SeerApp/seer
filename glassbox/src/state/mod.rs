@@ -9,6 +9,7 @@ use crate::parse::{BinOp, MemWidth, Operand, RelOp};
 
 pub use ledger::Ledger;
 pub use memory::Memory;
+pub(crate) use memory::InputFrame;
 pub(crate) use registers::Registers;
 pub use symval::SymVal;
 

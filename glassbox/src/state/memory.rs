@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use z3::ast::BV;
 
-use crate::input_abi;
+use crate::input_abi::{self, AccountSpan};
 use crate::parse::MemWidth;
 use crate::regions::{
     INPUT_BASE, input_offset, input_symbol_name, is_input, is_text, text_symbol_name,
@@ -31,6 +31,17 @@ pub struct Memory {
     /// concrete bytes with that origin into [`Self::cells`], overwriting a
     /// prior store at the same address.
     sysvar_regions: Vec<SysvarRegion>,
+    /// Pubkey → this instruction’s `acc{i}`. First packing wins.
+    pubkey_to_acc: HashMap<[u8; 32], u32>,
+    /// Current packing slot → instruction `acc{i}`. Empty means identity.
+    slot_to_acc: Vec<u32>,
+}
+
+/// Caller input to restore on CPI return.
+pub(crate) struct InputFrame {
+    packing: Vec<AccountSpan>,
+    parked_non_account: HashMap<u64, Cell>,
+    slot_to_acc: Vec<u32>,
 }
 
 impl Memory {
@@ -38,6 +49,8 @@ impl Memory {
         Self {
             cells: HashMap::new(),
             sysvar_regions: Vec::new(),
+            pubkey_to_acc: HashMap::new(),
+            slot_to_acc: Vec::new(),
         }
     }
 
@@ -133,7 +146,8 @@ impl Memory {
 
     pub fn word_symbol(&self, addr: u64, nbytes: usize) -> Option<String> {
         if is_input(addr) {
-            input_abi::word_symbol(|off| self.input_concrete(off), input_offset(addr), nbytes)
+            let loc = self.field_at(input_offset(addr))?;
+            input_abi::word_name_of(&loc, nbytes)
         } else {
             None
         }
@@ -233,11 +247,123 @@ impl Memory {
     }
 
     fn mint_input(&mut self, addr: u64) -> SymVal {
-        let name = input_abi::byte_symbol(|off| self.input_concrete(off), input_offset(addr))
+        let name = self
+            .field_at(input_offset(addr))
+            .map(|loc| input_abi::byte_name_of(&loc))
             .unwrap_or_else(|| input_symbol_name(addr));
         let v = SymVal::env(BV::new_const(name, BYTE_BITS));
         self.cells.entry(addr).or_default().sym = Some(v.clone());
         v
+    }
+
+    fn field_at(&self, offset: u64) -> Option<input_abi::FieldLoc> {
+        let loc = input_abi::classify(|o| self.input_concrete(o), offset)?;
+        Some(input_abi::remap_acc(loc, |slot| self.acc_of(slot)))
+    }
+
+    fn acc_of(&self, slot: u32) -> u32 {
+        self.slot_to_acc
+            .get(slot as usize)
+            .copied()
+            .unwrap_or(slot)
+    }
+
+    pub(crate) fn walk_packing(&self) -> Option<Vec<AccountSpan>> {
+        input_abi::walk_packing(|o| self.input_concrete(o))
+    }
+
+    fn walk_packing_overlay(&self, overlay: &HashMap<u64, u8>) -> Option<Vec<AccountSpan>> {
+        input_abi::walk_packing(|o| overlay.get(&o).copied().or_else(|| self.input_concrete(o)))
+    }
+
+    fn learn_pubkeys(&mut self, spans: &[AccountSpan]) {
+        for s in spans {
+            if let Some(pk) = s.pubkey {
+                self.pubkey_to_acc.entry(pk).or_insert(s.slot);
+            }
+        }
+    }
+
+    fn assign_acc(&self, mut spans: Vec<AccountSpan>) -> Vec<AccountSpan> {
+        for s in &mut spans {
+            if let Some(pk) = s.pubkey {
+                if let Some(&acc) = self.pubkey_to_acc.get(&pk) {
+                    s.acc = acc;
+                }
+            }
+        }
+        spans
+    }
+
+    fn park_non_account(&mut self, packing: &[AccountSpan]) -> HashMap<u64, Cell> {
+        let mut keep = std::collections::HashSet::new();
+        for s in packing.iter().filter(|s| s.unique) {
+            for i in 0..s.len {
+                keep.insert(s.start.saturating_add(i));
+            }
+        }
+        let mut parked = HashMap::new();
+        self.cells.retain(|&addr, cell| {
+            if is_input(addr) && !keep.contains(&input_offset(addr)) {
+                parked.insert(addr, cell.clone());
+                false
+            } else {
+                true
+            }
+        });
+        parked
+    }
+
+    fn place_accounts(&mut self, from: &[AccountSpan], to: &[AccountSpan]) {
+        let mut src = HashMap::new();
+        for s in from.iter().filter(|s| s.unique) {
+            src.insert(s.acc, (s.start, s.len));
+        }
+        let mut bag = HashMap::new();
+        for t in to.iter().filter(|t| t.unique) {
+            let Some(&(start, len)) = src.get(&t.acc) else {
+                continue;
+            };
+            let n = len.min(t.len);
+            for i in 0..n {
+                if let Some(cell) = self.cells.remove(&(INPUT_BASE.wrapping_add(start).wrapping_add(i)))
+                {
+                    bag.insert(INPUT_BASE.wrapping_add(t.start).wrapping_add(i), cell);
+                }
+            }
+        }
+        self.cells.extend(bag);
+    }
+
+    /// Park caller packing, place existing `acc{i}` cells at the callee blob.
+    pub(crate) fn enter_cpi(&mut self, overlay: &HashMap<u64, u8>) -> InputFrame {
+        let from = self.walk_packing().unwrap_or_default();
+        if self.pubkey_to_acc.is_empty() {
+            self.learn_pubkeys(&from);
+        }
+        let from = self.assign_acc(from);
+        let parked_non_account = self.park_non_account(&from);
+        let slot_to_acc = std::mem::take(&mut self.slot_to_acc);
+        if let Some(to) = self.walk_packing_overlay(overlay) {
+            let to = self.assign_acc(to);
+            self.place_accounts(&from, &to);
+            self.slot_to_acc = to.iter().map(|s| s.acc).collect();
+        }
+        InputFrame {
+            packing: from,
+            parked_non_account,
+            slot_to_acc,
+        }
+    }
+
+    pub(crate) fn return_cpi(&mut self, frame: InputFrame) {
+        if let Some(cur) = self.walk_packing() {
+            let cur = self.assign_acc(cur);
+            let _ = self.park_non_account(&cur);
+            self.place_accounts(&cur, &frame.packing);
+        }
+        self.cells.extend(frame.parked_non_account);
+        self.slot_to_acc = frame.slot_to_acc;
     }
 }
 
@@ -301,5 +427,80 @@ mod tests {
                 .as_ref()
                 .is_some_and(|s| s.bv.to_string().contains("n_acc0_data_len"))
         );
+    }
+
+    fn observe_bytes(mem: &mut Memory, offset: u64, bytes: &[u8]) {
+        for (i, b) in bytes.iter().enumerate() {
+            mem.observe_input(INPUT_BASE + offset + i as u64, 1, *b as u64);
+        }
+    }
+
+    #[test]
+    fn cpi_reuses_caller_acc_cells() {
+        let mut mem = Memory::new();
+        mem.observe_input(INPUT_BASE, 8, 3);
+        mem.observe_input(INPUT_BASE + 88, 8, 0);
+        mem.observe_input(INPUT_BASE + 10424, 8, 0);
+        let acc2 = 20680u64;
+        mem.observe_input(INPUT_BASE + acc2 + 80, 8, 0);
+        observe_bytes(&mut mem, 16, &[0xaa; 32]);
+        observe_bytes(&mut mem, 10352, &[0xbb; 32]);
+        observe_bytes(&mut mem, acc2 + 8, &[0xcc; 32]);
+
+        let caller = mem.walk_packing().expect("caller packing");
+        assert_eq!(caller[2].start, acc2);
+        let lamports = INPUT_BASE + acc2 + 72;
+        let before = mem
+            .load_bytes(lamports, MemWidth::Dw, 0)
+            .expect("caller acc2 lamports");
+        let before_name = mem
+            .resolve_byte(lamports)
+            .unwrap()
+            .bv
+            .to_string();
+        assert!(
+            before_name.contains("n_acc2_lamports"),
+            "{before_name}"
+        );
+
+        let mut overlay = HashMap::new();
+        for i in 0..8u64 {
+            overlay.insert(i, if i == 0 { 1 } else { 0 });
+            overlay.insert(88 + i, 0);
+        }
+        overlay.insert(8, input_abi::NON_DUP_MARKER);
+        for i in 0..32u64 {
+            overlay.insert(16 + i, 0xcc);
+        }
+
+        let frame = mem.enter_cpi(&overlay);
+        let callee_lamports = INPUT_BASE + 80;
+        let got = mem
+            .resolve_byte(callee_lamports)
+            .expect("placed caller cell")
+            .bv
+            .to_string();
+        assert!(
+            got.contains("n_acc2_lamports"),
+            "callee slot 0 must still be acc2: {got}"
+        );
+        assert!(!got.contains("n_acc0_lamports"), "{got}");
+        assert_eq!(
+            got,
+            before_name,
+            "same cell, not a second mint"
+        );
+        let packed = mem
+            .load_bytes(callee_lamports, MemWidth::Dw, 0)
+            .expect("callee load");
+        assert_eq!(packed.bv.to_string(), before.bv.to_string());
+
+        mem.return_cpi(frame);
+        let back = mem
+            .resolve_byte(lamports)
+            .expect("restored")
+            .bv
+            .to_string();
+        assert_eq!(back, before_name);
     }
 }

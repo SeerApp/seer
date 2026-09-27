@@ -64,6 +64,18 @@ pub struct FieldLoc {
     pub field_len: u64,
 }
 
+/// One serialized account in a packing. `slot` is local; `acc` is this
+/// instruction’s index once the pubkey is joined.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountSpan {
+    pub slot: u32,
+    pub acc: u32,
+    pub unique: bool,
+    pub pubkey: Option<[u8; 32]>,
+    pub start: u64,
+    pub len: u64,
+}
+
 enum AccWalk {
     Hit(FieldLoc),
     Skip(u64),
@@ -135,6 +147,79 @@ pub fn classify(concrete: impl Fn(u64) -> Option<u8>, offset: u64) -> Option<Fie
         });
     }
     None
+}
+
+/// Walk every account in this packing. Needs `num_accounts` and each
+/// unique account’s `data_len`.
+pub fn walk_packing(concrete: impl Fn(u64) -> Option<u8>) -> Option<Vec<AccountSpan>> {
+    let n_accounts = read_u64(&concrete, 0)?;
+    let n = n_accounts.min(MAX_ACCOUNTS as u64) as u32;
+    let mut cursor = 8u64;
+    let mut spans = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        match skip_or_classify_account(&concrete, i, cursor, u64::MAX) {
+            AccWalk::Skip(next) => {
+                let unique = i == 0
+                    || concrete(cursor)
+                        .map(|d| d == NON_DUP_MARKER)
+                        .unwrap_or(true);
+                let pubkey = if unique {
+                    read_pubkey(&concrete, cursor.saturating_add(8))
+                } else {
+                    None
+                };
+                spans.push(AccountSpan {
+                    slot: i,
+                    acc: i,
+                    unique,
+                    pubkey,
+                    start: cursor,
+                    len: next.saturating_sub(cursor),
+                });
+                cursor = next;
+            }
+            _ => return None,
+        }
+    }
+    Some(spans)
+}
+
+pub fn remap_acc(loc: FieldLoc, map: impl Fn(u32) -> u32) -> FieldLoc {
+    use InputField::*;
+    let field = match loc.field {
+        NumAccounts | IxDataLen | IxData | ProgramId => loc.field,
+        AccDup { index } => AccDup { index: map(index) },
+        AccSigner { index } => AccSigner { index: map(index) },
+        AccWritable { index } => AccWritable { index: map(index) },
+        AccExecutable { index } => AccExecutable { index: map(index) },
+        AccOrigDataLen { index } => AccOrigDataLen { index: map(index) },
+        AccPubkey { index } => AccPubkey { index: map(index) },
+        AccOwner { index } => AccOwner { index: map(index) },
+        AccLamports { index } => AccLamports { index: map(index) },
+        AccDataLen { index } => AccDataLen { index: map(index) },
+        AccData { index } => AccData { index: map(index) },
+        AccRealloc { index } => AccRealloc { index: map(index) },
+        AccAlign { index } => AccAlign { index: map(index) },
+        AccRentEpoch { index } => AccRentEpoch { index: map(index) },
+        AccDupPad { index } => AccDupPad { index: map(index) },
+    };
+    FieldLoc { field, ..loc }
+}
+
+pub(crate) fn byte_name_of(loc: &FieldLoc) -> String {
+    byte_name(loc)
+}
+
+pub(crate) fn word_name_of(loc: &FieldLoc, nbytes: usize) -> Option<String> {
+    word_name(loc, nbytes)
+}
+
+fn read_pubkey(concrete: &impl Fn(u64) -> Option<u8>, offset: u64) -> Option<[u8; 32]> {
+    let mut pk = [0u8; 32];
+    for (i, b) in pk.iter_mut().enumerate() {
+        *b = concrete(offset.wrapping_add(i as u64))?;
+    }
+    Some(pk)
 }
 
 fn read_u64(concrete: &impl Fn(u64) -> Option<u8>, offset: u64) -> Option<u64> {
@@ -445,5 +530,26 @@ mod tests {
             abi.word_symbol(ix_len_off + 16, 8).as_deref(),
             Some("w_program_id_0")
         );
+    }
+
+    #[test]
+    fn walk_packing_joins_unique_pubkeys() {
+        let mut abi = Bytes::new();
+        abi.observe(0, 8, 2);
+        abi.observe(88, 8, 0);
+        for i in 0..32u64 {
+            abi.0.insert(16 + i, 0xaa);
+        }
+        abi.observe(10424, 8, 0);
+        for i in 0..32u64 {
+            abi.0.insert(10344 + 8 + i, 0xbb);
+        }
+        let spans = walk_packing(|o| abi.0.get(&o).copied()).unwrap();
+        assert_eq!(spans.len(), 2);
+        assert!(spans[0].unique && spans[1].unique);
+        assert_eq!(spans[0].start, 8);
+        assert_eq!(spans[1].start, 10344);
+        assert_eq!(spans[0].pubkey, Some([0xaa; 32]));
+        assert_eq!(spans[1].pubkey, Some([0xbb; 32]));
     }
 }

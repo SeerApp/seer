@@ -43,55 +43,93 @@ fn analyze_ix(storage: &Storage, run_id: i64, ix: i64) -> Result<Vec<u8>> {
         bail!("no register trace for run {run_id} ix {ix}");
     }
 
-    let mut groups: BTreeMap<String, ([u8; 32], Vec<[u8; 32]>)> = BTreeMap::new();
-    for (_ix, _start, _end, self_h, prog_h, pk) in rows {
-        let key = bs58::encode(pk).into_string();
-        groups.entry(key).or_insert((prog_h, Vec::new())).1.push(self_h);
-    }
-
     let mut skips = Vec::new();
-    let mut runs = Vec::new();
-    for (program_id, (elf, blobs)) in &groups {
-        match load_program(storage, ix, program_id, elf, blobs, &mut skips) {
-            Ok(steps) => runs.push(steps),
+    let mut tagged = Vec::new();
+    for (_ix, _start, _end, self_h, elf, pk) in rows {
+        let program_id = bs58::encode(pk).into_string();
+        match load_chunk(storage, &elf, &self_h, &mut skips) {
+            Ok(steps) => {
+                tagged.extend(steps.into_iter().map(|step| TaggedStep {
+                    pubkey: pk,
+                    step,
+                }));
+            }
             Err(e) => {
                 let ix_u8 = u8::try_from(ix).unwrap_or(u8::MAX);
-                skips.push(Skip::program_load(ix_u8, program_id, format!("{e:#}")));
+                skips.push(Skip::program_load(ix_u8, &program_id, format!("{e:#}")));
             }
         }
+    }
+    tagged.sort_by_key(|t| t.step.order);
+    let stretches = group_clock(tagged);
+
+    let mut vm = Vm::new();
+    let mut steps_applied = 0;
+    let mut current_pk: Option<[u8; 32]> = None;
+    for stretch in &stretches {
+        if let Some(cur) = current_pk {
+            if cur != stretch.pubkey {
+                if vm.parked_pubkey() == Some(stretch.pubkey) {
+                    vm.return_cpi();
+                } else {
+                    vm.enter_cpi(cur, &stretch.steps);
+                }
+            }
+        }
+        steps_applied += stretch.steps.len();
+        let _ = vm.run_stretch(stretch.steps.iter());
+        current_pk = Some(stretch.pubkey);
     }
 
     let missing_disasm: usize = skips
         .iter()
         .filter(|s| s.reason == crate::coverage::SkipReason::EmptyDisasm)
         .count();
-    let steps: Vec<Step> = runs.into_iter().flatten().collect();
-    let steps_applied = steps.len();
-    let mut vm = Vm::new();
-    let _ = vm.run(steps.iter());
-
     let analysis = vm.into_analysis();
     let mut out = Cursor::new(Vec::new());
     analysis.write(&mut out, run_id, ix, steps_applied, missing_disasm)?;
     Ok(out.into_inner())
 }
 
-fn load_program(
+struct TaggedStep {
+    pubkey: [u8; 32],
+    step: Step,
+}
+
+struct Stretch {
+    pubkey: [u8; 32],
+    steps: Vec<Step>,
+}
+
+/// Caller chunks often keep a hole (CPI orders live in other programs’ files).
+/// Play by `step.order`, not by `reg.start_step` row runs.
+fn group_clock(tagged: Vec<TaggedStep>) -> Vec<Stretch> {
+    let mut out: Vec<Stretch> = Vec::new();
+    for t in tagged {
+        if let Some(last) = out.last_mut() {
+            if last.pubkey == t.pubkey {
+                last.steps.push(t.step);
+                continue;
+            }
+        }
+        out.push(Stretch {
+            pubkey: t.pubkey,
+            steps: vec![t.step],
+        });
+    }
+    out
+}
+
+fn load_chunk(
     storage: &Storage,
-    _ix: i64,
-    _program_id: &str,
     elf: &[u8; 32],
-    blobs: &[[u8; 32]],
+    blob: &[u8; 32],
     skips: &mut Vec<Skip>,
 ) -> Result<Vec<Step>> {
-    let mut chunks = Vec::with_capacity(blobs.len());
-    for hash in blobs {
-        let bytes = storage.blob.read(hash)?;
-        let chunk: RegisterTraceChunk =
-            serde_json::from_slice(&bytes).context("parse register chunk")?;
-        chunks.push(chunk);
-    }
-    let trace = RegisterTrace::from_chunks(&chunks)?;
+    let bytes = storage.blob.read(blob)?;
+    let chunk: RegisterTraceChunk =
+        serde_json::from_slice(&bytes).context("parse register chunk")?;
+    let trace = RegisterTrace::from_chunks(&[chunk])?;
     let pcs = trace.pcs();
     let disasm = disasm_for_pcs(storage, elf, &pcs)?;
     let mut kept = Vec::new();
@@ -222,5 +260,39 @@ mod tests {
         assert_eq!(steps.len(), 3);
         assert_eq!(steps[2].pre_regs[1], 11);
         assert_eq!(steps[2].disasm, "");
+    }
+
+    #[test]
+    fn stretches_follow_clock_through_a_hole_in_one_chunk() {
+        let a = [1u8; 32];
+        let b = [2u8; 32];
+        let step = |order, pk| TaggedStep {
+            pubkey: pk,
+            step: Step {
+                order,
+                pc: 0,
+                next_pc: None,
+                disasm: "mov64 r0, 1".into(),
+                pre_regs: [0; 11],
+                post_regs: [0; 11],
+            },
+        };
+        // Caller chunk lists 10 then 40; callee owns 20–30. Row start_step
+        // would play 10,40 before 20. Clock order nests the callee.
+        let mut tagged = vec![
+            step(10, a),
+            step(40, a),
+            step(20, b),
+            step(30, b),
+        ];
+        tagged.sort_by_key(|t| t.step.order);
+        let s = group_clock(tagged);
+        assert_eq!(s.len(), 3);
+        assert_eq!(s[0].pubkey, a);
+        assert_eq!(s[0].steps[0].order, 10);
+        assert_eq!(s[1].pubkey, b);
+        assert_eq!(s[1].steps[0].order, 20);
+        assert_eq!(s[2].pubkey, a);
+        assert_eq!(s[2].steps[0].order, 40);
     }
 }
