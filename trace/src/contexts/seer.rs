@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{env, path::PathBuf};
 
 use hooks::{GuestAccountBackdoor, GuestMemory};
@@ -20,6 +21,8 @@ pub struct SeerContext {
     storage: *const Storage,
     run_id: i64,
     state_accounts: Vec<(Pubkey, Vec<u8>)>,
+    /// program id → content hash of unwrapped ELF. One store per program per run.
+    program_hash: HashMap<Pubkey, [u8; 32]>,
     pub transaction_context: Option<TransactionContext>,
     pub register_context: RegisterContext,
     pub global_program_context: GlobalProgramContext,
@@ -45,6 +48,7 @@ impl SeerContext {
             storage,
             run_id: 0,
             state_accounts: Vec::new(),
+            program_hash: HashMap::new(),
             transaction_context: None,
             register_context: RegisterContext::new(),
             global_program_context,
@@ -56,29 +60,19 @@ impl SeerContext {
         unsafe { &*self.storage }
     }
 
-    fn persist_reg(&self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
+    fn persist_reg(&mut self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
         let (start_step, end_step) =
             match (chunk.trace.first_key_value(), chunk.trace.last_key_value()) {
                 (Some((&first, _)), Some((&last, _))) => (first, last),
                 _ => (chunk.min_order, chunk.min_order),
             };
-        let elf = crate::program_elf::program_elf_bytes(&self.state_accounts, program);
-        assert!(
-            !elf.is_empty(),
-            "no ELF for {program} in run {} state",
-            self.run_id
-        );
+        let program_hash = self.program_blob_hash(program);
         let run_id = self.run_id;
         let storage = self.storage();
         let self_hash = storage
             .blob
             .store(&serde_json::to_vec(chunk).expect("serialize register chunk"))
             .expect("store register blob");
-        let program_hash = storage.blob.store(&elf).expect("store program blob");
-        storage
-            .db
-            .insert_program(&program_hash)
-            .expect("insert program");
         storage
             .db
             .insert_reg(
@@ -93,11 +87,29 @@ impl SeerContext {
             .expect("insert reg");
     }
 
+    fn program_blob_hash(&mut self, program: &Pubkey) -> [u8; 32] {
+        if let Some(&h) = self.program_hash.get(program) {
+            return h;
+        }
+        let elf = crate::program_elf::program_elf_bytes(&self.state_accounts, program);
+        assert!(
+            !elf.is_empty(),
+            "no ELF for {program} in run {} state",
+            self.run_id
+        );
+        let storage = self.storage();
+        let h = storage.blob.store(&elf).expect("store program blob");
+        storage.db.insert_program(&h).expect("insert program");
+        self.program_hash.insert(*program, h);
+        h
+    }
+
     pub fn set_current_tx(&mut self, run_id: i64) {
         seer_debug!("New run: {run_id}");
 
         self.run_id = run_id;
         self.state_accounts = crate::program_elf::run_state_accounts(self.storage(), run_id);
+        self.program_hash.clear();
         self.register_context.reset_for_new_transaction();
         self.transaction_context = Some(TransactionContext::new());
     }
@@ -108,6 +120,7 @@ impl SeerContext {
             let _ = tx;
         }
         self.state_accounts.clear();
+        self.program_hash.clear();
     }
 
     pub fn record_execution_failure_if_empty(
