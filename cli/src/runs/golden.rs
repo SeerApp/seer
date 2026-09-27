@@ -130,11 +130,6 @@ fn glassbox_summary(storage: &Storage, run_id: i64, ix: i64) -> Result<serde_jso
     Ok(serde_json::json!({
         "ix": report.ix,
         "stepsApplied": report.steps_applied,
-        "pathConditions": report.path_conditions.len(),
-        "skipped": {
-            "tautologies": report.skipped.tautologies,
-            "textNoise": report.skipped.text_noise,
-        },
         "orderSegments": segments,
     }))
 }
@@ -193,10 +188,10 @@ fn golden_c_complex_legacy_cpi() {
     assert_golden("c-complex-legacy-cpi");
 }
 
-/// pAMM ix on golden C. ~4 min (z3). Dump concatenates by program name, so
-/// pathConditions are three clock ranges, not one increasing sequence.
+/// pAMM ix on golden C. After CPI nesting, recorded orders are one
+/// increasing sequence (inner programs sit in the caller hole). SAT
+/// hide does not drop rows, so `n` is the capture set.
 #[test]
-#[ignore]
 fn golden_c_glassbox_pamm() {
     let name = "c-complex-legacy-cpi";
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
