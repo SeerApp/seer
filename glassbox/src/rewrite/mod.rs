@@ -29,7 +29,7 @@ pub(crate) use pda::{PdaSyscall, match_pda_word};
 use ast::{extract_hi_lo, unique_nodes};
 use eval::eval_env;
 use idiom::{recover, recover_bool};
-use slices::{def_map, flatten_concat_extract, match_aligned_word};
+use slices::{def_map, match_aligned_word, pack_load};
 
 /// Decl name, child ids after CSE, extract `[hi:lo]` (or `0,0`).
 type NodeKey = (String, Vec<usize>, u32, u32);
@@ -68,14 +68,10 @@ fn align(expr: BV, defs: &[LoadDef]) -> BV {
 /// Name a load pack: flatten concat/extract/shift-or shuffles, snap to an
 /// existing `w_*`. Numeral trees eval; no catalog, no `simplify`.
 pub fn pack(expr: &BV, defs: &[LoadDef]) -> BV {
-    let named = if let Some(n) = fold_numerals(expr) {
-        n
-    } else if let Some(flat) = flatten_concat_extract(expr, &def_map(defs)) {
-        flat
-    } else {
-        expr.clone()
-    };
-    align(named, defs)
+    if let Some(n) = fold_numerals(expr) {
+        return align(n, defs);
+    }
+    pack_load(expr, defs)
 }
 
 /// Idiom catalogue at the root after a register ALU step. No child walk.

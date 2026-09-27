@@ -130,10 +130,3 @@ pub(crate) fn rebuild_slices(slices: &[BitSlice]) -> Option<BV> {
     }
     acc
 }
-
-pub(crate) fn slices_eq(a: &[BitSlice], b: &[BitSlice]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b)
-            .all(|(x, y)| ast_id(&x.root) == ast_id(&y.root) && x.hi == y.hi && x.lo == y.lo)
-}
