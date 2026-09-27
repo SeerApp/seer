@@ -12,6 +12,7 @@ mod format;
 mod glassbox_cmd;
 mod input;
 mod program;
+mod skill;
 #[cfg(test)]
 mod test;
 
@@ -35,12 +36,18 @@ pub fn run() -> Result<()> {
     let cli = Cli::parse();
     trace::init_seer_logger(trace::SeerLogger::from_verbosity(cli.verbose));
     let short = cli.short;
-    let home = match &cli.storage_home {
-        Some(path) => path.clone(),
+    let storage_home = cli.storage_home.clone();
+    let cmd = Command::try_from(cli)?;
+    if let Command::Skill { install } = cmd {
+        return skill::cmd(install, short);
+    }
+    let home = match storage_home {
+        Some(path) => path,
         None => storage::default_root()?,
     };
     let storage = Storage::open_at(home)?;
-    match Command::try_from(cli)? {
+    match cmd {
+        Command::Skill { .. } => unreachable!(),
         Command::Status => status(&storage, short),
         Command::Run(req) => {
             let id = execute(&storage, req)?;
@@ -114,6 +121,22 @@ enum CliCommand {
     Query(QueryArgs),
     Program(ProgramCli),
     Glassbox(GlassboxCli),
+    Skill(SkillCli),
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Print the agent skill, or install it for Cursor, Claude Code, Codex, and other skill-using agents"
+)]
+struct SkillCli {
+    #[command(subcommand)]
+    cmd: Option<SkillCmd>,
+}
+
+#[derive(Subcommand, Debug)]
+enum SkillCmd {
+    #[command(about = "Write SKILL.md into user-level skill directories")]
+    Install,
 }
 
 #[derive(Parser, Debug)]
@@ -361,6 +384,9 @@ pub enum Command {
         hide_writable: glassbox::HideMode,
         hide_executable: glassbox::HideMode,
     },
+    Skill {
+        install: bool,
+    },
 }
 
 impl TryFrom<Cli> for Command {
@@ -443,6 +469,9 @@ impl TryFrom<Cli> for Command {
                     hide_executable: args.hide_executable.unwrap_or_default(),
                 })
             }
+            Some(CliCommand::Skill(args)) => Ok(Self::Skill {
+                install: matches!(args.cmd, Some(SkillCmd::Install)),
+            }),
         }
     }
 }

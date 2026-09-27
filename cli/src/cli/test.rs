@@ -392,3 +392,59 @@ fn ls_tree_and_state_are_objects() {
     assert_eq!(catalog[pk.to_string()]["lamports"], "1");
     assert!(catalog[pk.to_string()].get("data").is_none());
 }
+
+#[test]
+fn parses_skill() {
+    let Command::Skill { install } = parse_from(["seer", "skill"]).unwrap() else {
+        panic!("expected skill");
+    };
+    assert!(!install);
+    let Command::Skill { install } = parse_from(["seer", "skill", "install"]).unwrap() else {
+        panic!("expected skill install");
+    };
+    assert!(install);
+}
+
+#[test]
+fn skill_print_is_bundled_markdown() {
+    assert!(!super::skill::MARKDOWN.is_empty());
+    assert!(super::skill::MARKDOWN.starts_with("---\nname: seer\n"));
+}
+
+#[test]
+fn skill_install_writes_four_homes() {
+    let home = std::env::temp_dir().join(format!("seer-skill-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    let (written, errors) = super::skill::install_into(&home);
+    assert!(errors.is_empty());
+    assert_eq!(written.len(), 4);
+    for rel in [
+        ".cursor/skills/seer",
+        ".claude/skills/seer",
+        ".codex/skills/seer",
+        ".agents/skills/seer",
+    ] {
+        let path = home.join(rel).join("SKILL.md");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            super::skill::MARKDOWN
+        );
+        std::fs::write(&path, "stale").unwrap();
+    }
+    let (written, errors) = super::skill::install_into(&home);
+    assert!(errors.is_empty());
+    assert_eq!(written.len(), 4);
+    for rel in [
+        ".cursor/skills/seer",
+        ".claude/skills/seer",
+        ".codex/skills/seer",
+        ".agents/skills/seer",
+    ] {
+        assert_eq!(
+            std::fs::read_to_string(home.join(rel).join("SKILL.md")).unwrap(),
+            super::skill::MARKDOWN
+        );
+    }
+    std::fs::remove_dir_all(home).ok();
+}
