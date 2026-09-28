@@ -330,6 +330,39 @@ pub(crate) fn account_datas(
         .collect()
 }
 
+pub(crate) fn program_elf_hash(storage: &Storage, run_id: i64, pk: &Pubkey) -> Result<[u8; 32]> {
+    if let Some(hash) = storage
+        .db
+        .program_blob_hash_for_run(run_id, &pk.to_bytes())?
+    {
+        return Ok(hash);
+    }
+    let row = storage.db.get_run(run_id)?;
+    let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+    let account = state
+        .0
+        .get(pk)
+        .with_context(|| format!("no {pk} in run {run_id}"))?;
+    let data = storage.blob.read(&account.data)?;
+    let mut accounts = vec![(*pk, data)];
+    if let Ok(UpgradeableLoaderState::Program {
+        programdata_address,
+    }) = bincode::deserialize(&accounts[0].1)
+    {
+        let pd = Pubkey::from(programdata_address.to_bytes());
+        if let Some(row) = state.0.get(&pd) {
+            accounts.push((pd, storage.blob.read(&row.data)?));
+        }
+    }
+    let elf = trace::program_elf::program_elf_bytes(&accounts, pk);
+    if elf.is_empty() {
+        bail!("no ELF for {pk} in run {run_id}");
+    }
+    let hash = storage.blob.store(&elf)?;
+    storage.db.insert_program(&hash)?;
+    Ok(hash)
+}
+
 fn ingest_programs(storage: &Storage, state: &StateAccounts) -> Result<()> {
     let accounts = account_datas(storage, state)?;
     for (key, account) in &state.0 {
@@ -449,5 +482,112 @@ mod test {
         assert!(err.to_string().contains("missing lookup table"));
         let err = absent_account(&key, "programdata", &BTreeSet::new()).unwrap_err();
         assert!(err.to_string().contains("missing programdata"));
+    }
+
+    #[test]
+    fn program_elf_hash_does_not_read_other_blobs() {
+        let root = std::env::temp_dir().join(format!(
+            "seer-prog-elf-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = Storage::open_at(&root).unwrap();
+        let program = Pubkey::from([1u8; 32]);
+        let programdata = Pubkey::from([2u8; 32]);
+        let decoy = Pubkey::from([9u8; 32]);
+        let elf = b"\x7FELFpayload";
+        let header = bincode::serialize(&UpgradeableLoaderState::Program {
+            programdata_address: programdata,
+        })
+        .unwrap();
+        let mut pd = vec![0u8; UpgradeableLoaderState::size_of_programdata_metadata()];
+        let pd_header = bincode::serialize(&UpgradeableLoaderState::ProgramData {
+            slot: 1,
+            upgrade_authority_address: Some(Pubkey::from([3u8; 32])),
+        })
+        .unwrap();
+        pd[..pd_header.len()].copy_from_slice(&pd_header);
+        pd.extend_from_slice(elf);
+        let h_prog = storage.blob.store(&header).unwrap();
+        let h_pd = storage.blob.store(&pd).unwrap();
+        let mut state = StateAccounts::default();
+        state.0.insert(
+            program,
+            StateAccount {
+                lamports: 1,
+                data: h_prog,
+                owner: Pubkey::default(),
+                executable: true,
+            },
+        );
+        state.0.insert(
+            programdata,
+            StateAccount {
+                lamports: 1,
+                data: h_pd,
+                owner: Pubkey::default(),
+                executable: false,
+            },
+        );
+        state.0.insert(
+            decoy,
+            StateAccount {
+                lamports: 1,
+                data: [0xee; 32],
+                owner: Pubkey::default(),
+                executable: false,
+            },
+        );
+        assert!(account_datas(&storage, &state).is_err());
+        let state_hash = storage.blob.store(&state.to_bytes().unwrap()).unwrap();
+        let tx_hash = storage.blob.store(b"tx").unwrap();
+        storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
+        let id = storage
+            .db
+            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .unwrap();
+        let got = program_elf_hash(&storage, id, &program).unwrap();
+        assert_eq!(got, storage.blob.hash(elf));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn program_elf_hash_uses_reg_without_reading_elf() {
+        let root = std::env::temp_dir().join(format!(
+            "seer-prog-reg-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = Storage::open_at(&root).unwrap();
+        let program = Pubkey::from([1u8; 32]);
+        let elf_hash = storage.blob.store(b"already-hashed-elf").unwrap();
+        storage.db.insert_program(&elf_hash).unwrap();
+        let self_hash = storage.blob.store(b"self").unwrap();
+        let state_hash = storage
+            .blob
+            .store(&StateAccounts::default().to_bytes().unwrap())
+            .unwrap();
+        let tx_hash = storage.blob.store(b"tx").unwrap();
+        storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
+        let id = storage
+            .db
+            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .unwrap();
+        storage.db.insert_run_ix(id, 0).unwrap();
+        storage
+            .db
+            .insert_reg(id, 0, 0, 1, &self_hash, &elf_hash, &program.to_bytes())
+            .unwrap();
+        let got = program_elf_hash(&storage, id, &program).unwrap();
+        assert_eq!(got, elf_hash);
+        std::fs::remove_dir_all(root).ok();
     }
 }

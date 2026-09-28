@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use solana_pubkey::Pubkey;
 use storage::{ProgramChunk, Storage};
 
@@ -26,7 +26,7 @@ pub(super) fn resolve_hash(
 ) -> Result<[u8; 32]> {
     let target = target.context("need ELF hash or --run <RUN> <PUBKEY>")?;
     match run {
-        Some(id) => elf_hash_for_run(storage, id, &parse_pubkey(target)?),
+        Some(id) => crate::runs::store::program_elf_hash(storage, id, &parse_pubkey(target)?),
         None => parse_elf_hash(target),
     }
 }
@@ -239,19 +239,6 @@ fn pc_in_window(pc: u64, start: Option<u64>, end: Option<u64>) -> bool {
 fn parse_elf_hash(s: &str) -> Result<[u8; 32]> {
     let bytes = hex::decode(s.trim()).context("ELF hash hex")?;
     <[u8; 32]>::try_from(bytes).map_err(|_| anyhow::anyhow!("ELF hash must be 32 bytes"))
-}
-
-fn elf_hash_for_run(storage: &Storage, run_id: i64, pk: &Pubkey) -> Result<[u8; 32]> {
-    let row = storage.db.get_run(run_id)?;
-    let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
-    let accounts = crate::runs::store::account_datas(storage, &state)?;
-    let elf = trace::program_elf::program_elf_bytes(&accounts, pk);
-    if elf.is_empty() {
-        bail!("no ELF for {pk} in run {run_id}");
-    }
-    let hash = storage.blob.store(&elf)?;
-    storage.db.insert_program(&hash)?;
-    Ok(hash)
 }
 
 #[cfg(test)]

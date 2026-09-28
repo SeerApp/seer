@@ -63,6 +63,21 @@ impl Db {
         .collect()
     }
 
+    pub fn program_blob_hash_for_run(
+        &self,
+        run_id: i64,
+        pubkey: &[u8; 32],
+    ) -> Result<Option<[u8; 32]>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT program_blob_hash FROM reg WHERE run_id = ?1 AND pubkey = ?2 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![run_id, pubkey.as_slice()])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        as32(row.get(0)?).map(Some)
+    }
+
     pub fn glassbox_blob_hash(&self, run_id: i64, ix: i64) -> Result<Option<[u8; 32]>> {
         let mut stmt = self.conn.prepare(
             "SELECT glassbox_blob_hash FROM glassbox WHERE run_id = ?1 AND ix = ?2",
