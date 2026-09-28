@@ -255,6 +255,73 @@ fn parses_program() {
 }
 
 #[test]
+fn parses_regs() {
+    assert!(parse_from(["seer", "regs", "1"]).is_err());
+    let Command::Regs {
+        id,
+        ix,
+        head,
+        skip,
+        tail,
+        order,
+        regs,
+        changed,
+        delta,
+        ..
+    } = parse_from(["seer", "regs", "2", "--ix", "5"]).unwrap()
+    else {
+        panic!("expected regs");
+    };
+    assert_eq!(id, 2);
+    assert_eq!(ix, 5);
+    assert_eq!(head, 20);
+    assert_eq!(skip, 0);
+    assert_eq!(tail, None);
+    assert_eq!(order, None);
+    assert_eq!(regs, (0..11).collect::<Vec<_>>());
+    assert!(!changed);
+    assert!(!delta);
+    assert!(parse_from(["seer", "regs", "2", "--ix", "5", "--head", "1", "--tail", "1"]).is_err());
+    assert!(
+        parse_from(["seer", "regs", "2", "--ix", "5", "--order", "10129", "--start", "1"]).is_err()
+    );
+    let Command::Regs {
+        order,
+        regs,
+        changed,
+        program,
+        ..
+    } = parse_from([
+        "seer",
+        "regs",
+        "2",
+        "--ix",
+        "5",
+        "--order",
+        "10129",
+        "--reg",
+        "0,7",
+        "--changed",
+        "--program",
+        "11111111111111111111111111111111",
+        "--delta",
+        "--head",
+        "5",
+    ])
+    .unwrap()
+    else {
+        panic!("expected regs filters");
+    };
+    assert_eq!(order, Some(10129));
+    assert_eq!(regs, vec![0, 7]);
+    assert!(changed);
+    assert_eq!(
+        program,
+        Some(Pubkey::from_str("11111111111111111111111111111111").unwrap())
+    );
+}
+
+#[test]
 fn parses_glassbox() {
     let Command::Glassbox {
         id,
@@ -409,6 +476,7 @@ fn parses_skill() {
 fn skill_print_is_bundled_markdown() {
     assert!(!super::skill::MARKDOWN.is_empty());
     assert!(super::skill::MARKDOWN.starts_with("---\nname: seer\n"));
+    assert!(super::skill::MARKDOWN.contains("seer regs"));
 }
 
 #[test]

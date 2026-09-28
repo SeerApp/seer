@@ -8,7 +8,7 @@ description: >
 
 # seer
 
-This `seer` is local replay (`run`, `show`, `ls`, `diff`, `program`, `glassbox`).
+This `seer` is local replay (`run`, `show`, `ls`, `diff`, `program`, `regs`, `glassbox`).
 
 ## Runs
 
@@ -16,7 +16,8 @@ Work in run ids.
 
 1. `seer run --sig <SIGNATURE> --url <RPC>` — fetch the tx and accounts **now**. There is no historical chain state; the replay is current RPC accounts plus that message.
 2. `seer show <ID>` then `seer show <ID> --trace` — named instructions, logs, account diffs.
-3. `seer glassbox <ID> --ix <N>` only if a branch is unexplained. Prefer `--head`. Do not dump the full report into chat.
+3. `seer regs <ID> --ix <N>` — r0–r10 at recorded steps. Window with `--start`/`--end` (order) or `--order`. Prefer `--head`. `--changed` and `--reg` shrink the dump. Do not dump the full instruction into chat.
+4. `seer glassbox <ID> --ix <N>` only if a branch is still unexplained. Prefer `--head`. Do not dump the full report into chat.
 
 Fork: `seer run --from <ID> --account <PUBKEY> --lamports 0` (and other patches).
 

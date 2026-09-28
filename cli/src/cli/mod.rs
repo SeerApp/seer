@@ -12,6 +12,7 @@ mod format;
 mod glassbox_cmd;
 mod input;
 mod program;
+mod regs;
 mod skill;
 #[cfg(test)]
 mod test;
@@ -84,6 +85,7 @@ pub fn run() -> Result<()> {
             Ok(())
         }
         cmd @ Command::Program { .. } => program_cmd(&storage, cmd, short),
+        cmd @ Command::Regs { .. } => regs::cmd(&storage, cmd, short),
         cmd @ Command::Glassbox { .. } => glassbox_cmd::cmd(&storage, cmd, short),
     }
 }
@@ -120,6 +122,7 @@ enum CliCommand {
     #[command(hide = true)]
     Query(QueryArgs),
     Program(ProgramCli),
+    Regs(RegsCli),
     Glassbox(GlassboxCli),
     Skill(SkillCli),
 }
@@ -317,7 +320,10 @@ struct GlassboxCli {
     end: Option<u64>,
     #[arg(long, help = "Only taken branches")]
     taken_only: bool,
-    #[arg(long, help = "Every stored load def, not only those in shown conditions")]
+    #[arg(
+        long,
+        help = "Every stored load def, not only those in shown conditions"
+    )]
     all_load_defs: bool,
     #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
     hide_num_account_children: Option<glassbox::HideMode>,
@@ -329,6 +335,50 @@ struct GlassboxCli {
     hide_writable: Option<glassbox::HideMode>,
     #[arg(long, value_name = "MODE", value_parser = parse_hide_mode)]
     hide_executable: Option<glassbox::HideMode>,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Show r0–r10 at recorded steps of one instruction")]
+struct RegsCli {
+    #[arg(value_name = "RUN")]
+    id: i64,
+    #[arg(long, value_name = "N", required = true, help = "Instruction index")]
+    ix: i64,
+    #[arg(
+        long,
+        value_name = "N",
+        help = "First N steps after filters (0 = all). Default 20"
+    )]
+    head: Option<usize>,
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 0,
+        help = "Drop first N steps"
+    )]
+    skip: usize,
+    #[arg(long, value_name = "N", help = "Last N steps")]
+    tail: Option<usize>,
+    #[arg(long, value_name = "ORDER", help = "Inclusive start step order")]
+    start: Option<u64>,
+    #[arg(long, value_name = "ORDER", help = "Inclusive end step order")]
+    end: Option<u64>,
+    #[arg(long, value_name = "ORDER", help = "One step order")]
+    order: Option<u64>,
+    #[arg(long, value_name = "PC", help = "Keep steps at this PC")]
+    pc: Option<u64>,
+    #[arg(
+        long = "reg",
+        value_name = "0,7,10",
+        help = "Register indexes for --changed (default all 11). JSON still emits r0–r10"
+    )]
+    regs: Option<String>,
+    #[arg(long, help = "Keep steps where selected registers changed")]
+    changed: bool,
+    #[arg(long, value_name = "PUBKEY", help = "One program id")]
+    program: Option<String>,
+    #[arg(long, help = "Sparse stored deltas instead of reconstructed r0–r10")]
+    delta: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -365,6 +415,21 @@ pub enum Command {
         tail: Option<usize>,
         start: Option<u64>,
         end: Option<u64>,
+    },
+    Regs {
+        id: i64,
+        ix: i64,
+        skip: usize,
+        head: usize,
+        tail: Option<usize>,
+        start: Option<u64>,
+        end: Option<u64>,
+        order: Option<u64>,
+        pc: Option<u64>,
+        regs: Vec<usize>,
+        changed: bool,
+        program: Option<Pubkey>,
+        delta: bool,
     },
     Glassbox {
         id: i64,
@@ -441,6 +506,31 @@ impl TryFrom<Cli> for Command {
                     tail: args.tail,
                     start: args.start,
                     end: args.end,
+                })
+            }
+            CliCommand::Regs(args) => {
+                if args.head.is_some() && args.tail.is_some() {
+                    bail!("--head and --tail are mutually exclusive");
+                }
+                if args.order.is_some() && (args.start.is_some() || args.end.is_some()) {
+                    bail!("--order cannot be combined with --start or --end");
+                }
+                Ok(Self::Regs {
+                    id: args.id,
+                    ix: args.ix,
+                    skip: args.skip,
+                    head: args
+                        .head
+                        .unwrap_or(if args.tail.is_some() { 0 } else { 20 }),
+                    tail: args.tail,
+                    start: args.start,
+                    end: args.end,
+                    order: args.order,
+                    pc: args.pc,
+                    regs: parse_reg_list(args.regs.as_deref())?,
+                    changed: args.changed,
+                    program: args.program.as_deref().map(parse_pubkey).transpose()?,
+                    delta: args.delta,
                 })
             }
             CliCommand::Glassbox(args) => {
@@ -543,14 +633,37 @@ pub(super) fn parse_pubkey(s: &str) -> Result<Pubkey> {
     s.parse().context("pubkey")
 }
 
+fn parse_reg_list(s: Option<&str>) -> Result<Vec<usize>> {
+    let Some(s) = s else {
+        return Ok((0..11).collect());
+    };
+    let mut out = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let i: usize = part.parse().context("--reg")?;
+        if i > 10 {
+            bail!("--reg {i} is not in 0..=10");
+        }
+        out.push(i);
+    }
+    if out.is_empty() {
+        bail!("--reg needs at least one index");
+    }
+    Ok(out)
+}
+
 fn parse_hide_mode(s: &str) -> Result<glassbox::HideMode, String> {
     glassbox::HideMode::parse(s)
         .ok_or_else(|| format!("expected words, constraints, or full (got {s:?})"))
 }
 
 fn parse_hide_data_len(s: &str) -> Result<glassbox::HideDataLenChildren, String> {
-    glassbox::HideDataLenChildren::parse(s)
-        .ok_or_else(|| format!("expected full or comma-separated account indices < 128 (got {s:?})"))
+    glassbox::HideDataLenChildren::parse(s).ok_or_else(|| {
+        format!("expected full or comma-separated account indices < 128 (got {s:?})")
+    })
 }
 
 fn parse_program_flag(raw: &[String]) -> Result<Option<Vec<Pubkey>>> {
