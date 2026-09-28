@@ -22,7 +22,6 @@ use solana_pubkey::Pubkey;
 use storage::Storage;
 
 use crate::contexts::seer::SeerContext;
-use crate::contexts::sources::SourcesContext;
 use crate::errors::IrrecoverableError;
 pub use crate::failure::{Failure, FailureKind};
 pub use crate::logger::{
@@ -30,7 +29,7 @@ pub use crate::logger::{
 };
 
 pub struct SeerSingleton {
-    context: Option<SourcesContext>,
+    context: Option<SeerContext>,
     active: bool,
 }
 
@@ -50,7 +49,7 @@ impl SeerSingleton {
 
     pub fn set(&mut self, run_id: i64) {
         if let Some(ctx) = &mut self.context {
-            ctx.get_context().set_current_tx(run_id);
+            ctx.set_current_tx(run_id);
             self.active = true;
         }
     }
@@ -58,7 +57,7 @@ impl SeerSingleton {
     pub fn unset(&mut self) {
         if self.is_active() {
             if let Some(ctx) = &mut self.context {
-                ctx.get_context().unset_current_tx();
+                ctx.unset_current_tx();
                 self.active = false;
             }
         }
@@ -80,7 +79,7 @@ thread_local! {
 pub fn init(authority: [u8; 32], storage: &Storage) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
-    let ctx = SourcesContext::new(Pubkey::new_from_array(authority), storage)?;
+    let ctx = SeerContext::new(Pubkey::new_from_array(authority), storage)?;
 
     SEER.with(|seer| {
         let mut seer = seer.borrow_mut();
@@ -98,7 +97,7 @@ where
         let mut seer = seer.borrow_mut();
         if seer.is_active() {
             if let Some(ctx) = &mut seer.context {
-                f(ctx.get_context());
+                f(ctx);
             }
         }
     });
