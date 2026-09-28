@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use z3::ast::{Ast, BV};
 
-use super::bit::{BitSlice, merge_adjacent_slices};
+use super::bit::{merge_adjacent_slices, BitSlice};
 use super::bv_slices;
 use super::window::{Step, Window};
 

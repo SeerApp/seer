@@ -7,8 +7,8 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+use z3::ast::{Ast, Dynamic, BV};
 use z3::DeclKind;
-use z3::ast::{Ast, BV, Dynamic};
 
 use crate::astwalk::ast_id;
 use crate::rewrite::ast::unique_nodes_at_most;
@@ -220,7 +220,8 @@ pub(crate) fn pack_load(expr: &BV, defs: &[LoadDef]) -> BV {
     ALIGN.with(|cell| {
         let mut idx = cell.borrow_mut();
         idx.sync(defs);
-        let named = flatten_rec(expr, &idx.map, &mut HashMap::new()).unwrap_or_else(|| expr.clone());
+        let named =
+            flatten_rec(expr, &idx.map, &mut HashMap::new()).unwrap_or_else(|| expr.clone());
         idx.lookup(&named).unwrap_or(named)
     })
 }

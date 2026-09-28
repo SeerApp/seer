@@ -279,10 +279,7 @@ mod tests {
         assert_eq!(got.num_children(), 4);
         for i in 0..4 {
             let n = got.nth_child(i).unwrap().as_bv().unwrap().decl().name();
-            assert!(
-                n.starts_with("sipround") || n == "ror",
-                "child {i} is {n}"
-            );
+            assert!(n.starts_with("sipround") || n == "ror", "child {i} is {n}");
         }
         // v0/v1 are interchangeable in sipround0; check the value, not arg order.
         let binds = [(&v0, 1u64), (&v1, 2), (&v2, 4), (&v3, 8)];

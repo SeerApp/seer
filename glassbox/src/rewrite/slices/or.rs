@@ -4,9 +4,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use z3::ast::{Ast, BV, Dynamic};
+use z3::ast::{Ast, Dynamic, BV};
 
-use super::bit::{BitSlice, merge_adjacent_slices, slices_width, zero_slice};
+use super::bit::{merge_adjacent_slices, slices_width, zero_slice, BitSlice};
 use super::bv_slices;
 
 pub(super) fn split(
@@ -101,8 +101,8 @@ fn merge_disjoint_or(a: Vec<BitSlice>, b: Vec<BitSlice>) -> Option<Vec<BitSlice>
 
 #[cfg(test)]
 mod tests {
-    use crate::rewrite::{alu, pack};
     use crate::rewrite::eval::eval_env;
+    use crate::rewrite::{alu, pack};
     use crate::state::LoadDef;
     use z3::ast::{Ast, BV};
 

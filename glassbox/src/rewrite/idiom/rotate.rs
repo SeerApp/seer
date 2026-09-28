@@ -166,7 +166,10 @@ mod tests {
             .bvor(&x.bvlshr(&BV::from_u64(51, 64)));
         let got = crate::rewrite::alu(&blob, &[]);
         assert_eq!(got.decl().name(), "ror");
-        assert_eq!(got.nth_child(1).unwrap().as_bv().unwrap().as_u64(), Some(51));
+        assert_eq!(
+            got.nth_child(1).unwrap().as_bv().unwrap().as_u64(),
+            Some(51)
+        );
         assert_eq!(got.num_children(), 2);
     }
 

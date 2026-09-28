@@ -13,7 +13,7 @@ use crate::grammar::{
     acc_flag_input, data_len_input_account, is_input, is_num_accounts_byte, is_text, is_word,
 };
 
-pub use crate::grammar::{AccFlag, data_len_child_account, is_num_accounts_child_name};
+pub use crate::grammar::{data_len_child_account, is_num_accounts_child_name, AccFlag};
 
 /// Definition of a load temporary: `name` stands for `expr` (for display / inspection).
 #[derive(Clone)]

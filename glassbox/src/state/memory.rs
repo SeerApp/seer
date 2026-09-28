@@ -7,10 +7,10 @@ use z3::ast::BV;
 use crate::input_abi::{self, AccountSpan};
 use crate::parse::MemWidth;
 use crate::regions::{
-    INPUT_BASE, input_offset, input_symbol_name, is_input, is_text, text_symbol_name,
+    input_offset, input_symbol_name, is_input, is_text, text_symbol_name, INPUT_BASE,
 };
 
-use super::{BYTE_BITS, SymVal, SysvarOrigin, WORD_BITS, merge_origins};
+use super::{merge_origins, SymVal, SysvarOrigin, BYTE_BITS, WORD_BITS};
 
 struct SysvarRegion {
     base: u64,
@@ -262,10 +262,7 @@ impl Memory {
     }
 
     fn acc_of(&self, slot: u32) -> u32 {
-        self.slot_to_acc
-            .get(slot as usize)
-            .copied()
-            .unwrap_or(slot)
+        self.slot_to_acc.get(slot as usize).copied().unwrap_or(slot)
     }
 
     pub(crate) fn walk_packing(&self) -> Option<Vec<AccountSpan>> {
@@ -326,7 +323,9 @@ impl Memory {
             };
             let n = len.min(t.len);
             for i in 0..n {
-                if let Some(cell) = self.cells.remove(&(INPUT_BASE.wrapping_add(start).wrapping_add(i)))
+                if let Some(cell) = self
+                    .cells
+                    .remove(&(INPUT_BASE.wrapping_add(start).wrapping_add(i)))
                 {
                     bag.insert(INPUT_BASE.wrapping_add(t.start).wrapping_add(i), cell);
                 }
@@ -422,11 +421,10 @@ mod tests {
         assert!(packed.environmental);
         let cell = mem.cells.get(&(INPUT_BASE + 88)).unwrap();
         assert_eq!(cell.concrete, Some(0));
-        assert!(
-            cell.sym
-                .as_ref()
-                .is_some_and(|s| s.bv.to_string().contains("n_acc0_data_len"))
-        );
+        assert!(cell
+            .sym
+            .as_ref()
+            .is_some_and(|s| s.bv.to_string().contains("n_acc0_data_len")));
     }
 
     fn observe_bytes(mem: &mut Memory, offset: u64, bytes: &[u8]) {
@@ -453,15 +451,8 @@ mod tests {
         let before = mem
             .load_bytes(lamports, MemWidth::Dw, 0)
             .expect("caller acc2 lamports");
-        let before_name = mem
-            .resolve_byte(lamports)
-            .unwrap()
-            .bv
-            .to_string();
-        assert!(
-            before_name.contains("n_acc2_lamports"),
-            "{before_name}"
-        );
+        let before_name = mem.resolve_byte(lamports).unwrap().bv.to_string();
+        assert!(before_name.contains("n_acc2_lamports"), "{before_name}");
 
         let mut overlay = HashMap::new();
         for i in 0..8u64 {
@@ -485,22 +476,14 @@ mod tests {
             "callee slot 0 must still be acc2: {got}"
         );
         assert!(!got.contains("n_acc0_lamports"), "{got}");
-        assert_eq!(
-            got,
-            before_name,
-            "same cell, not a second mint"
-        );
+        assert_eq!(got, before_name, "same cell, not a second mint");
         let packed = mem
             .load_bytes(callee_lamports, MemWidth::Dw, 0)
             .expect("callee load");
         assert_eq!(packed.bv.to_string(), before.bv.to_string());
 
         mem.return_cpi(frame);
-        let back = mem
-            .resolve_byte(lamports)
-            .expect("restored")
-            .bv
-            .to_string();
+        let back = mem.resolve_byte(lamports).expect("restored").bv.to_string();
         assert_eq!(back, before_name);
     }
 }

@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use z3::ast::{Ast, BV};
 
 use crate::ancestry::{
-    AccFlag, pack_is_num_accounts_child, pack_pure_acc_flag, pack_pure_data_len_account,
+    pack_is_num_accounts_child, pack_pure_acc_flag, pack_pure_data_len_account, AccFlag,
 };
 use crate::astwalk::ast_id;
 use crate::path_condition::PathCondition;

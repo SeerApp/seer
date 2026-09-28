@@ -1,6 +1,6 @@
 //! Identify aligned PDA-syscall words (`find`/`create` qwords and the bump byte).
 
-use z3::ast::{Ast, BV, Dynamic};
+use z3::ast::{Ast, Dynamic, BV};
 
 use crate::astwalk::ast_id;
 use crate::grammar::Syscall;

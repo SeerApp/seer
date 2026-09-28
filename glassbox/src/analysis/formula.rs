@@ -1,7 +1,7 @@
 //! Formal-logic and SMT pretty-printers for path conditions and load defs.
 
+use z3::ast::{Ast, Dynamic, BV};
 use z3::DeclKind;
-use z3::ast::{Ast, BV, Dynamic};
 
 use super::options::DisplayOptions;
 

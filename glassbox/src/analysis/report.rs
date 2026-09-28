@@ -101,7 +101,9 @@ pub enum RelJson {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum NoiseJson {
     NumAccountsChild,
-    DataLenChild { account: u32 },
+    DataLenChild {
+        account: u32,
+    },
     Provision {
         signer: bool,
         writable: bool,
@@ -179,10 +181,7 @@ fn path_condition_json(pc: &PathCondition, load_defs: &[LoadDef]) -> PathConditi
         rhs: fmt_u64_const(pc.rhs, 64),
         formula: fmt_ast(&Dynamic::from(&pc.formula), CANONICAL_OPTS),
         vacuous: crate::sym::is_tautology(&pc.formula),
-        text_noise: crate::ancestry::is_text_without_interesting_input(
-            &pc.formula,
-            load_defs,
-        ),
+        text_noise: crate::ancestry::is_text_without_interesting_input(&pc.formula, load_defs),
         noise: noise_json(pc.noise_kind(load_defs)),
         origins: pc.origins.iter().copied().map(origin_json).collect(),
     }
@@ -235,10 +234,7 @@ pub(crate) fn build(
         },
         skipped: Skipped {
             tautologies: pcs.iter().filter(|p| p.vacuous).count() as u64,
-            text_noise: pcs
-                .iter()
-                .filter(|p| p.text_noise && !p.vacuous)
-                .count() as u64,
+            text_noise: pcs.iter().filter(|p| p.text_noise && !p.vacuous).count() as u64,
         },
         path_conditions: pcs,
         load_defs: defs,

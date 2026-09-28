@@ -18,15 +18,8 @@ pub struct ViewOpts {
 }
 
 pub fn view(mut report: Report, opts: &ViewOpts) -> Report {
-    report
-        .path_conditions
-        .retain(|pc| keep_path(pc, opts));
-    report.path_conditions = slice(
-        report.path_conditions,
-        opts.skip,
-        opts.head,
-        opts.tail,
-    );
+    report.path_conditions.retain(|pc| keep_path(pc, opts));
+    report.path_conditions = slice(report.path_conditions, opts.skip, opts.head, opts.tail);
     if !opts.all_load_defs {
         report.load_defs.retain(|d| {
             report
@@ -174,11 +167,7 @@ mod tests {
 
     #[test]
     fn taken_only_and_head() {
-        let report = empty_report(vec![
-            pc(0, false, "a"),
-            pc(1, true, "b"),
-            pc(2, true, "c"),
-        ]);
+        let report = empty_report(vec![pc(0, false, "a"), pc(1, true, "b"), pc(2, true, "c")]);
         let mut o = opts();
         o.taken_only = true;
         o.head = 1;

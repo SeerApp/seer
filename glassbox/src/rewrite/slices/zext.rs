@@ -4,9 +4,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use z3::ast::{Ast, BV, Dynamic};
+use z3::ast::{Ast, Dynamic, BV};
 
-use super::bit::{BitSlice, merge_adjacent_slices, zero_slice};
+use super::bit::{merge_adjacent_slices, zero_slice, BitSlice};
 use super::bv_slices;
 use super::window::{Step, Window};
 

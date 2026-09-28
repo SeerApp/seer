@@ -4,10 +4,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use z3::ast::{Ast, Dynamic, BV};
 use z3::DeclKind;
-use z3::ast::{Ast, BV, Dynamic};
 
-use super::bit::{BitSlice, merge_adjacent_slices, slice_window, slices_width, zero_slice};
+use super::bit::{merge_adjacent_slices, slice_window, slices_width, zero_slice, BitSlice};
 use super::bv_slices;
 use super::window::{Step, Window};
 

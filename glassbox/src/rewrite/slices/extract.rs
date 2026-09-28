@@ -6,7 +6,7 @@ use z3::ast::{Ast, BV};
 
 use crate::rewrite::ast::extract_hi_lo;
 
-use super::bit::{BitSlice, slice_window};
+use super::bit::{slice_window, BitSlice};
 use super::bv_slices;
 use super::window::{Step, Window};
 

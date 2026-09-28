@@ -3,8 +3,8 @@
 use z3::ast::Bool;
 
 use crate::ancestry::{
-    LoadDef, data_len_child_only_account, is_num_accounts_child_only_constraint,
-    is_text_without_interesting_input, provision_only_flags,
+    data_len_child_only_account, is_num_accounts_child_only_constraint,
+    is_text_without_interesting_input, provision_only_flags, LoadDef,
 };
 use crate::parse::RelOp;
 use crate::sym::is_syntactic_tautology;
@@ -277,7 +277,8 @@ mod tests {
         assert_eq!(parent.noise_kind(&defs), NoiseKind::None);
         assert_eq!(child.noise_kind(&defs), NoiseKind::NumAccountsChild);
         assert_eq!(mixed.noise_kind(&defs), NoiseKind::None);
-        let same = pc(BV::new_const("w_acc0_data_len", 64).eq(&BV::new_const("w_acc0_data_len", 64)));
+        let same =
+            pc(BV::new_const("w_acc0_data_len", 64).eq(&BV::new_const("w_acc0_data_len", 64)));
         assert_eq!(same.classify(&defs), PathClass::Keep);
     }
 

@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 
+use z3::ast::{Ast, Bool, Dynamic, BV};
 use z3::DeclKind;
-use z3::ast::{Ast, BV, Bool, Dynamic};
 
 use crate::astwalk::{ast_id, for_each_app};
 use crate::state::LoadDef;
@@ -24,7 +24,7 @@ mod slices;
 #[cfg(test)]
 mod testing;
 
-pub(crate) use pda::{PdaSyscall, match_pda_word};
+pub(crate) use pda::{match_pda_word, PdaSyscall};
 
 use ast::{extract_hi_lo, unique_nodes};
 use eval::eval_env;
@@ -286,9 +286,7 @@ fn peel_double_not(b: Bool) -> Bool {
     if id.decl().kind() != DeclKind::Not {
         return b;
     }
-    id.nth_child(0)
-        .and_then(|c| c.as_bool())
-        .unwrap_or(inner)
+    id.nth_child(0).and_then(|c| c.as_bool()).unwrap_or(inner)
 }
 
 #[cfg(test)]

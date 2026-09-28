@@ -1,7 +1,7 @@
 //! `bvlshr` by a constant — slide the window toward the high bits of the source.
 //! Shift past the end is the 0 constant.
 
-use z3::ast::{Ast, BV, Dynamic};
+use z3::ast::{Ast, Dynamic, BV};
 
 use super::window::{Step, Window};
 

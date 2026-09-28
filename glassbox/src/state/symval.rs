@@ -1,6 +1,6 @@
 use z3::ast::BV;
 
-use super::{SysvarOrigin, WORD_BITS, merge_origins};
+use super::{merge_origins, SysvarOrigin, WORD_BITS};
 
 /// A bitvector plus whether it derives from text/input/UIF symbols.
 #[derive(Clone)]
