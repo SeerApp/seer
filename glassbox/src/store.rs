@@ -1,13 +1,52 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use storage::{ProgramChunk, Storage};
 
 use crate::coverage::Skip;
 use crate::reg::{RegisterTrace, RegisterTraceChunk};
 use crate::step::Step;
 use crate::vm::Vm;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisterStep {
+    pub order: u64,
+    pub pc: u64,
+    pub pubkey: [u8; 32],
+    pub pre_regs: [u64; 11],
+    pub post_regs: [u64; 11],
+}
+
+pub fn register_timeline(storage: &Storage, run_id: i64, ix: i64) -> Result<Vec<RegisterStep>> {
+    let _ = storage.db.get_run(run_id)?;
+    let rows: Vec<_> = storage
+        .db
+        .list_reg(run_id)?
+        .into_iter()
+        .filter(|(row_ix, _, _, _, _, _)| *row_ix == ix)
+        .collect();
+    if rows.is_empty() {
+        bail!("no register trace for run {run_id} ix {ix}");
+    }
+    let mut out = Vec::new();
+    for (_ix, _start, _end, self_h, _elf, pk) in rows {
+        let bytes = storage.blob.read(&self_h)?;
+        let chunk: RegisterTraceChunk =
+            serde_json::from_slice(&bytes).context("parse register chunk")?;
+        for step in RegisterTrace::from_chunks(&[chunk])?.into_steps(&BTreeMap::new()) {
+            out.push(RegisterStep {
+                order: step.order,
+                pc: step.pc,
+                pubkey: pk,
+                pre_regs: step.pre_regs,
+                post_regs: step.post_regs,
+            });
+        }
+    }
+    out.sort_by_key(|s| s.order);
+    Ok(out)
+}
 
 pub fn store(storage: &Storage, run_id: i64, ix: i64, force: bool) -> Result<Vec<u8>> {
     let _ = storage.db.get_run(run_id)?;
@@ -49,10 +88,11 @@ fn analyze_ix(storage: &Storage, run_id: i64, ix: i64) -> Result<Vec<u8>> {
         let program_id = bs58::encode(pk).into_string();
         match load_chunk(storage, &elf, &self_h, &mut skips) {
             Ok(steps) => {
-                tagged.extend(steps.into_iter().map(|step| TaggedStep {
-                    pubkey: pk,
-                    step,
-                }));
+                tagged.extend(
+                    steps
+                        .into_iter()
+                        .map(|step| TaggedStep { pubkey: pk, step }),
+                );
             }
             Err(e) => {
                 let ix_u8 = u8::try_from(ix).unwrap_or(u8::MAX);
@@ -143,11 +183,7 @@ fn load_chunk(
     Ok(kept)
 }
 
-fn disasm_for_pcs(
-    storage: &Storage,
-    elf: &[u8; 32],
-    pcs: &[u64],
-) -> Result<BTreeMap<u64, String>> {
+fn disasm_for_pcs(storage: &Storage, elf: &[u8; 32], pcs: &[u64]) -> Result<BTreeMap<u64, String>> {
     decode::store_disasm(storage, elf)?;
     let rows = storage.db.program_disasm_chunks(elf)?;
     if rows.is_empty() {
@@ -262,6 +298,76 @@ mod tests {
         assert_eq!(steps[2].disasm, "");
     }
 
+    fn put_reg(
+        storage: &storage::Storage,
+        run_id: i64,
+        ix: i64,
+        pk: [u8; 32],
+        chunk: serde_json::Value,
+    ) {
+        let bytes = serde_json::to_vec(&chunk).unwrap();
+        let self_h = storage.blob.store(&bytes).unwrap();
+        let elf = storage.blob.store(&pk).unwrap();
+        storage.db.insert_program(&elf).unwrap();
+        let orders: Vec<i64> = chunk["trace"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.parse().unwrap())
+            .collect();
+        let start = *orders.iter().min().unwrap();
+        let end = *orders.iter().max().unwrap();
+        storage
+            .db
+            .insert_reg(run_id, ix, start, end, &self_h, &elf, &pk)
+            .unwrap();
+    }
+
+    #[test]
+    fn register_timeline_is_clock_order_without_the_vm() {
+        let (storage, root) = tmp_storage();
+        let id = new_run(&storage);
+        let a = [1u8; 32];
+        let b = [2u8; 32];
+        put_reg(
+            &storage,
+            id,
+            0,
+            a,
+            json!({
+                "snapshot": { "reg": { "1": "10" } },
+                "trace": {
+                    "10": { "pc": 100, "reg": { "1": "11" } },
+                    "40": { "pc": 400 }
+                }
+            }),
+        );
+        put_reg(
+            &storage,
+            id,
+            0,
+            b,
+            json!({
+                "snapshot": { "reg": { "1": "50" } },
+                "trace": { "20": { "pc": 200, "reg": { "0": "7" } } }
+            }),
+        );
+        let steps = register_timeline(&storage, id, 0).unwrap();
+        assert_eq!(
+            steps.iter().map(|s| s.order).collect::<Vec<_>>(),
+            vec![10, 20, 40]
+        );
+        assert_eq!(steps[0].pubkey, a);
+        assert_eq!(steps[0].pc, 100);
+        assert_eq!(steps[0].pre_regs[1], 10);
+        assert_eq!(steps[0].post_regs[1], 11);
+        assert_eq!(steps[1].pubkey, b);
+        assert_eq!(steps[1].pre_regs[1], 50);
+        assert_eq!(steps[1].post_regs[0], 7);
+        assert_eq!(steps[2].pre_regs[1], 11);
+        std::fs::remove_dir_all(root).ok();
+    }
+
     #[test]
     fn stretches_follow_clock_through_a_hole_in_one_chunk() {
         let a = [1u8; 32];
@@ -279,12 +385,7 @@ mod tests {
         };
         // Caller chunk lists 10 then 40; callee owns 20–30. Row start_step
         // would play 10,40 before 20. Clock order nests the callee.
-        let mut tagged = vec![
-            step(10, a),
-            step(40, a),
-            step(20, b),
-            step(30, b),
-        ];
+        let mut tagged = vec![step(10, a), step(40, a), step(20, b), step(30, b)];
         tagged.sort_by_key(|t| t.step.order);
         let s = group_clock(tagged);
         assert_eq!(s.len(), 3);

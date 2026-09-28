@@ -27,6 +27,6 @@ pub use analysis::{
     Analysis, DisplayOptions, HideDataLenChildren, HideMode, HideNumAccountChildren, Report,
 };
 pub use step::Step;
-pub use store::store;
+pub use store::{register_timeline, store, RegisterStep};
 pub use view::{view, ViewOpts};
 pub use vm::Vm;
