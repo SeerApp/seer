@@ -16,8 +16,9 @@ Work in run ids.
 
 1. `seer run --sig <SIGNATURE> --url <RPC>` — fetch the tx and accounts **now**. There is no historical chain state; the replay is current RPC accounts plus that message.
 2. `seer show <ID>` then `seer show <ID> --trace` — named instructions, logs, account diffs.
-3. `seer regs <ID> --ix <N>` — r0–r10 at recorded steps. Window with `--start`/`--end` (order) or `--order`. Prefer `--head`. `--changed` and `--reg` shrink the dump. Do not dump the full instruction into chat.
-4. `seer glassbox <ID> --ix <N>` only if a branch is still unexplained. Prefer `--head`. Do not dump the full report into chat.
+3. `seer program <PUBKEY> --run <ID> --disasm` (or `--lifted`) — static listing / CFG. Prefer `--pc`, `--start`/`--end`, or `--contains`. Default `--head`. Do not dump the full ELF into chat.
+4. `seer regs <ID> --ix <N>` — r0–r10 at recorded steps. Window with `--start`/`--end` (order) or `--order`. Prefer `--head`. `--changed` and `--reg` shrink the dump. Do not dump the full instruction into chat.
+5. `seer glassbox <ID> --ix <N>` only if a branch is still unexplained. Prefer `--head`. Do not dump the full report into chat.
 
 Fork: `seer run --from <ID> --account <PUBKEY> --lamports 0` (and other patches).
 
@@ -25,7 +26,7 @@ If the default storage home errors on schema, pass `--storage-home`.
 
 ## Glassbox
 
-Path conditions for one instruction. SAT `vacuous` / skipped tautologies are a hide tag, not the capture set. A timeout does not mean the jump was absent.
+Glassbox is a concolic analyzer. Path conditions for one instruction. Usually the last taken conditions in the list are the most germane to a transaction failure. SAT `vacuous` / skipped tautologies are a hide tag, not the capture set. A timeout does not mean the jump was absent.
 
 ## Skill file
 

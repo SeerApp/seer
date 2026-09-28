@@ -288,6 +288,18 @@ struct ProgramCli {
     start: Option<u64>,
     #[arg(long, value_name = "PC", help = "Inclusive end PC")]
     end: Option<u64>,
+    #[arg(
+        long,
+        value_name = "PC",
+        help = "One PC (disasm) or the block that contains it (lifted)"
+    )]
+    pc: Option<u64>,
+    #[arg(
+        long,
+        value_name = "SUBSTR",
+        help = "Keep lines or blocks that contain this text"
+    )]
+    contains: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -415,6 +427,8 @@ pub enum Command {
         tail: Option<usize>,
         start: Option<u64>,
         end: Option<u64>,
+        pc: Option<u64>,
+        contains: Option<String>,
     },
     Regs {
         id: i64,
@@ -495,6 +509,11 @@ impl TryFrom<Cli> for Command {
                 if args.head.is_some() && args.tail.is_some() {
                     bail!("--head and --tail are mutually exclusive");
                 }
+                if let Some(pc) = args.pc {
+                    if args.start.is_some_and(|s| pc < s) || args.end.is_some_and(|e| pc > e) {
+                        bail!("--pc is outside --start/--end");
+                    }
+                }
                 Ok(Self::Program {
                     target: args.target,
                     run: args.run,
@@ -506,6 +525,8 @@ impl TryFrom<Cli> for Command {
                     tail: args.tail,
                     start: args.start,
                     end: args.end,
+                    pc: args.pc,
+                    contains: args.contains,
                 })
             }
             CliCommand::Regs(args) => {
@@ -864,6 +885,8 @@ fn program_cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
         tail,
         start,
         end,
+        pc,
+        contains,
     } = cmd
     else {
         bail!("internal: program_cmd");
@@ -879,18 +902,26 @@ fn program_cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
             tail,
             start,
             end,
+            pc,
+            contains: contains.clone(),
         },
     )?;
     let flag = if disasm { "--disasm" } else { "--lifted" };
-    let next = if head != 0 && tail.is_none() {
-        format!(
-            "seer program {} {flag} --skip {} --head {head}",
-            hex::encode(hash),
+    let mut next = format!("seer program {} {flag}", hex::encode(hash));
+    if let Some(pc) = pc {
+        next.push_str(&format!(" --pc {pc}"));
+    }
+    if let Some(contains) = contains {
+        next.push_str(&format!(" --contains {contains}"));
+    }
+    if head != 0 && tail.is_none() {
+        next.push_str(&format!(
+            " --skip {} --head {head}",
             skip.saturating_add(head)
-        )
+        ));
     } else {
-        format!("seer show {}", run.unwrap_or(1))
-    };
+        next = format!("seer show {}", run.unwrap_or(1));
+    }
     emit(value, &[next], short)
 }
 

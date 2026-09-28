@@ -15,6 +15,8 @@ pub(super) struct ProgramRequest {
     pub tail: Option<usize>,
     pub start: Option<u64>,
     pub end: Option<u64>,
+    pub pc: Option<u64>,
+    pub contains: Option<String>,
 }
 
 pub(super) fn resolve_hash(
@@ -96,7 +98,7 @@ fn collect_disasm(
     let mut out = Vec::new();
     let need = needed_count(req);
     for row in rows {
-        if !overlaps(row, req.start, req.end) {
+        if !overlaps(row, req.start, req.end, req.pc) {
             continue;
         }
         let value: serde_json::Value = serde_json::from_slice(&storage.blob.read(&row.blob_hash)?)?;
@@ -112,6 +114,12 @@ fn collect_disasm(
         pcs.sort_by_key(|(pc, _)| *pc);
         for (pc, line) in pcs {
             if !pc_in_window(pc, req.start, req.end) {
+                continue;
+            }
+            if req.pc.is_some_and(|want| pc != want) {
+                continue;
+            }
+            if req.contains.as_ref().is_some_and(|s| !line.contains(s)) {
                 continue;
             }
             out.push((pc, line));
@@ -133,7 +141,7 @@ fn collect_lifted(
     let mut out = Vec::new();
     let need = needed_count(req);
     for row in rows {
-        if !overlaps(row, req.start, req.end) {
+        if !overlaps(row, req.start, req.end, req.pc) {
             continue;
         }
         let value: serde_json::Value = serde_json::from_slice(&storage.blob.read(&row.blob_hash)?)?;
@@ -150,7 +158,18 @@ fn collect_lifted(
             .collect::<Result<Vec<_>>>()?;
         keys.sort_by_key(|(pc, _)| *pc);
         for (pc, block) in keys {
-            if !pc_in_window(pc, req.start, req.end) {
+            if let Some(want) = req.pc {
+                if !block_contains_pc(pc, &block, want) {
+                    continue;
+                }
+            } else if !pc_in_window(pc, req.start, req.end) {
+                continue;
+            }
+            if req
+                .contains
+                .as_ref()
+                .is_some_and(|s| !block.to_string().contains(s))
+            {
                 continue;
             }
             out.push((pc, block));
@@ -165,15 +184,23 @@ fn collect_lifted(
 }
 
 fn needed_count(req: &ProgramRequest) -> Option<usize> {
+    if req.pc.is_some() {
+        return Some(req.skip.saturating_add(1));
+    }
     if req.tail.is_some() || req.head == 0 {
         return None;
     }
     Some(req.skip.saturating_add(req.head))
 }
 
-fn overlaps(row: &ProgramChunk, start: Option<u64>, end: Option<u64>) -> bool {
+fn overlaps(row: &ProgramChunk, start: Option<u64>, end: Option<u64>, pc: Option<u64>) -> bool {
     let start_pc = u64::try_from(row.start_pc).unwrap_or(0);
     let end_pc = u64::try_from(row.end_pc).unwrap_or(0);
+    if let Some(pc) = pc {
+        if pc < start_pc || pc > end_pc {
+            return false;
+        }
+    }
     if let Some(start) = start {
         if end_pc < start {
             return false;
@@ -185,6 +212,14 @@ fn overlaps(row: &ProgramChunk, start: Option<u64>, end: Option<u64>) -> bool {
         }
     }
     true
+}
+
+fn block_contains_pc(start: u64, block: &serde_json::Value, want: u64) -> bool {
+    let end = block
+        .get("end")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(start);
+    start <= want && want <= end
 }
 
 fn pc_in_window(pc: u64, start: Option<u64>, end: Option<u64>) -> bool {
@@ -201,6 +236,11 @@ fn pc_in_window(pc: u64, start: Option<u64>, end: Option<u64>) -> bool {
     true
 }
 
+fn parse_elf_hash(s: &str) -> Result<[u8; 32]> {
+    let bytes = hex::decode(s.trim()).context("ELF hash hex")?;
+    <[u8; 32]>::try_from(bytes).map_err(|_| anyhow::anyhow!("ELF hash must be 32 bytes"))
+}
+
 fn elf_hash_for_run(storage: &Storage, run_id: i64, pk: &Pubkey) -> Result<[u8; 32]> {
     let row = storage.db.get_run(run_id)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
@@ -214,7 +254,78 @@ fn elf_hash_for_run(storage: &Storage, run_id: i64, pk: &Pubkey) -> Result<[u8; 
     Ok(hash)
 }
 
-fn parse_elf_hash(s: &str) -> Result<[u8; 32]> {
-    let bytes = hex::decode(s.trim()).context("ELF hash hex")?;
-    <[u8; 32]>::try_from(bytes).map_err(|_| anyhow::anyhow!("ELF hash must be 32 bytes"))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp() -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "seer-prog-pc-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn collect_lifted_pc_does_not_read_later_chunks() {
+        let root = tmp();
+        let storage = Storage::open_at(&root).unwrap();
+        let elf = [7u8; 32];
+        let first = serde_json::json!({
+            "blocks": {
+                "288": {
+                    "label": "bb_0x120",
+                    "start": 288,
+                    "end": 296,
+                    "succ": [],
+                    "lines": ["r3 = *(u64*)(r2 + 0x8) as u64;"],
+                    "line_pcs": [288]
+                }
+            }
+        });
+        let h1 = storage
+            .blob
+            .store(&serde_json::to_vec(&first).unwrap())
+            .unwrap();
+        storage.db.insert_program(&elf).unwrap();
+        storage
+            .db
+            .insert_program_lifted(
+                &elf,
+                &[
+                    ProgramChunk {
+                        start_pc: 288,
+                        end_pc: 296,
+                        blob_hash: h1,
+                    },
+                    ProgramChunk {
+                        start_pc: 400,
+                        end_pc: 500,
+                        blob_hash: [0xee; 32],
+                    },
+                ],
+            )
+            .unwrap();
+        let req = ProgramRequest {
+            hash: elf,
+            disasm: false,
+            skip: 0,
+            head: 20,
+            tail: None,
+            start: None,
+            end: None,
+            pc: Some(288),
+            contains: None,
+        };
+        let rows = storage.db.program_lifted_chunks(&elf).unwrap();
+        let got = collect_lifted(&storage, &rows, &req).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].0, 288);
+        std::fs::remove_dir_all(root).ok();
+    }
 }

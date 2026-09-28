@@ -252,6 +252,24 @@ fn parses_program() {
     };
     assert_eq!(head, 0);
     assert_eq!(tail, Some(5));
+    let Command::Program { pc, contains, .. } = parse_from([
+        "seer",
+        "program",
+        "ab",
+        "--disasm",
+        "--pc",
+        "10240",
+        "--contains",
+        "call",
+    ])
+    .unwrap() else {
+        panic!("expected program --pc --contains");
+    };
+    assert_eq!(pc, Some(10240));
+    assert_eq!(contains.as_deref(), Some("call"));
+    assert!(
+        parse_from(["seer", "program", "ab", "--disasm", "--pc", "1", "--start", "10"]).is_err()
+    );
 }
 
 #[test]
@@ -342,20 +360,15 @@ fn parses_glassbox() {
     assert_eq!(skip, 0);
     assert!(!taken_only);
     assert!(parse_from(["seer", "glassbox", "1"]).is_err());
-    assert!(parse_from([
-        "seer",
-        "glassbox",
-        "1",
-        "--ix",
-        "0",
-        "--head",
-        "1",
-        "--tail",
-        "1"
+    assert!(
+        parse_from(["seer", "glassbox", "1", "--ix", "0", "--head", "1", "--tail", "1"]).is_err()
+    );
+    let Command::Glassbox {
+        force, head, tail, ..
+    } = parse_from([
+        "seer", "glassbox", "2", "--ix", "1", "--force", "--tail", "3",
     ])
-    .is_err());
-    let Command::Glassbox { force, head, tail, .. } =
-        parse_from(["seer", "glassbox", "2", "--ix", "1", "--force", "--tail", "3"]).unwrap()
+    .unwrap()
     else {
         panic!("expected glassbox --force --tail");
     };
@@ -476,7 +489,10 @@ fn parses_skill() {
 fn skill_print_is_bundled_markdown() {
     assert!(!super::skill::MARKDOWN.is_empty());
     assert!(super::skill::MARKDOWN.starts_with("---\nname: seer\n"));
+    assert!(super::skill::MARKDOWN.contains("seer program"));
     assert!(super::skill::MARKDOWN.contains("seer regs"));
+    assert!(super::skill::MARKDOWN.contains("concolic analyzer"));
+    assert!(super::skill::MARKDOWN.contains("last taken conditions"));
 }
 
 #[test]
