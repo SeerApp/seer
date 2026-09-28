@@ -2,6 +2,7 @@
 name = "decode"
 version = { workspace = true }
 edition = { workspace = true }
+license = { workspace = true }
 # Agave pulls `solana-*` crates that require a recent toolchain (see `cargo build` errors).
 rust-version = "1.89"
 
