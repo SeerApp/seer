@@ -133,7 +133,17 @@ case "$TARGET" in
         if [ -f "$Z3BIN/libz3.lib" ] && [ ! -f "$Z3BIN/z3.lib" ]; then
             cp "$Z3BIN/libz3.lib" "$Z3BIN/z3.lib"
         fi
-        export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-L native=$Z3BIN -l z3"
+        if command -v cygpath >/dev/null 2>&1; then
+            Z3BIN_NATIVE=$(cygpath -w "$Z3BIN")
+            Z3_SYS_Z3_HEADER=$(cygpath -w "$Z3_SYS_Z3_HEADER")
+        else
+            Z3BIN_NATIVE=$Z3BIN
+        fi
+        export Z3_SYS_Z3_HEADER
+        export Z3_LIBRARY_PATH_OVERRIDE="$Z3BIN_NATIVE"
+        # Search path only. -l z3 in RUSTFLAGS also hits proc-macro build scripts.
+        export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-L native=$Z3BIN_NATIVE"
+        export LIB="${Z3BIN_NATIVE}${LIB:+;$LIB}"
         ;;
 esac
 
