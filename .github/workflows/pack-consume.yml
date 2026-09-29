@@ -106,8 +106,13 @@ jobs:
           fi
           mv "$LIB" "$LIB.bak"
           set +e
-          "$BIN" --help >/dev/null 2>&1
-          status=$?
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            /lib64/ld-linux-x86-64.so.2 --inhibit-cache --library-path "$PREFIX" "$BIN" --help >/dev/null 2>&1
+            status=$?
+          else
+            "$BIN" --help >/dev/null 2>&1
+            status=$?
+          fi
           set -e
           mv "$LIB.bak" "$LIB"
           if [ "$status" -eq 0 ]; then
