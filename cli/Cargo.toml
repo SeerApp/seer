@@ -15,7 +15,7 @@ bincode = "1.3.3"
 bs58 = "0.5.1"
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4.3"
-litesvm = { path = "../../litesvm/crates/litesvm" }
+litesvm = { git = "https://github.com/SeerApp/litesvm", branch = "patch-0.16.0" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 trace = { path = "../trace" }
 idl = { path = "../idl" }
@@ -42,7 +42,7 @@ solana-loader-v3-interface = { version = "8.0.1", features = ["serde"] }
 solana-message = "4.2.4"
 solana-program-runtime = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-pubkey = { version = ">=4.2.0,<4.3.0", features = ["serde"] }
-solana-rpc-client = { path = "../../agave/rpc-client", default-features = false }
+solana-rpc-client = { version = "=4.2.1", default-features = false }
 solana-sdk-ids = "3"
 solana-signature = "~3.4.1"
 solana-slot-hashes = "3"
@@ -55,7 +55,7 @@ solana-system-program = { version = "=4.2.1", features = ["agave-unstable-api"] 
 solana-sysvar = "~4.1.0"
 solana-transaction = { version = "4.1.5", features = ["serde", "wincode", "verify"] }
 solana-transaction-context = { version = "=4.2.1", features = ["agave-unstable-api"] }
-solana-transaction-status-client-types = { path = "../../agave/transaction-status-client-types", features = ["agave-unstable-api"] }
+solana-transaction-status-client-types = { version = "=4.2.1", features = ["agave-unstable-api"] }
 
 [lints]
 workspace = true

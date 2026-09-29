@@ -55,10 +55,9 @@ export Z3_SYS_Z3_HEADER=/path/to/include/z3.h
 export Z3_LIBRARY_PATH_OVERRIDE=/path/to/bin
 ```
 
-Build:
+Build (from this repo; cargo fetches the Agave / LiteSVM / SBPF git deps):
 
 ```
-cd seer
 cargo build -p seer --release
 ```
 
