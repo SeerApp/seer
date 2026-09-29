@@ -1,0 +1,6 @@
+VERSION=4.15.3
+# rustc-target  github-asset-name  sha256
+aarch64-apple-darwin     z3-4.15.3-arm64-osx-13.7.6.zip  941659417b5464a361c49089658509f3118a0c3e8d4f8a1dc999f8b5cd1f3c71
+x86_64-apple-darwin      z3-4.15.3-x64-osx-13.7.6.zip    82df675b8b7c4af2e7d8ef94056fcd6fb626198e2855d976134c878f243c96a0
+x86_64-unknown-linux-gnu z3-4.15.3-x64-glibc-2.39.zip    94549c5e31a75b9c543fe6eea8f32927054765c2e92e696d2d6dde0eedf348a1
+x86_64-pc-windows-msvc   z3-4.15.3-x64-win.zip           5091684243e7d7cd57da81991d27ee50aa97333757e53d42d0fc1b7429c99408

@@ -1,0 +1,117 @@
+name: pack-consume
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: pack ${{ matrix.short }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            short: darwin-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            short: darwin-amd64
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            short: linux-amd64
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            short: windows-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Linux pack tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y patchelf pkg-config unzip
+
+      - name: Pack
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          chmod +x scripts/pack-release.sh scripts/install.sh
+          ./scripts/pack-release.sh --out dist --target "$TARGET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seer-${{ matrix.short }}
+          path: |
+            dist/seer-${{ matrix.short }}.tar.gz
+            dist/seer-${{ matrix.short }}.tar.gz.sha256
+
+  consume:
+    name: consume ${{ matrix.short }}
+    needs: pack
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            short: darwin-arm64
+            lib: libz3.dylib
+            bin: seer
+          - os: ubuntu-24.04
+            short: linux-amd64
+            lib: libz3.so
+            bin: seer
+          - os: windows-2022
+            short: windows-amd64
+            lib: libz3.dll
+            bin: seer.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: seer-${{ matrix.short }}
+          path: dist
+
+      - name: Install from archive and prove sibling libz3
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/install.sh
+          PREFIX="${RUNNER_TEMP}/seer-prefix"
+          ARCHIVE="dist/seer-${{ matrix.short }}.tar.gz"
+          ./scripts/install.sh --archive "$ARCHIVE" --prefix "$PREFIX"
+          BIN="$PREFIX/${{ matrix.bin }}"
+          LIB="$PREFIX/${{ matrix.lib }}"
+          test -f "$BIN"
+          test -f "$LIB"
+          "$BIN" --help >/dev/null
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            otool -L "$BIN" | grep -i z3
+            if otool -L "$BIN" | grep -q /opt/homebrew; then
+              echo "packed seer still points at Homebrew Z3" >&2
+              exit 1
+            fi
+          fi
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$BIN" | grep -E 'RPATH|RUNPATH'
+            ldd "$BIN" | grep libz3
+          fi
+          mv "$LIB" "$LIB.bak"
+          set +e
+          "$BIN" --help >/dev/null 2>&1
+          status=$?
+          set -e
+          mv "$LIB.bak" "$LIB"
+          if [ "$status" -eq 0 ]; then
+            echo "seer still started after hiding ${{ matrix.lib }}" >&2
+            exit 1
+          fi
+          "$BIN" --help >/dev/null
