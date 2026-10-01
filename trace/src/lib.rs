@@ -3,9 +3,7 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod errors;
-pub mod failure;
 pub mod logger;
-pub mod meta;
 pub mod path_resolver;
 pub mod program_elf;
 pub mod program_manager;
@@ -23,7 +21,6 @@ use storage::Storage;
 
 use crate::contexts::seer::SeerContext;
 use crate::errors::IrrecoverableError;
-pub use crate::failure::{Failure, FailureKind};
 pub use crate::logger::{
     init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
 };
@@ -116,28 +113,6 @@ pub fn unset() {
         let mut seer = seer.borrow_mut();
         seer.unset();
     })
-}
-
-/// Record a tx-scoped execution failure if the active tx does not already have one.
-pub fn record_execution_failure_if_empty(
-    code: impl Into<String>,
-    message: impl Into<String>,
-    component: impl Into<String>,
-) {
-    let code = code.into();
-    let message = message.into();
-    let component = component.into();
-    get(|ctx| {
-        ctx.record_execution_failure_if_empty(&code, message.clone(), &component);
-    });
-}
-
-/// Append a warning to the active tx's in-memory notes. No-op if no tx is active.
-pub fn push_warning(warning: impl Into<String>) {
-    let warning = warning.into();
-    get(|ctx| {
-        ctx.push_warning(warning.clone());
-    });
 }
 
 pub fn get_cwd() -> PathBuf {

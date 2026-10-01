@@ -2,12 +2,16 @@ use crate::state_accounts::StateAccounts;
 use storage::RunRow;
 
 pub(crate) fn run_json(row: &RunRow) -> serde_json::Value {
+    let patches: serde_json::Value =
+        serde_json::from_str(&row.patches).expect("stored patches are JSON");
+    let environment: serde_json::Value =
+        serde_json::from_str(&row.environment).expect("stored environment is a JSON object");
     serde_json::json!({
         "id": row.id,
         "parent": row.parent_id,
         "source": row.source,
-        "patches": serde_json::from_str::<serde_json::Value>(&row.patches).unwrap_or(serde_json::json!([])),
-        "environment": serde_json::from_str::<serde_json::Value>(&row.environment).unwrap_or(serde_json::json!({})),
+        "patches": patches,
+        "environment": environment,
         "status": status_text(row),
         "error": row.error,
         "run_at": row.run_at,

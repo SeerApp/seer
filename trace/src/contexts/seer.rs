@@ -115,29 +115,11 @@ impl SeerContext {
     }
 
     pub fn unset_current_tx(&mut self) {
-        if let Some(tx) = self.transaction_context.take() {
+        if self.transaction_context.take().is_some() {
             seer_debug!("Run unset: {}", self.run_id);
-            let _ = tx;
         }
         self.state_accounts.clear();
         self.program_hash.clear();
-    }
-
-    pub fn record_execution_failure_if_empty(
-        &mut self,
-        code: &str,
-        message: impl Into<String>,
-        component: &str,
-    ) {
-        if let Some(tx) = self.transaction_context.as_mut() {
-            tx.set_execution_failure_if_empty(code, message, component);
-        }
-    }
-
-    pub fn push_warning(&mut self, warning: impl Into<String>) {
-        if let Some(tx) = self.transaction_context.as_mut() {
-            tx.meta.push_warning(warning);
-        }
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
@@ -236,10 +218,6 @@ impl SeerContext {
                 .transaction_context
                 .as_mut()
                 .expect("Ending program before transaction context exists");
-
-            if let Some(err) = err.clone() {
-                tx.set_execution_error(err);
-            }
 
             let ix = tx.instruction();
             let pending_reg = self.register_context.flush_finalize();

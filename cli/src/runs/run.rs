@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use solana_account::Account;
 use solana_address::Address;
 use solana_signature::Signature;
@@ -34,7 +34,7 @@ pub fn execute(storage: &Storage, req: Request) -> Result<i64> {
         got.state_hash = super::store::store_state(storage, &state)?;
     }
     let environment = match &req.environment {
-        Some(env) => merge_environment(&got.environment, env)?,
+        Some(env) => merge_environment(&got.environment, env),
         None => got.environment,
     };
     let patches = match &req.patch {
@@ -153,19 +153,16 @@ fn run_simulation(
     Ok(run_id)
 }
 
-fn merge_environment(parent: &str, env: &Environment) -> Result<String> {
-    let mut base: serde_json::Value =
-        serde_json::from_str(parent).unwrap_or_else(|_| serde_json::json!({}));
-    let serde_json::Value::Object(over) = serde_json::to_value(env)? else {
-        bail!("environment must be an object");
+fn merge_environment(parent: &str, env: &Environment) -> String {
+    let mut base: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(parent).expect("stored environment is a JSON object");
+    let serde_json::Value::Object(over) =
+        serde_json::to_value(env).expect("Environment serializes")
+    else {
+        unreachable!("Environment serializes as a JSON object");
     };
-    let serde_json::Value::Object(base) = &mut base else {
-        return serde_json::to_string(&over).map_err(Into::into);
-    };
-    for (k, v) in over {
-        base.insert(k, v);
-    }
-    Ok(serde_json::to_string(&base)?)
+    base.extend(over);
+    serde_json::Value::Object(base).to_string()
 }
 
 #[cfg(test)]
@@ -181,7 +178,7 @@ mod test {
             ..Environment::default()
         };
         let got: serde_json::Value =
-            serde_json::from_str(&merge_environment(parent, &env).unwrap()).unwrap();
+            serde_json::from_str(&merge_environment(parent, &env)).unwrap();
         assert_eq!(got["slot"], 1);
         assert_eq!(got["epoch"], 2);
         assert_eq!(got["sigverify"], true);

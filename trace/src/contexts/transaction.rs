@@ -3,8 +3,6 @@ use solana_pubkey::Pubkey;
 
 use crate::{
     contexts::instruction::InstructionContext,
-    failure::Failure,
-    meta::TxMetadata,
     program_manager::types::GlobalProgramContext,
     tree::nodes::{
         account::TreeAccount,
@@ -13,8 +11,6 @@ use crate::{
 };
 
 pub struct TransactionContext {
-    pub meta: TxMetadata,
-    pub failure: Option<Failure>,
     instruction_context: Option<InstructionContext>,
     pub step_order: u64,
 }
@@ -28,34 +24,9 @@ impl Default for TransactionContext {
 impl TransactionContext {
     pub fn new() -> Self {
         Self {
-            meta: TxMetadata::default(),
-            failure: None,
             instruction_context: None,
             step_order: 0,
         }
-    }
-
-    pub fn set_execution_error(&mut self, err: InstructionError) {
-        if self.failure.is_some() {
-            return;
-        }
-        self.failure = Some(Failure::execution(
-            "instruction_error",
-            err.to_string(),
-            "debugger",
-        ));
-    }
-
-    pub fn set_execution_failure_if_empty(
-        &mut self,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        component: impl Into<String>,
-    ) {
-        if self.failure.is_some() {
-            return;
-        }
-        self.failure = Some(Failure::execution(code, message, component));
     }
 
     pub fn get_current_program_address(&self) -> Pubkey {
