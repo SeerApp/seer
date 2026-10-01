@@ -90,6 +90,7 @@ pub fn store_transaction_accounts(
     } else {
         Some(loaded_from_live_tables(url, lookups)?)
     };
+    let programs = program_ids(tx, loaded.as_ref());
     if let Some(loaded) = &loaded {
         already = compact_tables(lookups, loaded)?;
         for key in already.keys() {
@@ -106,14 +107,15 @@ pub fn store_transaction_accounts(
             .collect();
         loaded_keys.sort();
         loaded_keys.dedup();
-        for (key, account) in fetch(url, &loaded_keys, "loaded account", &BTreeSet::new())? {
+        loaded_keys.retain(|key| !instructions_sysvar(key));
+        for (key, account) in fetch(url, &loaded_keys, "loaded account", &programs)? {
             already.insert(key, account);
         }
     }
     keys.sort();
     keys.dedup();
+    keys.retain(|key| !instructions_sysvar(key));
     let already = (!already.is_empty()).then_some(&already);
-    let programs = program_ids(tx, loaded.as_ref());
     let state = store_accounts(storage, &keys, url, already, &programs)?;
     ingest_programs(storage, &state)?;
     ingest_idls(storage, url, &programs, &state)?;
@@ -296,8 +298,12 @@ fn fetch(
         .collect()
 }
 
+fn instructions_sysvar(key: &Pubkey) -> bool {
+    solana_sdk_ids::sysvar::instructions::check_id(key)
+}
+
 fn absent_account(key: &Pubkey, label: &str, programs: &BTreeSet<Pubkey>) -> Result<Account> {
-    if label == "account" && !programs.contains(key) {
+    if (label == "account" || label == "loaded account") && !programs.contains(key) {
         return Ok(Account::default());
     }
     bail!("missing {label} {key}");
@@ -469,6 +475,13 @@ mod test {
     }
 
     #[test]
+    fn instructions_sysvar_is_not_fetched() {
+        let key = Pubkey::from(solana_sdk_ids::sysvar::instructions::id().to_bytes());
+        assert!(!instructions_sysvar(&Pubkey::from([4u8; 32])));
+        assert!(instructions_sysvar(&key));
+    }
+
+    #[test]
     fn absent_account_defaults_non_programs() {
         let key = Pubkey::from([4u8; 32]);
         let got = absent_account(&key, "account", &BTreeSet::new()).unwrap();
@@ -476,7 +489,10 @@ mod test {
         assert!(got.data.is_empty());
         let err = absent_account(&key, "account", &BTreeSet::from([key])).unwrap_err();
         assert!(err.to_string().contains("missing account"));
-        let err = absent_account(&key, "loaded account", &BTreeSet::new()).unwrap_err();
+        let got = absent_account(&key, "loaded account", &BTreeSet::new()).unwrap();
+        assert_eq!(got.lamports, 0);
+        assert!(got.data.is_empty());
+        let err = absent_account(&key, "loaded account", &BTreeSet::from([key])).unwrap_err();
         assert!(err.to_string().contains("missing loaded account"));
         let err = absent_account(&key, "lookup table", &BTreeSet::new()).unwrap_err();
         assert!(err.to_string().contains("missing lookup table"));
