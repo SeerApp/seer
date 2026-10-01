@@ -28,6 +28,7 @@ pub use crate::logger::{
 pub struct SeerSingleton {
     context: Option<SeerContext>,
     active: bool,
+    dropped_hooks: u64,
 }
 
 impl Default for SeerSingleton {
@@ -41,6 +42,7 @@ impl SeerSingleton {
         Self {
             context: None,
             active: false,
+            dropped_hooks: 0,
         }
     }
 
@@ -95,9 +97,15 @@ where
         if seer.is_active() {
             if let Some(ctx) = &mut seer.context {
                 f(ctx);
+                return;
             }
         }
+        seer.dropped_hooks = seer.dropped_hooks.saturating_add(1);
     });
+}
+
+pub fn dropped_hooks() -> u64 {
+    SEER.with(|seer| seer.borrow().dropped_hooks)
 }
 
 pub fn set(run_id: i64) {
@@ -131,4 +139,18 @@ pub fn install_vm_hooks() {
         log: |msg| get(|s| s.log(msg)),
         step: |pc, mem, reg| get(|s| s.step(pc, mem, reg)),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dropped_hooks, get};
+
+    #[test]
+    fn inactive_get_counts_a_drop() {
+        let before = dropped_hooks();
+        let mut ran = false;
+        get(|_| ran = true);
+        assert!(!ran);
+        assert_eq!(dropped_hooks(), before.saturating_add(1));
+    }
 }
