@@ -7,13 +7,13 @@ pub mod logger;
 pub mod path_resolver;
 pub mod program_elf;
 pub mod program_manager;
-pub mod register_trace;
 pub mod sources;
 pub mod step_mirror;
 pub mod target_reader;
 pub mod tree;
 
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::{env, path::PathBuf};
 
 use solana_pubkey::Pubkey;
@@ -73,7 +73,7 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub fn init(authority: [u8; 32], storage: &Storage) -> Result<(), IrrecoverableError> {
+pub fn init(authority: [u8; 32], storage: Arc<Storage>) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
     let ctx = SeerContext::new(Pubkey::new_from_array(authority), storage)?;

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use solana_account::Account;
 use solana_address::Address;
@@ -26,12 +28,12 @@ struct Resolved {
     source: String,
 }
 
-pub fn execute(storage: &Storage, req: Request) -> Result<i64> {
-    let mut got = resolve(storage, &req)?;
+pub fn execute(storage: Arc<Storage>, req: Request) -> Result<i64> {
+    let mut got = resolve(&storage, &req)?;
     if let Some(patch) = &req.patch {
         let mut state = StateAccounts::from_bytes(&storage.blob.read(&got.state_hash)?)?;
         state.patch(&storage.blob, patch)?;
-        got.state_hash = super::store::store_state(storage, &state)?;
+        got.state_hash = super::store::store_state(&storage, &state)?;
     }
     let environment = match &req.environment {
         Some(env) => merge_environment(&got.environment, env),
@@ -100,7 +102,7 @@ fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
 }
 
 fn run_simulation(
-    storage: &Storage,
+    storage: Arc<Storage>,
     tx_hash: &[u8; 32],
     state_hash: &[u8; 32],
     environment: &str,
@@ -108,7 +110,7 @@ fn run_simulation(
     patches: &str,
     source: &str,
 ) -> Result<i64> {
-    super::store::store_simulation(storage, tx_hash, state_hash)?;
+    super::store::store_simulation(&storage, tx_hash, state_hash)?;
     let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
     let parsed: Environment = serde_json::from_str(environment)?;
@@ -142,7 +144,7 @@ fn run_simulation(
         storage
             .db
             .insert_run(tx_hash, state_hash, environment, parent_id, patches, source)?;
-    trace::init(fee_payer.to_bytes(), storage)?;
+    trace::init(fee_payer.to_bytes(), Arc::clone(&storage))?;
     trace::set(run_id);
     let error = svm
         .send_transaction(tx)
@@ -167,6 +169,8 @@ fn merge_environment(parent: &str, env: &Environment) -> String {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::*;
     use solana_pubkey::Pubkey;
 
@@ -194,7 +198,7 @@ mod test {
                 .unwrap()
                 .as_nanos()
         ));
-        let storage = storage::Storage::open_at(&dir).unwrap();
+        let storage = Arc::new(storage::Storage::open_at(&dir).unwrap());
         let payer = Pubkey::from([1u8; 32]);
         let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(
             solana_message::Message::new(&[], Some(&payer)),
@@ -218,7 +222,7 @@ mod test {
             .unwrap();
         storage.db.finish_run(parent, None).unwrap();
         let child = execute(
-            &storage,
+            Arc::clone(&storage),
             Request {
                 tx: None,
                 signature: None,

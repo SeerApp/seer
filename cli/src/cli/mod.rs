@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use solana_pubkey::Pubkey;
@@ -46,11 +48,11 @@ pub fn run() -> Result<()> {
         Some(path) => path,
         None => storage::default_root()?,
     };
-    let storage = Storage::open_at(home)?;
+    let storage = Arc::new(Storage::open_at(home)?);
     match cmd {
         Command::Skill { .. } => unreachable!(),
         Command::Run(req) => {
-            let id = execute(&storage, req)?;
+            let id = execute(Arc::clone(&storage), req)?;
             emit_run(&storage, id, short)
         }
         Command::Show {

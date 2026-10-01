@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::{env, path::PathBuf};
 
 use hooks::{GuestAccountBackdoor, GuestMemory};
@@ -18,7 +19,7 @@ use crate::{
 };
 
 pub struct SeerContext {
-    storage: *const Storage,
+    storage: Arc<Storage>,
     run_id: i64,
     state_accounts: Vec<(Pubkey, Vec<u8>)>,
     /// program id → content hash of unwrapped ELF. One store per program per run.
@@ -30,7 +31,7 @@ pub struct SeerContext {
 }
 
 impl SeerContext {
-    pub fn new(_authority: Pubkey, storage: &Storage) -> Result<Self, IrrecoverableError> {
+    pub fn new(_authority: Pubkey, storage: Arc<Storage>) -> Result<Self, IrrecoverableError> {
         seer_debug!("Activated in directory {}", get_cwd().to_string_lossy());
 
         let runtime_dir = env::var("SEER_RUNTIME_DIR")
@@ -56,10 +57,6 @@ impl SeerContext {
         })
     }
 
-    fn storage(&self) -> &Storage {
-        unsafe { &*self.storage }
-    }
-
     fn persist_reg(&mut self, ix: u8, program: &Pubkey, chunk: &TransactionRegisterContext) {
         let (start_step, end_step) =
             match (chunk.trace.first_key_value(), chunk.trace.last_key_value()) {
@@ -68,7 +65,7 @@ impl SeerContext {
             };
         let program_hash = self.program_blob_hash(program);
         let run_id = self.run_id;
-        let storage = self.storage();
+        let storage = &self.storage;
         let self_hash = storage
             .blob
             .store(&serde_json::to_vec(chunk).expect("serialize register chunk"))
@@ -97,7 +94,7 @@ impl SeerContext {
             "no ELF for {program} in run {} state",
             self.run_id
         );
-        let storage = self.storage();
+        let storage = &self.storage;
         let h = storage.blob.store(&elf).expect("store program blob");
         storage.db.insert_program(&h).expect("insert program");
         self.program_hash.insert(*program, h);
@@ -108,7 +105,7 @@ impl SeerContext {
         seer_debug!("New run: {run_id}");
 
         self.run_id = run_id;
-        self.state_accounts = crate::program_elf::run_state_accounts(self.storage(), run_id);
+        self.state_accounts = crate::program_elf::run_state_accounts(&self.storage, run_id);
         self.program_hash.clear();
         self.register_context.reset_for_new_transaction();
         self.transaction_context = Some(TransactionContext::new());
@@ -130,7 +127,7 @@ impl SeerContext {
             .expect("Instruction called before transaction context")
             .start_instruction(instruction, fee_payer);
         let run_id = self.run_id;
-        self.storage()
+        self.storage
             .db
             .insert_run_ix(run_id, i64::from(instruction))
             .expect("insert run_ix");
@@ -158,9 +155,9 @@ impl SeerContext {
                 .map(|(_, tree)| serde_json::to_vec(&tree).expect("serialize trace"));
             (ix, tree)
         };
-        let hash = tree.map(|bytes| self.storage().blob.store(&bytes).expect("store trace blob"));
+        let hash = tree.map(|bytes| self.storage.blob.store(&bytes).expect("store trace blob"));
         let run_id = self.run_id;
-        self.storage()
+        self.storage
             .db
             .finish_run_ix(run_id, i64::from(ix), hash.as_ref())
             .expect("finish run_ix");

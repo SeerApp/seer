@@ -1,4 +1,3 @@
-use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -17,10 +16,7 @@ pub enum IrrecoverableError {
 
     #[error("Could not parse debug file \"{filename}\". Parse error: {detail}")]
     DwarfFileParse { filename: String, detail: String },
-}
 
-#[derive(Serialize)]
-pub struct IrrecoverableErrorBody {
-    pub code: &'static str,
-    pub message: String,
+    #[error("DWARF path \"{path}\" is outside compile directory \"{compile_dir}\"")]
+    DwarfPath { path: String, compile_dir: String },
 }
