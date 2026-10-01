@@ -25,7 +25,7 @@ pub(super) fn cmd(install: bool, short: bool) -> Result<()> {
         "written": written,
         "errors": errors.iter().map(|(path, error)| serde_json::json!({"path": path, "error": error})).collect::<Vec<_>>(),
     });
-    super::emit(value, &["seer skill".into()], short)?;
+    super::present::emit(value, &["seer skill".into()], short)?;
     if written.is_empty() {
         anyhow::bail!("wrote no skill files");
     }

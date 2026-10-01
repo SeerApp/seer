@@ -3,6 +3,7 @@ use std::str::FromStr;
 use clap::Parser;
 use solana_pubkey::Pubkey;
 
+use super::args::{Cli, Command};
 use super::*;
 use crate::runs::run::Request;
 use crate::state_accounts::Patch;
