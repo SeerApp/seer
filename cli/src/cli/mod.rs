@@ -19,6 +19,7 @@ mod skill;
 mod test;
 
 use args::{Cli, Command};
+#[cfg(test)]
 pub use input::PathOrValue;
 use present::{diff, emit_run, ls, show};
 
