@@ -292,3 +292,105 @@ fn changed_registers(
 
     has_change.then_some(changed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(r0: u64) -> [u64; 12] {
+        let mut reg = [0; 12];
+        reg[0] = r0;
+        reg
+    }
+
+    fn roll_once(ctx: &mut RegisterContext, r0: u64) -> TransactionRegisterContext {
+        let mut rolled = None;
+        for order in 0..=REGISTER_TRACE_CHUNK_SIZE {
+            let chunk = ctx.record(order, order, &file(r0));
+            if order == 0 {
+                assert!(ctx.record(0, 0, &file(r0)).is_none());
+            }
+            if let Some(chunk) = chunk {
+                assert!(rolled.is_none());
+                rolled = Some(chunk);
+            }
+        }
+        rolled.expect("first roll")
+    }
+
+    #[test]
+    fn two_rolls_keep_a_thousand_keys_and_the_stub_starts_the_next() {
+        let mut ctx = RegisterContext::new();
+        let first = roll_once(&mut ctx, 0);
+        assert_eq!(first.trace.len(), REGISTER_TRACE_CHUNK_SIZE as usize);
+        assert_eq!(first.trace.keys().next(), Some(&0));
+        assert_eq!(
+            first.trace.keys().next_back(),
+            Some(&(REGISTER_TRACE_CHUNK_SIZE - 1))
+        );
+
+        let mut second = None;
+        let start = REGISTER_TRACE_CHUNK_SIZE + 1;
+        let end = REGISTER_TRACE_CHUNK_SIZE * 2;
+        for order in start..=end {
+            if let Some(chunk) = ctx.record(order, order, &file(0)) {
+                assert!(second.is_none());
+                second = Some(chunk);
+            }
+        }
+        let second = second.expect("second roll");
+        assert_eq!(second.trace.len(), REGISTER_TRACE_CHUNK_SIZE as usize);
+        assert_eq!(second.trace.keys().next(), Some(&REGISTER_TRACE_CHUNK_SIZE));
+        assert_eq!(
+            second.trace.keys().next_back(),
+            Some(&(REGISTER_TRACE_CHUNK_SIZE * 2 - 1))
+        );
+    }
+
+    #[test]
+    fn stub_row_carries_the_register_that_changed_after_the_roll() {
+        let mut ctx = RegisterContext::new();
+        let rolled = roll_once(&mut ctx, 0);
+        let last = REGISTER_TRACE_CHUNK_SIZE - 1;
+        assert!(rolled.trace.get(&last).unwrap().reg.is_none());
+
+        let next_order = REGISTER_TRACE_CHUNK_SIZE + 1;
+        assert!(ctx.record(next_order, next_order, &file(7)).is_none());
+        let resumed = ctx.flush_finalize().unwrap();
+        let stub = resumed.trace.get(&REGISTER_TRACE_CHUNK_SIZE).unwrap();
+        assert_eq!(
+            stub.reg.as_ref().unwrap().get(&0).map(String::as_str),
+            Some("7")
+        );
+        assert!(resumed.trace.get(&next_order).unwrap().reg.is_none());
+    }
+
+    #[test]
+    fn cpi_flush_keeps_the_caller_stub_off_the_callee_chunk() {
+        let mut ctx = RegisterContext::new();
+        for order in 0..3 {
+            assert!(ctx.record(order, order, &file(0)).is_none());
+        }
+        let caller = ctx.flush_for_roll().unwrap();
+        assert_eq!(caller.trace.keys().copied().collect::<Vec<_>>(), vec![0, 1]);
+
+        ctx.push_invocation();
+        assert!(ctx.record(10, 10, &file(1)).is_none());
+        assert!(ctx.record(11, 11, &file(1)).is_none());
+        let callee = ctx.flush_finalize().unwrap();
+        assert_eq!(
+            callee.trace.keys().copied().collect::<Vec<_>>(),
+            vec![10, 11]
+        );
+        assert!(callee.trace.get(&11).unwrap().reg.is_none());
+
+        ctx.pop_invocation_if_nested();
+        assert!(ctx.record(3, 3, &file(0)).is_none());
+        let resumed = ctx.flush_finalize().unwrap();
+        assert_eq!(
+            resumed.trace.keys().copied().collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(resumed.trace.get(&3).unwrap().reg.is_none());
+    }
+}
