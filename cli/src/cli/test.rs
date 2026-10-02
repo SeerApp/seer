@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use solana_pubkey::Pubkey;
 
 use super::args::{Cli, Command};
@@ -76,6 +76,35 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     };
     assert_eq!(signature.unwrap().to_string(), sig);
     assert_eq!(url.as_deref(), Some("https://api.devnet.solana.com"));
+
+    let help = Cli::command().render_help().to_string();
+    assert!(help.contains("--historical"), "{help}");
+    assert!(!help.contains("server-url"), "{help}");
+    let Command::Run(historical) = parse_from([
+        "seer",
+        "run",
+        "--sig",
+        &sig,
+        "--url",
+        "http://rpc.test",
+        "--historical",
+        "--server-url",
+        "http://captures.test",
+    ])
+    .unwrap() else {
+        panic!("expected historical run");
+    };
+    assert!(historical.historical);
+    assert_eq!(historical.server_url, "http://captures.test");
+    let Command::Run(latest) =
+        parse_from(["seer", "run", "--sig", &sig, "--url", "http://rpc.test"]).unwrap()
+    else {
+        panic!("expected latest run");
+    };
+    assert!(!latest.historical);
+    assert_eq!(latest.server_url, crate::captures::CAPTURES_URL);
+    assert!(parse_from(["seer", "run", "--sig", &sig, "--historical"]).is_err());
+    assert!(parse_from(["seer", "run", "--historical", "--from", "1"]).is_err());
 
     let pk = "11111111111111111111111111111111";
     let Command::Run(Request { from, patch, .. }) = parse_from([

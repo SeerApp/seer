@@ -13,6 +13,7 @@ const ORIENT: &str = "\
 Seer replays Solana transactions locally. You work in runs.
 
   seer run --sig <SIGNATURE> --url <RPC>
+  seer run --sig <SIGNATURE> --url <RPC> --historical
   seer show 1
   seer run --from 1 --account <PUBKEY> --lamports 0
   seer glassbox 1 --ix 0
@@ -86,9 +87,16 @@ struct RunCli {
         long,
         env = "SEER_RPC",
         value_name = "RPC_URL",
-        help = "Solana JSON-RPC URL"
+        help = "Solana JSON-RPC URL. With --historical this fetches only the transaction message"
     )]
     url: Option<String>,
+    #[arg(
+        long,
+        help = "Accounts from the signature's historical state. Requires --sig and --url"
+    )]
+    historical: bool,
+    #[arg(long, hide = true, default_value = crate::captures::CAPTURES_URL)]
+    server_url: String,
     #[arg(
         long = "env",
         value_name = "JSON",
@@ -524,6 +532,9 @@ impl TryFrom<RunCli> for Request {
         if args.sig.is_some() && args.url.is_none() {
             bail!("--sig requires --url");
         }
+        if args.historical && args.sig.is_none() {
+            bail!("--historical requires --sig");
+        }
         if args.sig.is_none() && args.tx.is_none() && args.from.is_none() {
             bail!("need --sig, --tx, or --from");
         }
@@ -570,6 +581,8 @@ impl TryFrom<RunCli> for Request {
                 .transpose()?,
             from: args.from,
             url: args.url,
+            historical: args.historical,
+            server_url: args.server_url,
             environment: args
                 .environment
                 .map(|v| v.load_text().and_then(|s| Environment::parse(&s)))

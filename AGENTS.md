@@ -16,5 +16,5 @@ The `seer` binary goes through `cli` because clap lives there. `cli` parses args
 
 # historical_transaction
 
-This table is populated only by an external seer service that is not implemented yet. seer must not read or write it. `--sig --url` pulls a transaction from RPC to create a run; that does not insert or look up a historical row. Rows are tied to a Solana network (`mainnet` / `devnet` / `testnet`), never to an RPC URL. Do not replace `network` with `url`. Each row has its own `environment`; a run may override that environment, but the historical row stays the source of truth for the indexed transaction.
+`--historical` reads a mainnet row and, on a miss, writes one after the message and the accounts are stored. `--sig --url` without `--historical` does not read or write the table. Rows are tied to a Solana network (`mainnet` / `devnet` / `testnet`), never to an RPC URL. Do not replace `network` with `url`. seer writes only `mainnet`. Each row has its own `environment`; a run may override that environment, but the historical row stays the source of truth for the indexed transaction.
 

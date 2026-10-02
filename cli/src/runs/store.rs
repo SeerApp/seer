@@ -73,6 +73,126 @@ pub fn store_accounts(
         .map(StateAccounts)
 }
 
+pub fn store_captured_accounts(
+    storage: &Storage,
+    tx: &VersionedTransaction,
+    captured: &BTreeMap<Pubkey, Option<Account>>,
+) -> Result<[u8; 32]> {
+    tx.sanitize().context("malformed transaction")?;
+    let lookups = tx.message.address_table_lookups().unwrap_or(&[]);
+    let loaded = if lookups.is_empty() {
+        None
+    } else {
+        Some(loaded_from_captured(captured, lookups)?)
+    };
+    let programs = program_ids(tx, loaded.as_ref());
+    let mut required: BTreeSet<Pubkey> = tx
+        .message
+        .static_account_keys()
+        .iter()
+        .map(pk)
+        .filter(|key| !instructions_sysvar(key))
+        .collect();
+    if let Some(loaded) = &loaded {
+        for addr in loaded.writable.iter().chain(&loaded.readonly) {
+            let key = pk(addr);
+            if !instructions_sysvar(&key) {
+                required.insert(key);
+            }
+        }
+        for lookup in lookups {
+            required.insert(pk(&lookup.account_key));
+        }
+    }
+    for key in required.clone() {
+        if let Some(Some(account)) = captured.get(&key) {
+            if let Some(programdata) = programdata(account) {
+                required.insert(programdata);
+            }
+        }
+    }
+    let mut raw = BTreeMap::new();
+    for (key, slot) in captured {
+        if instructions_sysvar(key) {
+            continue;
+        }
+        let account = match slot {
+            Some(account) => account.clone(),
+            None => absent_account(key, "account", &programs)?,
+        };
+        raw.insert(*key, account);
+    }
+    for key in &required {
+        if !raw.contains_key(key) {
+            bail!("missing account {key}");
+        }
+    }
+    let state = raw
+        .into_iter()
+        .map(|(key, account)| {
+            Ok((
+                key,
+                StateAccount {
+                    lamports: account.lamports,
+                    data: storage.blob.store(&account.data)?,
+                    owner: Pubkey::from(account.owner.to_bytes()),
+                    executable: account.executable,
+                },
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()
+        .map(StateAccounts)?;
+    ingest_programs(storage, &state)?;
+    store_state(storage, &state)
+}
+
+fn loaded_from_captured(
+    accounts: &BTreeMap<Pubkey, Option<Account>>,
+    lookups: &[MessageAddressTableLookup],
+) -> Result<LoadedAddresses> {
+    let mut writable = Vec::new();
+    let mut readonly = Vec::new();
+    for lookup in lookups {
+        let key = pk(&lookup.account_key);
+        let Some(Some(account)) = accounts.get(&key) else {
+            bail!("missing lookup table {key}");
+        };
+        if !solana_sdk_ids::address_lookup_table::check_id(&account.owner) {
+            bail!("{key} is not an address lookup table");
+        }
+        let table = AddressLookupTable::deserialize(&account.data)
+            .map_err(|e| anyhow::anyhow!("invalid address lookup table {key}: {e}"))?;
+        for index in &lookup.writable_indexes {
+            writable.push(
+                table
+                    .addresses
+                    .get(usize::from(*index))
+                    .copied()
+                    .with_context(|| format!("lookup index {index} out of range in {key}"))?,
+            );
+        }
+        for index in &lookup.readonly_indexes {
+            readonly.push(
+                table
+                    .addresses
+                    .get(usize::from(*index))
+                    .copied()
+                    .with_context(|| format!("lookup index {index} out of range in {key}"))?,
+            );
+        }
+    }
+    Ok(LoadedAddresses {
+        writable: writable
+            .into_iter()
+            .map(|addr| addr.to_bytes().into())
+            .collect(),
+        readonly: readonly
+            .into_iter()
+            .map(|addr| addr.to_bytes().into())
+            .collect(),
+    })
+}
+
 pub fn store_transaction_accounts(
     storage: &Storage,
     tx: &VersionedTransaction,
@@ -472,6 +592,29 @@ mod test {
             readonly: vec![],
         };
         assert!(compact_tables(&lookups, &loaded).is_err());
+    }
+
+    #[test]
+    fn captured_accounts_fail_when_a_required_key_is_absent() {
+        let payer = Pubkey::from([7u8; 32]);
+        let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(
+            solana_message::Message::new(&[], Some(&payer)),
+        ));
+        let root = std::env::temp_dir().join(format!(
+            "seer-captured-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = Storage::open_at(&root).unwrap();
+        let err = store_captured_accounts(&storage, &tx, &BTreeMap::new()).unwrap_err();
+        assert!(err.to_string().contains("missing account"), "{err}");
+        let captured = BTreeMap::from([(payer, None)]);
+        assert!(store_captured_accounts(&storage, &tx, &captured).is_ok());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

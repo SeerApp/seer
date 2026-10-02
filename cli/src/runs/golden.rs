@@ -52,6 +52,8 @@ fn replay(name: &str, dir: &Path) -> Result<(i64, Arc<Storage>, PathBuf)> {
             signature: None,
             from: Some(parent),
             url: None,
+            historical: false,
+            server_url: crate::captures::CAPTURES_URL.into(),
             environment: None,
             patch: None,
         },

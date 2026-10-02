@@ -33,6 +33,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Configure Buf registry token
+        shell: bash
+        run: echo "CARGO_REGISTRIES_BUF_TOKEN=${{ secrets.BUF_REGISTRY_TOKEN }}" >> $GITHUB_ENV
+
       - name: Linux pack tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y patchelf pkg-config unzip

@@ -16,6 +16,8 @@ pub struct Request {
     pub signature: Option<Signature>,
     pub from: Option<i64>,
     pub url: Option<String>,
+    pub historical: bool,
+    pub server_url: String,
     pub environment: Option<Environment>,
     pub patch: Option<Patch>,
 }
@@ -54,8 +56,47 @@ pub fn execute(storage: Arc<Storage>, req: Request) -> Result<i64> {
     )
 }
 
+fn resolve_historical(storage: &Storage, req: &Request, signature: &Signature) -> Result<Resolved> {
+    let sig = signature_bytes(signature);
+    if let Some((tx_hash, state_hash, environment)) =
+        storage.db.lookup_sig(&sig, Some("mainnet"))?
+    {
+        return Ok(Resolved {
+            tx_hash,
+            state_hash,
+            parent_id: None,
+            environment,
+            source: format!("sig:{signature},historical"),
+        });
+    }
+    let url = req.url.as_deref().context("--sig requires --url")?;
+    let (tx, _) = crate::network::get_transaction(url, signature)?;
+    let captured = crate::captures::fetch_capture(&req.server_url, signature)?;
+    let tx_hash = super::store::store_transaction(storage, &tx)?;
+    let state_hash = super::store::store_captured_accounts(storage, &tx, &captured)?;
+    super::store::store_simulation(storage, &tx_hash, &state_hash)?;
+    storage
+        .db
+        .insert_historical(&tx_hash, &state_hash, "mainnet", "{}", &sig)?;
+    Ok(Resolved {
+        tx_hash,
+        state_hash,
+        parent_id: None,
+        environment: "{}".into(),
+        source: format!("sig:{signature},historical"),
+    })
+}
+
+fn signature_bytes(signature: &Signature) -> [u8; 64] {
+    let bytes: &[u8] = signature.as_ref();
+    bytes.try_into().expect("ed25519 signature is 64 bytes")
+}
+
 fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
     if let Some(signature) = &req.signature {
+        if req.historical {
+            return resolve_historical(storage, req, signature);
+        }
         let url = req.url.as_deref().context("--sig requires --url")?;
         let (tx, loaded) = crate::network::get_transaction(url, signature)?;
         return Ok(Resolved {
@@ -237,6 +278,8 @@ mod test {
                 signature: None,
                 from: Some(parent),
                 url: None,
+                historical: false,
+                server_url: crate::captures::CAPTURES_URL.into(),
                 environment: None,
                 patch: Some(Patch {
                     account: payer,
