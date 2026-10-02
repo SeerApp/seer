@@ -153,8 +153,9 @@ impl Vm {
             } => {
                 if op == BinOp::Mov {
                     match src {
-                        Operand::Reg(r) => self.state.registers.copy(dst, r),
+                        Operand::Reg(r) if !bits32 => self.state.registers.copy(dst, r),
                         Operand::Imm(_) => self.state.registers.clear(dst),
+                        Operand::Reg(r) => self.state.mov32_from_reg(dst, r),
                     }
                     return None;
                 }
