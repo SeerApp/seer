@@ -1,8 +1,9 @@
 //! Concolic replay of a trace: owns the scratchpad and steps SBPF ops.
 
 use std::collections::HashMap;
-use std::io::{self, Write};
 use std::time::Instant;
+
+use logger::seer_debug;
 
 use z3::ast::Ast;
 
@@ -18,11 +19,6 @@ use crate::syscalls;
 /// A step slower than this gets a `took` line so a hang is the last
 /// `debug N pc=…` with no `took` after it.
 const SLOW_STEP_MS: f64 = 10.0;
-
-fn debug_line(msg: impl std::fmt::Display) {
-    eprintln!("{msg}");
-    let _ = io::stderr().flush();
-}
 
 /// Replay machine. [`SymbolicState`] is the scratchpad; skip counters are
 /// interpreter policy and live here. Consume with [`Vm::into_analysis`].
@@ -247,10 +243,7 @@ impl Vm {
         self.call_stack.clear();
         for (i, step) in steps.iter().enumerate() {
             if self.debug {
-                debug_line(format_args!(
-                    "debug {} pc=0x{:x} {}",
-                    step.order, step.pc, step.disasm
-                ));
+                seer_debug!("debug {} pc=0x{:x} {}", step.order, step.pc, step.disasm);
             }
             let t0 = self.debug.then(Instant::now);
             if let Some(skip) = self.apply_step(step, i) {
@@ -259,7 +252,7 @@ impl Vm {
             if let Some(t0) = t0 {
                 let ms = t0.elapsed().as_secs_f64() * 1000.0;
                 if ms >= SLOW_STEP_MS {
-                    debug_line(format_args!("debug {} took {ms:.1}ms", step.order));
+                    seer_debug!("debug {} took {ms:.1}ms", step.order);
                 }
             }
         }
@@ -857,6 +850,7 @@ mod tests {
 
     #[test]
     fn debug_run_applies_steps() {
+        logger::init_seer_logger(logger::SeerLogger::from_env());
         let mut vm = Vm::new().debug(true);
         let step = bare_step("mov64 r0, 1");
         assert!(vm.run(std::iter::once(&step)).is_empty());

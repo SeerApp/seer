@@ -1,0 +1,13 @@
+[package]
+name = "logger"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+chrono = "0.4.42"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+
+[lints]
+workspace = true

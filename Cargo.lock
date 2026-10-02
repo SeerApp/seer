@@ -2027,6 +2027,7 @@ dependencies = [
  "anyhow",
  "bs58",
  "decode",
+ "logger",
  "serde",
  "serde_json",
  "storage",
@@ -2822,6 +2823,15 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "logger"
+version = "1.1.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "lru-slab"
@@ -6955,12 +6965,12 @@ name = "trace"
 version = "1.1.1"
 dependencies = [
  "bincode",
- "chrono",
  "fallible-iterator",
  "gimli",
  "hex",
  "hooks",
  "log",
+ "logger",
  "memmap2",
  "object",
  "path-clean",

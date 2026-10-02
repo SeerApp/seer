@@ -104,6 +104,9 @@ fn analyze_ix(storage: &Storage, run_id: i64, ix: i64) -> Result<Vec<u8>> {
     let stretches = group_clock(tagged);
 
     let mut vm = Vm::new();
+    if logger::level_enabled(logger::SeerLoggerLevel::Debug) {
+        vm = vm.debug(true);
+    }
     let mut steps_applied = 0;
     let mut current_pk: Option<[u8; 32]> = None;
     for stretch in &stretches {

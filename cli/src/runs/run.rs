@@ -144,6 +144,7 @@ fn run_simulation(
         storage
             .db
             .insert_run(tx_hash, state_hash, environment, parent_id, patches, source)?;
+    let drops_before = trace::dropped_hooks();
     trace::init(fee_payer.to_bytes(), Arc::clone(&storage))?;
     trace::set(run_id);
     let error = svm
@@ -152,6 +153,14 @@ fn run_simulation(
         .map(|failed| failed.err.to_string());
     trace::unset();
     storage.db.finish_run(run_id, error.as_deref())?;
+    let n = trace::dropped_hooks().saturating_sub(drops_before);
+    if n > 0 {
+        trace::seer_warn!("dropped_hooks {n}");
+    }
+    match error.as_deref() {
+        Some(err) => trace::seer_warn!("run {run_id} {err}"),
+        None => trace::seer_warn!("run {run_id}"),
+    }
     Ok(run_id)
 }
 

@@ -8,6 +8,7 @@ use std::sync::{Mutex, OnceLock};
 
 static SEER_LOGGER: OnceLock<SeerLogger> = OnceLock::new();
 static LOG_LINE_LOCK: Mutex<()> = Mutex::new(());
+static CAPTURE: Mutex<Option<Vec<String>>> = Mutex::new(None);
 
 pub fn init_seer_logger(logger: SeerLogger) {
     let _ = SEER_LOGGER.set(logger);
@@ -16,6 +17,24 @@ pub fn init_seer_logger(logger: SeerLogger) {
 #[inline(always)]
 pub fn seer_logger() -> &'static SeerLogger {
     SEER_LOGGER.get().expect("Seer logger not initialized")
+}
+
+pub fn level_enabled(level: SeerLoggerLevel) -> bool {
+    SEER_LOGGER
+        .get()
+        .is_some_and(|logger| logger.enabled(level))
+}
+
+pub fn start_capture() {
+    *CAPTURE.lock().unwrap_or_else(|p| p.into_inner()) = Some(Vec::new());
+}
+
+pub fn take_capture() -> Vec<String> {
+    CAPTURE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+        .unwrap_or_default()
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -120,7 +139,7 @@ impl SeerLogger {
 
         let _guard = LOG_LINE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
-        match self.format {
+        let line = match self.format {
             SeerLogFormat::Json => {
                 let record = LogRecord {
                     ts,
@@ -128,20 +147,27 @@ impl SeerLogger {
                     target,
                     message,
                 };
-                let line = serde_json::to_string(&record).expect("log record serializes to JSON");
-                eprintln!("{line}");
+                serde_json::to_string(&record).expect("log record serializes to JSON")
             }
             SeerLogFormat::Pretty => {
-                eprintln!(
+                format!(
                     "{}[SEER {}]{} {} :: {}",
                     level.color_code(),
                     level.label_upper(),
                     RESET,
                     target,
                     message
-                );
+                )
             }
+        };
+
+        let mut capture = CAPTURE.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(lines) = capture.as_mut() {
+            lines.push(line);
+            return;
         }
+        drop(capture);
+        eprintln!("{line}");
     }
 
     pub fn debug(&self, module: &'static str, msg: fmt::Arguments<'_>) {

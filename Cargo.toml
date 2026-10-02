@@ -6,6 +6,7 @@ members = [
     "glassbox",
     "hooks",
     "idl",
+    "logger",
     "storage",
     "trace",
 ]

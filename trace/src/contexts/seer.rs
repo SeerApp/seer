@@ -15,7 +15,7 @@ use crate::{
     errors::IrrecoverableError,
     get_cwd,
     program_manager::types::GlobalProgramContext,
-    seer_debug,
+    seer_debug, seer_info,
 };
 
 pub struct SeerContext {
@@ -102,7 +102,7 @@ impl SeerContext {
     }
 
     pub fn set_current_tx(&mut self, run_id: i64) {
-        seer_debug!("New run: {run_id}");
+        seer_info!("New run: {run_id}");
 
         self.run_id = run_id;
         self.state_accounts = crate::program_elf::run_state_accounts(&self.storage, run_id);
@@ -113,14 +113,14 @@ impl SeerContext {
 
     pub fn unset_current_tx(&mut self) {
         if self.transaction_context.take().is_some() {
-            seer_debug!("Run unset: {}", self.run_id);
+            seer_info!("Run unset: {}", self.run_id);
         }
         self.state_accounts.clear();
         self.program_hash.clear();
     }
 
     pub fn start_instruction(&mut self, instruction: u8, fee_payer: Pubkey) {
-        seer_debug!("New instruction: {:?}", instruction);
+        seer_info!("New instruction: {:?}", instruction);
 
         self.transaction_context
             .as_mut()
@@ -134,7 +134,7 @@ impl SeerContext {
     }
 
     pub fn end_instruction(&mut self) {
-        seer_debug!("Ending instruction");
+        seer_info!("Ending instruction");
 
         let (ix, tree) = {
             let tx = self
@@ -179,7 +179,7 @@ impl SeerContext {
         program_address: Pubkey,
         bd: &dyn GuestAccountBackdoor,
     ) {
-        seer_debug!("Starting program: {:?}", program_address);
+        seer_info!("Starting program: {:?}", program_address);
 
         self.global_account_context
             .open_account_backdoor_idempotent(bd);
@@ -208,7 +208,7 @@ impl SeerContext {
     }
 
     pub fn end_program(&mut self, program_address: Pubkey, err: Option<InstructionError>) {
-        seer_debug!("Ending program: {:?}", program_address);
+        seer_info!("Ending program: {:?}", program_address);
 
         let (ix, pending_reg) = {
             let tx = self

@@ -3,7 +3,6 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod errors;
-pub mod logger;
 pub mod path_resolver;
 pub mod program_elf;
 pub mod program_manager;
@@ -21,8 +20,9 @@ use storage::Storage;
 
 use crate::contexts::seer::SeerContext;
 use crate::errors::IrrecoverableError;
-pub use crate::logger::{
-    init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
+pub use logger::{
+    init_seer_logger, seer_debug, seer_info, seer_logger, seer_warn, SeerLogFormat, SeerLogger,
+    SeerLoggerLevel,
 };
 
 pub struct SeerSingleton {
@@ -143,7 +143,8 @@ pub fn install_vm_hooks() {
 
 #[cfg(test)]
 mod tests {
-    use super::{dropped_hooks, get};
+    use super::{dropped_hooks, get, seer_warn};
+    use logger::{init_seer_logger, start_capture, take_capture, SeerLogger, SeerLoggerLevel};
 
     #[test]
     fn inactive_get_counts_a_drop() {
@@ -152,5 +153,26 @@ mod tests {
         get(|_| ran = true);
         assert!(!ran);
         assert_eq!(dropped_hooks(), before.saturating_add(1));
+    }
+
+    #[test]
+    fn inactive_get_warns_once_and_stays_silent_at_zero() {
+        let silent = SeerLogger::from_verbosity(0);
+        assert!(!silent.enabled(SeerLoggerLevel::Warn));
+
+        init_seer_logger(SeerLogger::from_verbosity(1));
+        start_capture();
+        let before = dropped_hooks();
+        let mut ran = false;
+        get(|_| ran = true);
+        assert!(!ran);
+        assert_eq!(dropped_hooks(), before.saturating_add(1));
+        let n = dropped_hooks().saturating_sub(before);
+        if n > 0 {
+            seer_warn!("dropped_hooks {n}");
+        }
+        let lines = take_capture();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("dropped_hooks 1"), "{lines:?}");
     }
 }
