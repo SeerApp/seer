@@ -133,8 +133,8 @@ pub fn acc_flag_byte(index: u32, flag: AccFlag) -> String {
     format!("n_acc{index}_{}", flag.as_str())
 }
 
-pub fn acc_orig_data_len_byte(index: u32, i: u64) -> String {
-    format!("n_acc{index}_orig_data_len_{i}")
+pub fn acc_pad_byte(index: u32, i: u64) -> String {
+    format!("n_acc{index}_pad_{i}")
 }
 
 pub fn acc_pubkey_byte(index: u32, i: u64) -> String {
@@ -209,8 +209,8 @@ pub fn acc_rent_epoch_word(index: u32) -> String {
     format!("w_acc{index}_rent_epoch")
 }
 
-pub fn acc_orig_data_len_word(index: u32) -> String {
-    format!("w_acc{index}_orig_data_len")
+pub fn acc_pad_word(index: u32) -> String {
+    format!("w_acc{index}_pad")
 }
 
 pub fn acc_pubkey_word(index: u32, qword: u64) -> String {
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(parse("n_acc0_dup"), None);
         assert_eq!(parse("w_acc0_data_0000"), None);
         assert_eq!(parse("n_acc0_data_0000"), None);
-        assert_eq!(parse("n_acc0_orig_data_len_0"), None);
+        assert_eq!(parse("n_acc0_pad_0"), None);
     }
 
     #[test]

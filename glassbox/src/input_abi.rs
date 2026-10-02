@@ -8,7 +8,7 @@
 //! for each account:
 //!   if unique (dup == 0xff):
 //!     u8 dup, signer, writable, executable
-//!     u32 orig_data_len
+//!     u32 pad
 //!     [u8; 32] pubkey, owner
 //!     u64 lamports, data_len
 //!     [u8; data_len] data
@@ -42,7 +42,7 @@ pub enum InputField {
     AccSigner { index: u32 },
     AccWritable { index: u32 },
     AccExecutable { index: u32 },
-    AccOrigDataLen { index: u32 },
+    AccPad { index: u32 },
     AccPubkey { index: u32 },
     AccOwner { index: u32 },
     AccLamports { index: u32 },
@@ -192,7 +192,7 @@ pub fn remap_acc(loc: FieldLoc, map: impl Fn(u32) -> u32) -> FieldLoc {
         AccSigner { index } => AccSigner { index: map(index) },
         AccWritable { index } => AccWritable { index: map(index) },
         AccExecutable { index } => AccExecutable { index: map(index) },
-        AccOrigDataLen { index } => AccOrigDataLen { index: map(index) },
+        AccPad { index } => AccPad { index: map(index) },
         AccPubkey { index } => AccPubkey { index: map(index) },
         AccOwner { index } => AccOwner { index: map(index) },
         AccLamports { index } => AccLamports { index: map(index) },
@@ -336,7 +336,7 @@ fn header_field(index: u32, start: u64, offset: u64) -> FieldLoc {
             field_len: 1,
         },
         4..=7 => FieldLoc {
-            field: InputField::AccOrigDataLen { index },
+            field: InputField::AccPad { index },
             offset_in_field: rel - 4,
             field_len: 4,
         },
@@ -372,7 +372,7 @@ fn byte_name(loc: &FieldLoc) -> String {
         InputField::AccSigner { index } => grammar::acc_flag_byte(index, AccFlag::Signer),
         InputField::AccWritable { index } => grammar::acc_flag_byte(index, AccFlag::Writable),
         InputField::AccExecutable { index } => grammar::acc_flag_byte(index, AccFlag::Executable),
-        InputField::AccOrigDataLen { index } => grammar::acc_orig_data_len_byte(index, i),
+        InputField::AccPad { index } => grammar::acc_pad_byte(index, i),
         InputField::AccPubkey { index } => grammar::acc_pubkey_byte(index, i),
         InputField::AccOwner { index } => grammar::acc_owner_byte(index, i),
         InputField::AccLamports { index } => grammar::acc_lamports_byte(index, i),
@@ -404,8 +404,8 @@ fn word_name(loc: &FieldLoc, nbytes: usize) -> Option<String> {
         InputField::AccRentEpoch { index } if nbytes == 8 && off == 0 => {
             Some(grammar::acc_rent_epoch_word(index))
         }
-        InputField::AccOrigDataLen { index } if nbytes == 4 && off == 0 => {
-            Some(grammar::acc_orig_data_len_word(index))
+        InputField::AccPad { index } if nbytes == 4 && off == 0 => {
+            Some(grammar::acc_pad_word(index))
         }
         InputField::AccPubkey { index } if nbytes == 8 && off % 8 == 0 => {
             Some(grammar::acc_pubkey_word(index, off / 8))
