@@ -1,17 +1,14 @@
 use crate::state_accounts::StateAccounts;
 use storage::RunRow;
 
-pub(crate) fn run_json(row: &RunRow) -> serde_json::Value {
-    let patches: serde_json::Value =
-        serde_json::from_str(&row.patches).expect("stored patches are JSON");
-    let environment: serde_json::Value =
-        serde_json::from_str(&row.environment).expect("stored environment is a JSON object");
+pub(crate) fn run_json(row: &RunRow, patches: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "id": row.id,
         "parent": row.parent_id,
         "source": row.source,
         "patches": patches,
-        "environment": environment,
+        "sigverify": row.sigverify,
+        "blockhash_check": row.blockhash_check,
         "status": status_text(row),
         "error": row.error,
         "run_at": row.run_at,
@@ -89,7 +86,10 @@ fn status_matches(row: &RunRow, want: LsStatus) -> bool {
     }
 }
 
-pub(crate) fn ls_tree_json(runs: &[RunRow]) -> Vec<serde_json::Value> {
+pub(crate) fn ls_tree_json(
+    runs: &[RunRow],
+    patches: &std::collections::BTreeMap<i64, serde_json::Value>,
+) -> Vec<serde_json::Value> {
     let ids: std::collections::BTreeSet<i64> = runs.iter().map(|r| r.id).collect();
     let by_id: std::collections::BTreeMap<i64, &RunRow> = runs.iter().map(|r| (r.id, r)).collect();
     let mut kids: std::collections::BTreeMap<Option<i64>, Vec<i64>> =
@@ -104,7 +104,7 @@ pub(crate) fn ls_tree_json(runs: &[RunRow]) -> Vec<serde_json::Value> {
     let roots = kids.get(&None).cloned().unwrap_or_default();
     roots
         .into_iter()
-        .filter_map(|id| node(id, &kids, &by_id))
+        .filter_map(|id| node(id, &kids, &by_id, patches))
         .collect()
 }
 
@@ -112,15 +112,17 @@ fn node(
     id: i64,
     kids: &std::collections::BTreeMap<Option<i64>, Vec<i64>>,
     by_id: &std::collections::BTreeMap<i64, &RunRow>,
+    patches: &std::collections::BTreeMap<i64, serde_json::Value>,
 ) -> Option<serde_json::Value> {
     let row = by_id.get(&id)?;
     let children = kids
         .get(&Some(id))
         .into_iter()
         .flatten()
-        .filter_map(|c| node(*c, kids, by_id))
+        .filter_map(|c| node(*c, kids, by_id, patches))
         .collect::<Vec<_>>();
-    let mut value = run_json(row);
+    let empty = serde_json::json!([]);
+    let mut value = run_json(row, patches.get(&id).unwrap_or(&empty));
     if let serde_json::Value::Object(map) = &mut value {
         map.insert("children".into(), serde_json::Value::Array(children));
     }

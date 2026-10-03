@@ -144,7 +144,7 @@ mod tests {
         storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
         let id = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .insert_run(&tx_hash, &state_hash, false, false, None, "")
             .unwrap();
         let accounts = run_state_accounts(&storage, id);
         assert_eq!(program_elf_bytes(&accounts, &program), elf);

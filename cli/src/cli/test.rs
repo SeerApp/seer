@@ -80,6 +80,19 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     let help = Cli::command().render_help().to_string();
     assert!(help.contains("--historical"), "{help}");
     assert!(!help.contains("server-url"), "{help}");
+    let mut cmd = Cli::command();
+    let run_help = cmd
+        .find_subcommand_mut("run")
+        .unwrap()
+        .render_help()
+        .to_string();
+    assert!(
+        run_help.find("--env").is_none(),
+        "at {:?} {run_help}",
+        run_help.find("--env")
+    );
+    assert!(run_help.contains("--sigverify"), "{run_help}");
+    assert!(run_help.contains("--blockhash-check"), "{run_help}");
     let Command::Run(historical) = parse_from([
         "seer",
         "run",
@@ -137,7 +150,8 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     let Command::Run(Request {
         tx: parsed,
         url,
-        environment,
+        sigverify,
+        blockhash_check,
         ..
     }) = parse_from([
         "seer",
@@ -146,8 +160,10 @@ fn parses_run_sig_tx_from_show_ls_diff() {
         &json,
         "--url",
         "https://api.devnet.solana.com",
-        "--env",
-        r#"{"slot":1}"#,
+        "--sigverify",
+        "true",
+        "--blockhash-check",
+        "false",
     ])
     .unwrap()
     else {
@@ -158,7 +174,9 @@ fn parses_run_sig_tx_from_show_ls_diff() {
         solana_transaction::versioned::VersionedTransaction::from(tx)
     );
     assert_eq!(url.as_deref(), Some("https://api.devnet.solana.com"));
-    assert_eq!(environment.unwrap().slot, Some(1));
+    assert_eq!(sigverify, Some(true));
+    assert_eq!(blockhash_check, Some(false));
+    assert!(parse_from(["seer", "run", "--from", "1", "--env", "{}"]).is_err());
 
     assert_eq!(
         parse_from(["seer", "show", "3", "--trace"]).unwrap(),
@@ -435,15 +453,11 @@ fn dummy_row_err(id: i64, parent: Option<i64>, error: Option<&str>) -> storage::
         transaction_blob_hash: [0; 32],
         state_blob_hash: [u8::from(id == 2); 32],
         run_at: String::new(),
-        environment: "{}".into(),
+        sigverify: false,
+        blockhash_check: false,
         status: "finished".into(),
         error: error.map(str::to_string),
         parent_id: parent,
-        patches: if parent.is_some() {
-            r#"[{"account":"11111111111111111111111111111111","lamports":0}]"#.into()
-        } else {
-            "[]".into()
-        },
         source: match parent {
             Some(p) => format!("from:{p}"),
             None => "sig:abc".into(),
@@ -460,7 +474,7 @@ fn ls_tree_and_state_are_objects() {
         dummy_row(5, None),
         dummy_row_err(6, Some(5), Some("boom")),
     ];
-    let tree = super::format::ls_tree_json(&runs);
+    let tree = super::format::ls_tree_json(&runs, &std::collections::BTreeMap::new());
     assert_eq!(tree[0]["id"], 5);
     assert_eq!(tree[0]["children"][0]["id"], 6);
     assert_eq!(tree[1]["id"], 1);
@@ -475,7 +489,11 @@ fn ls_tree_and_state_are_objects() {
     assert_eq!(failed.iter().map(|r| r.id).collect::<Vec<_>>(), vec![6]);
 
     let newest: Vec<_> = {
-        let mut v: Vec<_> = runs.iter().map(super::format::run_json).collect();
+        let empty = serde_json::json!([]);
+        let mut v: Vec<_> = runs
+            .iter()
+            .map(|row| super::format::run_json(row, &empty))
+            .collect();
         v.reverse();
         super::format::slice_json_array(v, 0, 2)
     };

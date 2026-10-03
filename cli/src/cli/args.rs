@@ -5,7 +5,6 @@ use solana_pubkey::Pubkey;
 use super::encoding::TxEncoding;
 use super::format::LsStatus;
 use super::input::{PathOrValue, INPUT_HELP};
-use crate::environment::Environment;
 use crate::runs::run::Request;
 use crate::state_accounts::Patch;
 
@@ -98,11 +97,19 @@ struct RunCli {
     #[arg(long, hide = true, default_value = crate::captures::CAPTURES_URL)]
     server_url: String,
     #[arg(
-        long = "env",
-        value_name = "JSON",
-        help = "SVM environment (slot, clock, compute, airdrop)"
+        long,
+        action = clap::ArgAction::Set,
+        value_name = "BOOL",
+        help = "Verify signatures (true or false)"
     )]
-    environment: Option<PathOrValue>,
+    sigverify: Option<bool>,
+    #[arg(
+        long,
+        action = clap::ArgAction::Set,
+        value_name = "BOOL",
+        help = "Check the recent blockhash (true or false)"
+    )]
+    blockhash_check: Option<bool>,
     #[arg(long, value_name = "PUBKEY", help = "Account to patch")]
     account: Option<String>,
     #[arg(long, help = "Set account lamports")]
@@ -583,10 +590,8 @@ impl TryFrom<RunCli> for Request {
             url: args.url,
             historical: args.historical,
             server_url: args.server_url,
-            environment: args
-                .environment
-                .map(|v| v.load_text().and_then(|s| Environment::parse(&s)))
-                .transpose()?,
+            sigverify: args.sigverify,
+            blockhash_check: args.blockhash_check,
             patch,
         })
     }

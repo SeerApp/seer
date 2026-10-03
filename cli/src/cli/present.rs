@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result};
 use solana_pubkey::Pubkey;
 use storage::{RunRow, Storage};
@@ -8,7 +10,7 @@ use crate::state_accounts::StateAccounts;
 pub(super) fn emit_run(storage: &Storage, id: i64, short: bool) -> Result<()> {
     let row = storage.db.get_run(id)?;
     emit(
-        run_json(&row),
+        run_value(storage, &row)?,
         &[
             format!("seer show {id}"),
             format!("seer run --from {id} --account <PUBKEY> --lamports 0"),
@@ -33,10 +35,14 @@ pub(super) fn ls(
         let _ = storage.db.get_run(id)?;
     }
     let selected = ls_select(&runs, from, tree, status);
+    let patches = patch_map(storage, &runs, &selected)?;
     let values = if tree {
-        ls_tree_json(&selected)
+        ls_tree_json(&selected, &patches)
     } else {
-        let mut flat: Vec<serde_json::Value> = selected.iter().map(run_json).collect();
+        let mut flat: Vec<serde_json::Value> = selected
+            .iter()
+            .map(|row| run_json(row, patches.get(&row.id).unwrap_or(&serde_json::json!([]))))
+            .collect();
         flat.reverse();
         flat
     };
@@ -102,7 +108,7 @@ pub(super) fn show(
     let row = storage.db.get_run(id)?;
     if !tx && !state && account.is_empty() && data.is_empty() && !trace && program.is_none() {
         return emit(
-            run_json(&row),
+            run_value(storage, &row)?,
             &[
                 format!("seer show {id} --tx"),
                 format!("seer show {id} --state"),
@@ -184,8 +190,8 @@ pub(super) fn diff(storage: &Storage, a: i64, b: i64, short: bool) -> Result<()>
     let a = storage.db.get_run(a)?;
     let b = storage.db.get_run(b)?;
     let value = serde_json::json!({
-        "a": run_json(&a),
-        "b": run_json(&b),
+        "a": run_value(storage, &a)?,
+        "b": run_value(storage, &b)?,
         "tx": if a.transaction_blob_hash == b.transaction_blob_hash { "same" } else { "different" },
         "state": if a.state_blob_hash == b.state_blob_hash { "same" } else { "different" },
     });
@@ -194,6 +200,44 @@ pub(super) fn diff(storage: &Storage, a: i64, b: i64, short: bool) -> Result<()>
         &[format!("seer show {}", a.id), format!("seer show {}", b.id)],
         short,
     )
+}
+
+fn run_value(storage: &Storage, row: &RunRow) -> Result<serde_json::Value> {
+    let parent = match row.parent_id {
+        Some(id) => Some(storage.db.get_run(id)?),
+        None => None,
+    };
+    Ok(run_json(row, &patches_of(storage, row, parent.as_ref())?))
+}
+
+fn patch_map(
+    storage: &Storage,
+    runs: &[RunRow],
+    rows: &[RunRow],
+) -> Result<BTreeMap<i64, serde_json::Value>> {
+    let by_id: BTreeMap<i64, &RunRow> = runs.iter().map(|r| (r.id, r)).collect();
+    let mut out = BTreeMap::new();
+    for row in rows {
+        let parent = row.parent_id.and_then(|id| by_id.get(&id).copied());
+        out.insert(row.id, patches_of(storage, row, parent)?);
+    }
+    Ok(out)
+}
+
+fn patches_of(
+    storage: &Storage,
+    row: &RunRow,
+    parent: Option<&RunRow>,
+) -> Result<serde_json::Value> {
+    let Some(parent) = parent else {
+        return Ok(serde_json::json!([]));
+    };
+    if parent.state_blob_hash == row.state_blob_hash {
+        return Ok(serde_json::json!([]));
+    }
+    let before = StateAccounts::from_bytes(&storage.blob.read(&parent.state_blob_hash)?)?;
+    let after = StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash)?)?;
+    Ok(crate::state_accounts::changes(&before, &after))
 }
 
 fn account_meta(storage: &Storage, row: &RunRow, pk: &Pubkey) -> Result<serde_json::Value> {

@@ -241,7 +241,10 @@ mod tests {
     fn new_run(storage: &storage::Storage) -> i64 {
         let h = storage.blob.store(b"x").unwrap();
         storage.db.insert_simulation(&h, &h).unwrap();
-        let id = storage.db.insert_run(&h, &h, "{}", None, "[]", "").unwrap();
+        let id = storage
+            .db
+            .insert_run(&h, &h, false, false, None, "")
+            .unwrap();
         storage.db.insert_run_ix(id, 0).unwrap();
         id
     }

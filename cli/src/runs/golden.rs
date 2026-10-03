@@ -39,11 +39,10 @@ fn replay(name: &str, dir: &Path) -> Result<(i64, Arc<Storage>, PathBuf)> {
     let meta: serde_json::Value = serde_json::from_slice(&fs::read(dir.join("meta.json"))?)?;
     let tx_hash = hex32(meta["tx_hash"].as_str().context("tx_hash")?)?;
     let state_hash = hex32(meta["state_hash"].as_str().context("state_hash")?)?;
-    let environment = meta["environment"].as_str().unwrap_or("{}");
     storage.db.insert_simulation(&tx_hash, &state_hash)?;
     let parent = storage
         .db
-        .insert_run(&tx_hash, &state_hash, environment, None, "[]", "golden")?;
+        .insert_run(&tx_hash, &state_hash, false, false, None, "golden")?;
     storage.db.finish_run(parent, None)?;
     let child = execute(
         Arc::clone(&storage),
@@ -54,7 +53,8 @@ fn replay(name: &str, dir: &Path) -> Result<(i64, Arc<Storage>, PathBuf)> {
             url: None,
             historical: false,
             server_url: crate::captures::CAPTURES_URL.into(),
-            environment: None,
+            sigverify: None,
+            blockhash_check: None,
             patch: None,
         },
     )?;

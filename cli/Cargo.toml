@@ -55,7 +55,7 @@ solana-svm-log-collector = { version = "=4.2.1", features = ["agave-unstable-api
 solana-svm-timings = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-svm-transaction = ">=4.2.0,<4.3.0"
 solana-system-program = { version = "=4.2.1", features = ["agave-unstable-api"] }
-solana-sysvar = "~4.1.0"
+solana-sysvar = { version = "~4.1.0", features = ["bincode", "wincode"] }
 solana-transaction = { version = "4.1.5", features = ["serde", "wincode", "verify"] }
 solana-transaction-context = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-transaction-status-client-types = { version = "=4.2.1", features = ["agave-unstable-api"] }

@@ -57,6 +57,7 @@ pub fn store_accounts(
     for (key, account) in fetch(url, &extra, "programdata", programs)? {
         raw.insert(key, account);
     }
+    crate::sysvars::require(|key| raw.get(key).map(|account| account.data.as_slice()))?;
     raw.into_iter()
         .map(|(key, account)| {
             Ok((
@@ -127,6 +128,12 @@ pub fn store_captured_accounts(
             bail!("missing account {key}");
         }
     }
+    crate::sysvars::require(|key| {
+        captured
+            .get(key)
+            .and_then(|slot| slot.as_ref())
+            .map(|account| account.data.as_slice())
+    })?;
     let state = raw
         .into_iter()
         .map(|(key, account)| {
@@ -235,6 +242,7 @@ pub fn store_transaction_accounts(
     keys.sort();
     keys.dedup();
     keys.retain(|key| !instructions_sysvar(key));
+    crate::sysvars::include(&mut keys);
     let already = (!already.is_empty()).then_some(&already);
     let state = store_accounts(storage, &keys, url, already, &programs)?;
     ingest_programs(storage, &state)?;
@@ -613,6 +621,10 @@ mod test {
         let err = store_captured_accounts(&storage, &tx, &BTreeMap::new()).unwrap_err();
         assert!(err.to_string().contains("missing account"), "{err}");
         let captured = BTreeMap::from([(payer, None)]);
+        let err = store_captured_accounts(&storage, &tx, &captured).unwrap_err();
+        assert!(err.to_string().contains("missing sysvar"), "{err}");
+        let mut captured = crate::sysvars::valid_for_test();
+        captured.insert(payer, None);
         assert!(store_captured_accounts(&storage, &tx, &captured).is_ok());
         std::fs::remove_dir_all(&root).ok();
     }
@@ -707,7 +719,7 @@ mod test {
         storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
         let id = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .insert_run(&tx_hash, &state_hash, false, false, None, "")
             .unwrap();
         let got = program_elf_hash(&storage, id, &program).unwrap();
         assert_eq!(got, storage.blob.hash(elf));
@@ -738,7 +750,7 @@ mod test {
         storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
         let id = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .insert_run(&tx_hash, &state_hash, false, false, None, "")
             .unwrap();
         storage.db.insert_run_ix(id, 0).unwrap();
         storage

@@ -16,7 +16,6 @@ erDiagram
         text network PK
         blob transaction_blob_hash FK
         blob state_blob_hash FK
-        text environment
     }
 
     run {
@@ -26,10 +25,10 @@ erDiagram
         int parent_id FK
         text run_at
         text run_in_dir
-        text environment
+        int sigverify
+        int blockhash_check
         text status
         text error
-        text patches
         text source
     }
 

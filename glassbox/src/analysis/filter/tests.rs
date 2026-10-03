@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::analysis::options::{HideDataLenChildren, HideMode};
 use crate::path_condition::View;
