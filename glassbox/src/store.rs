@@ -104,6 +104,9 @@ fn analyze_ix(storage: &Storage, run_id: i64, ix: i64) -> Result<Vec<u8>> {
     let stretches = group_clock(tagged);
 
     let mut vm = Vm::new();
+    if logger::level_enabled(logger::SeerLoggerLevel::Debug) {
+        vm = vm.debug(true);
+    }
     let mut steps_applied = 0;
     let mut current_pk: Option<[u8; 32]> = None;
     for stretch in &stretches {
@@ -238,7 +241,10 @@ mod tests {
     fn new_run(storage: &storage::Storage) -> i64 {
         let h = storage.blob.store(b"x").unwrap();
         storage.db.insert_simulation(&h, &h).unwrap();
-        let id = storage.db.insert_run(&h, &h, "{}", None, "[]", "").unwrap();
+        let id = storage
+            .db
+            .insert_run(&h, &h, false, false, None, "")
+            .unwrap();
         storage.db.insert_run_ix(id, 0).unwrap();
         id
     }

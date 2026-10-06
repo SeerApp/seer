@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::errors::IrrecoverableError;
 use crate::path_resolver::PathResolver;
 
 #[derive(Debug)]
@@ -57,17 +58,18 @@ impl Sources {
     }
 
     pub fn is_valid_source(&self, dwarf_file_path: &Path, file_line: u64) -> bool {
-        if let Ok(runtime_file_path) = self
+        let runtime_file_path = match self
             .path_resolver
             .dwarf_path_to_runtime_path(dwarf_file_path)
         {
-            self.infos
-                .get(&runtime_file_path)
-                .map(|f| !f.attribute_lines.contains(&file_line))
-                .unwrap_or(false)
-        } else {
-            false
-        }
+            Ok(path) => path,
+            Err(IrrecoverableError::DwarfPath { .. }) => return false,
+            Err(err) => panic!("dwarf path resolution failed: {err}"),
+        };
+        self.infos
+            .get(&runtime_file_path)
+            .map(|f| !f.attribute_lines.contains(&file_line))
+            .unwrap_or(false)
     }
 
     pub fn len(&self) -> usize {

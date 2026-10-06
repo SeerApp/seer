@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use storage::Storage;
@@ -29,29 +30,32 @@ fn load_blobs(storage: &Storage, dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn replay(name: &str, dir: &Path) -> Result<(i64, Storage, PathBuf)> {
+fn replay(name: &str, dir: &Path) -> Result<(i64, Arc<Storage>, PathBuf)> {
     let tmp = std::env::temp_dir().join(format!("seer-golden-{}-{}", std::process::id(), name));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp)?;
-    let storage = Storage::open_at(&tmp)?;
+    let storage = Arc::new(Storage::open_at(&tmp)?);
     load_blobs(&storage, dir)?;
     let meta: serde_json::Value = serde_json::from_slice(&fs::read(dir.join("meta.json"))?)?;
     let tx_hash = hex32(meta["tx_hash"].as_str().context("tx_hash")?)?;
     let state_hash = hex32(meta["state_hash"].as_str().context("state_hash")?)?;
-    let environment = meta["environment"].as_str().unwrap_or("{}");
     storage.db.insert_simulation(&tx_hash, &state_hash)?;
     let parent = storage
         .db
-        .insert_run(&tx_hash, &state_hash, environment, None, "[]", "golden")?;
+        .insert_run(&tx_hash, &state_hash, false, false, None, "golden")?;
     storage.db.finish_run(parent, None)?;
     let child = execute(
-        &storage,
+        Arc::clone(&storage),
         Request {
             tx: None,
             signature: None,
             from: Some(parent),
             url: None,
-            environment: None,
+            historical: false,
+            zst: None,
+            server_url: crate::captures::CAPTURES_URL.into(),
+            sigverify: None,
+            blockhash_check: None,
             patch: None,
         },
     )?;

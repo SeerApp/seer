@@ -10,6 +10,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.99"
+prost = "0.14.4"
+tokio = { version = "1", features = ["rt", "macros", "time", "net"] }
+zstd = "0.13.3"
+tonic = { version = "0.14", features = ["channel", "tls-aws-lc", "tls-native-roots"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
 base64 = "0.22.1"
 bincode = "1.3.3"
 bs58 = "0.5.1"
@@ -52,10 +57,12 @@ solana-svm-log-collector = { version = "=4.2.1", features = ["agave-unstable-api
 solana-svm-timings = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-svm-transaction = ">=4.2.0,<4.3.0"
 solana-system-program = { version = "=4.2.1", features = ["agave-unstable-api"] }
-solana-sysvar = "~4.1.0"
+solana-sysvar = { version = "~4.1.0", features = ["bincode", "wincode"] }
 solana-transaction = { version = "4.1.5", features = ["serde", "wincode", "verify"] }
 solana-transaction-context = { version = "=4.2.1", features = ["agave-unstable-api"] }
 solana-transaction-status-client-types = { version = "=4.2.1", features = ["agave-unstable-api"] }
+seer_protos_community_neoeinstein-tonic = { version = "0.5.0-20261002095203-b7b6f55a98ec.4", registry = "buf" }
+seer_protos_community_neoeinstein-prost = { version = "0.5.0-20261002095203-b7b6f55a98ec.2", registry = "buf" }
 
 [lints]
 workspace = true

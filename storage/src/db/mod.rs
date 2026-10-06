@@ -33,11 +33,11 @@ pub struct RunRow {
     pub transaction_blob_hash: [u8; 32],
     pub state_blob_hash: [u8; 32],
     pub run_at: String,
-    pub environment: String,
+    pub sigverify: bool,
+    pub blockhash_check: bool,
     pub status: String,
     pub error: Option<String>,
     pub parent_id: Option<i64>,
-    pub patches: String,
     pub source: String,
 }
 

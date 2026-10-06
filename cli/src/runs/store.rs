@@ -57,6 +57,7 @@ pub fn store_accounts(
     for (key, account) in fetch(url, &extra, "programdata", programs)? {
         raw.insert(key, account);
     }
+    crate::sysvars::require(|key| raw.get(key).map(|account| account.data.as_slice()))?;
     raw.into_iter()
         .map(|(key, account)| {
             Ok((
@@ -71,6 +72,132 @@ pub fn store_accounts(
         })
         .collect::<Result<BTreeMap<_, _>>>()
         .map(StateAccounts)
+}
+
+pub fn store_captured_accounts(
+    storage: &Storage,
+    tx: &VersionedTransaction,
+    captured: &BTreeMap<Pubkey, Option<Account>>,
+) -> Result<[u8; 32]> {
+    tx.sanitize().context("malformed transaction")?;
+    let lookups = tx.message.address_table_lookups().unwrap_or(&[]);
+    let loaded = if lookups.is_empty() {
+        None
+    } else {
+        Some(loaded_from_captured(captured, lookups)?)
+    };
+    let programs = program_ids(tx, loaded.as_ref());
+    let mut required: BTreeSet<Pubkey> = tx
+        .message
+        .static_account_keys()
+        .iter()
+        .map(pk)
+        .filter(|key| !instructions_sysvar(key))
+        .collect();
+    if let Some(loaded) = &loaded {
+        for addr in loaded.writable.iter().chain(&loaded.readonly) {
+            let key = pk(addr);
+            if !instructions_sysvar(&key) {
+                required.insert(key);
+            }
+        }
+        for lookup in lookups {
+            required.insert(pk(&lookup.account_key));
+        }
+    }
+    for key in required.clone() {
+        if let Some(Some(account)) = captured.get(&key) {
+            if let Some(programdata) = programdata(account) {
+                required.insert(programdata);
+            }
+        }
+    }
+    let mut raw = BTreeMap::new();
+    for (key, slot) in captured {
+        if instructions_sysvar(key) {
+            continue;
+        }
+        let account = match slot {
+            Some(account) => account.clone(),
+            None => absent_account(key, "account", &programs)?,
+        };
+        raw.insert(*key, account);
+    }
+    for key in &required {
+        if !raw.contains_key(key) {
+            bail!("missing account {key}");
+        }
+    }
+    crate::sysvars::require(|key| {
+        captured
+            .get(key)
+            .and_then(|slot| slot.as_ref())
+            .map(|account| account.data.as_slice())
+    })?;
+    let state = raw
+        .into_iter()
+        .map(|(key, account)| {
+            Ok((
+                key,
+                StateAccount {
+                    lamports: account.lamports,
+                    data: storage.blob.store(&account.data)?,
+                    owner: Pubkey::from(account.owner.to_bytes()),
+                    executable: account.executable,
+                },
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()
+        .map(StateAccounts)?;
+    ingest_programs(storage, &state)?;
+    store_state(storage, &state)
+}
+
+fn loaded_from_captured(
+    accounts: &BTreeMap<Pubkey, Option<Account>>,
+    lookups: &[MessageAddressTableLookup],
+) -> Result<LoadedAddresses> {
+    let mut writable = Vec::new();
+    let mut readonly = Vec::new();
+    for lookup in lookups {
+        let key = pk(&lookup.account_key);
+        let Some(Some(account)) = accounts.get(&key) else {
+            bail!("missing lookup table {key}");
+        };
+        if !solana_sdk_ids::address_lookup_table::check_id(&account.owner) {
+            bail!("{key} is not an address lookup table");
+        }
+        let table = AddressLookupTable::deserialize(&account.data)
+            .map_err(|e| anyhow::anyhow!("invalid address lookup table {key}: {e}"))?;
+        for index in &lookup.writable_indexes {
+            writable.push(
+                table
+                    .addresses
+                    .get(usize::from(*index))
+                    .copied()
+                    .with_context(|| format!("lookup index {index} out of range in {key}"))?,
+            );
+        }
+        for index in &lookup.readonly_indexes {
+            readonly.push(
+                table
+                    .addresses
+                    .get(usize::from(*index))
+                    .copied()
+                    .with_context(|| format!("lookup index {index} out of range in {key}"))?,
+            );
+        }
+    }
+    Ok(LoadedAddresses {
+        writable: writable
+            .into_iter()
+            .map(|addr| addr.to_bytes().into())
+            .collect(),
+        readonly: readonly
+            .into_iter()
+            .map(|addr| addr.to_bytes().into())
+            .collect(),
+    })
 }
 
 pub fn store_transaction_accounts(
@@ -90,6 +217,7 @@ pub fn store_transaction_accounts(
     } else {
         Some(loaded_from_live_tables(url, lookups)?)
     };
+    let programs = program_ids(tx, loaded.as_ref());
     if let Some(loaded) = &loaded {
         already = compact_tables(lookups, loaded)?;
         for key in already.keys() {
@@ -106,14 +234,16 @@ pub fn store_transaction_accounts(
             .collect();
         loaded_keys.sort();
         loaded_keys.dedup();
-        for (key, account) in fetch(url, &loaded_keys, "loaded account", &BTreeSet::new())? {
+        loaded_keys.retain(|key| !instructions_sysvar(key));
+        for (key, account) in fetch(url, &loaded_keys, "loaded account", &programs)? {
             already.insert(key, account);
         }
     }
     keys.sort();
     keys.dedup();
+    keys.retain(|key| !instructions_sysvar(key));
+    crate::sysvars::include(&mut keys);
     let already = (!already.is_empty()).then_some(&already);
-    let programs = program_ids(tx, loaded.as_ref());
     let state = store_accounts(storage, &keys, url, already, &programs)?;
     ingest_programs(storage, &state)?;
     ingest_idls(storage, url, &programs, &state)?;
@@ -296,8 +426,12 @@ fn fetch(
         .collect()
 }
 
+fn instructions_sysvar(key: &Pubkey) -> bool {
+    solana_sdk_ids::sysvar::instructions::check_id(key)
+}
+
 fn absent_account(key: &Pubkey, label: &str, programs: &BTreeSet<Pubkey>) -> Result<Account> {
-    if label == "account" && !programs.contains(key) {
+    if (label == "account" || label == "loaded account") && !programs.contains(key) {
         return Ok(Account::default());
     }
     bail!("missing {label} {key}");
@@ -469,6 +603,40 @@ mod test {
     }
 
     #[test]
+    fn captured_accounts_fail_when_a_required_key_is_absent() {
+        let payer = Pubkey::from([7u8; 32]);
+        let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(
+            solana_message::Message::new(&[], Some(&payer)),
+        ));
+        let root = std::env::temp_dir().join(format!(
+            "seer-captured-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = Storage::open_at(&root).unwrap();
+        let err = store_captured_accounts(&storage, &tx, &BTreeMap::new()).unwrap_err();
+        assert!(err.to_string().contains("missing account"), "{err}");
+        let captured = BTreeMap::from([(payer, None)]);
+        let err = store_captured_accounts(&storage, &tx, &captured).unwrap_err();
+        assert!(err.to_string().contains("missing sysvar"), "{err}");
+        let mut captured = crate::sysvars::valid_for_test();
+        captured.insert(payer, None);
+        assert!(store_captured_accounts(&storage, &tx, &captured).is_ok());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn instructions_sysvar_is_not_fetched() {
+        let key = Pubkey::from(solana_sdk_ids::sysvar::instructions::id().to_bytes());
+        assert!(!instructions_sysvar(&Pubkey::from([4u8; 32])));
+        assert!(instructions_sysvar(&key));
+    }
+
+    #[test]
     fn absent_account_defaults_non_programs() {
         let key = Pubkey::from([4u8; 32]);
         let got = absent_account(&key, "account", &BTreeSet::new()).unwrap();
@@ -476,7 +644,10 @@ mod test {
         assert!(got.data.is_empty());
         let err = absent_account(&key, "account", &BTreeSet::from([key])).unwrap_err();
         assert!(err.to_string().contains("missing account"));
-        let err = absent_account(&key, "loaded account", &BTreeSet::new()).unwrap_err();
+        let got = absent_account(&key, "loaded account", &BTreeSet::new()).unwrap();
+        assert_eq!(got.lamports, 0);
+        assert!(got.data.is_empty());
+        let err = absent_account(&key, "loaded account", &BTreeSet::from([key])).unwrap_err();
         assert!(err.to_string().contains("missing loaded account"));
         let err = absent_account(&key, "lookup table", &BTreeSet::new()).unwrap_err();
         assert!(err.to_string().contains("missing lookup table"));
@@ -548,7 +719,7 @@ mod test {
         storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
         let id = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .insert_run(&tx_hash, &state_hash, false, false, None, "")
             .unwrap();
         let got = program_elf_hash(&storage, id, &program).unwrap();
         assert_eq!(got, storage.blob.hash(elf));
@@ -579,7 +750,7 @@ mod test {
         storage.db.insert_simulation(&tx_hash, &state_hash).unwrap();
         let id = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "")
+            .insert_run(&tx_hash, &state_hash, false, false, None, "")
             .unwrap();
         storage.db.insert_run_ix(id, 0).unwrap();
         storage

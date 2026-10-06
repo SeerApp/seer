@@ -48,12 +48,12 @@ mod tests {
         storage.db.insert_simulation(&hash, &hash).unwrap();
         let id1 = storage
             .db
-            .insert_run(&hash, &hash, "{}", None, "[]", "")
+            .insert_run(&hash, &hash, false, false, None, "")
             .unwrap();
         storage.db.finish_run(id1, None).unwrap();
         let id2 = storage
             .db
-            .insert_run(&hash, &hash, r#"{"slot":1}"#, Some(id1), "[]", "from:1")
+            .insert_run(&hash, &hash, true, false, Some(id1), "from:1")
             .unwrap();
         storage.db.finish_run(id2, Some("boom")).unwrap();
 
@@ -61,10 +61,13 @@ mod tests {
         let mut rows = runs.iter();
         let a = rows.next().unwrap();
         assert_eq!(a.id, id1);
-        assert_eq!(a.environment, "{}");
+        assert!(!a.sigverify);
+        assert!(!a.blockhash_check);
         assert_eq!(a.parent_id, None);
         let b = rows.next().unwrap();
         assert_eq!(b.id, id2);
+        assert!(b.sigverify);
+        assert!(!b.blockhash_check);
         assert_eq!(b.parent_id, Some(id1));
         assert_eq!(b.error.as_deref(), Some("boom"));
         assert!(rows.next().is_none());
@@ -108,32 +111,25 @@ mod tests {
         let network = "mainnet";
         assert!(storage
             .db
-            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
+            .insert_historical(&hash, &hash, network, &sig)
             .is_err());
         storage.db.insert_simulation(&hash, &hash).unwrap();
         storage
             .db
-            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
+            .insert_historical(&hash, &hash, network, &sig)
             .unwrap();
         storage
             .db
-            .insert_historical(&hash, &hash, network, r#"{"slot":9}"#, &sig)
+            .insert_historical(&hash, &hash, network, &sig)
             .unwrap();
         let id = storage
             .db
-            .insert_run(&hash, &hash, "{}", None, "[]", "sig:x")
+            .insert_run(&hash, &hash, false, false, None, "sig:x")
             .unwrap();
         storage.db.finish_run(id, None).unwrap();
         let child = storage
             .db
-            .insert_run(
-                &hash,
-                &hash,
-                r#"{"slot":1}"#,
-                Some(id),
-                r#"[{"account":"11111111111111111111111111111111","lamports":0}]"#,
-                "from:1",
-            )
+            .insert_run(&hash, &hash, false, true, Some(id), "from:1")
             .unwrap();
         storage.db.finish_run(child, Some("boom")).unwrap();
         let got = storage.db.get_run(child).unwrap();
@@ -143,11 +139,11 @@ mod tests {
         assert_eq!(storage.db.list_runs().unwrap().len(), 2);
         assert_eq!(
             storage.db.lookup_sig(&sig, Some(network)).unwrap(),
-            Some((hash, hash, r#"{"slot":9}"#.into()))
+            Some((hash, hash))
         );
         assert_eq!(
             storage.db.lookup_sig(&sig, None).unwrap(),
-            Some((hash, hash, r#"{"slot":9}"#.into()))
+            Some((hash, hash))
         );
         assert!(storage
             .db
@@ -211,7 +207,7 @@ mod tests {
         storage.db.insert_simulation(&hash, &hash).unwrap();
         let id = storage
             .db
-            .insert_run(&hash, &hash, "{}", None, "[]", "")
+            .insert_run(&hash, &hash, false, false, None, "")
             .unwrap();
         storage.db.insert_run_ix(id, 0).unwrap();
         let a = storage.blob.store(b"report-a").unwrap();

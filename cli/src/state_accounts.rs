@@ -35,24 +35,32 @@ pub struct Patch {
     pub executable: Option<bool>,
 }
 
-impl Patch {
-    pub fn json(&self) -> Result<String> {
+pub fn changes(before: &StateAccounts, after: &StateAccounts) -> serde_json::Value {
+    let mut out = Vec::new();
+    for (pk, next) in &after.0 {
+        let Some(prev) = before.0.get(pk) else {
+            continue;
+        };
         let mut obj = serde_json::Map::new();
-        obj.insert("account".into(), self.account.to_string().into());
-        if let Some(v) = self.lamports {
-            obj.insert("lamports".into(), v.into());
+        if prev.lamports != next.lamports {
+            obj.insert("lamports".into(), next.lamports.into());
         }
-        if let Some(v) = self.owner {
-            obj.insert("owner".into(), v.to_string().into());
+        if prev.owner != next.owner {
+            obj.insert("owner".into(), next.owner.to_string().into());
         }
-        if self.data.is_some() {
+        if prev.data != next.data {
             obj.insert("data".into(), true.into());
         }
-        if let Some(v) = self.executable {
-            obj.insert("executable".into(), v.into());
+        if prev.executable != next.executable {
+            obj.insert("executable".into(), next.executable.into());
         }
-        Ok(serde_json::to_string(&[serde_json::Value::Object(obj)])?)
+        if obj.is_empty() {
+            continue;
+        }
+        obj.insert("account".into(), pk.to_string().into());
+        out.push(serde_json::Value::Object(obj));
     }
+    serde_json::Value::Array(out)
 }
 
 impl StateAccounts {
@@ -281,6 +289,23 @@ mod test {
             .unwrap();
         assert_eq!(state.0[&pk].lamports, 0);
         assert_eq!(storage.blob.read(&state.0[&pk].data).unwrap(), new);
+        let before = StateAccounts(BTreeMap::from([(
+            pk,
+            StateAccount {
+                lamports: 1,
+                data,
+                owner: pk,
+                executable: false,
+            },
+        )]));
+        assert_eq!(
+            changes(&before, &state),
+            serde_json::json!([{
+                "account": pk.to_string(),
+                "data": true,
+                "lamports": 0,
+            }])
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 }

@@ -14,13 +14,14 @@ This `seer` is local replay (`run`, `show`, `ls`, `diff`, `program`, `regs`, `gl
 
 Work in run ids.
 
-1. `seer run --sig <SIGNATURE> --url <RPC>` — fetch the tx and accounts **now**. There is no historical chain state; the replay is current RPC accounts plus that message.
+1. `seer run --sig <SIGNATURE> --url <RPC>` — message and accounts from that RPC, as of now.
+   `seer run --sig <SIGNATURE> --url <RPC> --historical` — message from that RPC only. Accounts come from the local mainnet cache, or from `https://tx.seer.run`. A missing account fails the run. The runtime sysvar cache is part of that account state.
 2. `seer show <ID>` then `seer show <ID> --trace` — named instructions, logs, account diffs.
 3. `seer program <PUBKEY> --run <ID> --disasm` (or `--lifted`) — static listing / CFG. Prefer `--pc`, `--start`/`--end`, or `--contains`. Default `--head`. Do not dump the full ELF into chat.
 4. `seer regs <ID> --ix <N>` — r0–r10 at recorded steps. Window with `--start`/`--end` (order) or `--order`. Prefer `--head`. `--changed` and `--reg` shrink the dump. Do not dump the full instruction into chat.
 5. `seer glassbox <ID> --ix <N>` only if a branch is still unexplained. Prefer `--head`. Do not dump the full report into chat.
 
-Fork: `seer run --from <ID> --account <PUBKEY> --lamports 0` (and other patches).
+Fork: `seer run --from <ID> --account <PUBKEY> --lamports 0` (and other patches). `--sigverify` and `--blockhash-check` take `true` or `false`. They are stored on the run and copied by `--from`.
 
 If the default storage home errors on schema, pass `--storage-home`.
 

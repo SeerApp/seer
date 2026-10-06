@@ -2,28 +2,28 @@ use anyhow::{Context, Result};
 
 use super::{as32, Db, RunRow};
 
-const RUN_SELECT: &str = "SELECT id, transaction_blob_hash, state_blob_hash, run_at, environment, status, error, parent_id, patches, source FROM run";
+const RUN_SELECT: &str = "SELECT id, transaction_blob_hash, state_blob_hash, run_at, sigverify, blockhash_check, status, error, parent_id, source FROM run";
 
 impl Db {
     pub fn insert_run(
         &self,
         transaction_blob_hash: &[u8; 32],
         state_blob_hash: &[u8; 32],
-        environment: &str,
+        sigverify: bool,
+        blockhash_check: bool,
         parent_id: Option<i64>,
-        patches: &str,
         source: &str,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO run (transaction_blob_hash, state_blob_hash, run_at, run_in_dir, environment, status, parent_id, patches, source) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?8)",
+            "INSERT INTO run (transaction_blob_hash, state_blob_hash, run_at, run_in_dir, sigverify, blockhash_check, status, parent_id, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8)",
             rusqlite::params![
                 transaction_blob_hash.as_slice(),
                 state_blob_hash.as_slice(),
                 chrono::Utc::now().to_rfc3339(),
                 std::env::current_dir()?.display().to_string(),
-                environment,
+                i64::from(sigverify),
+                i64::from(blockhash_check),
                 parent_id,
-                patches,
                 source,
             ],
         )?;
@@ -58,11 +58,11 @@ type RawRun = (
     Vec<u8>,
     Vec<u8>,
     String,
-    String,
+    i64,
+    i64,
     String,
     Option<String>,
     Option<i64>,
-    String,
     String,
 );
 
@@ -87,11 +87,11 @@ fn convert_run(raw: RawRun) -> Result<RunRow> {
         transaction_blob_hash: as32(raw.1)?,
         state_blob_hash: as32(raw.2)?,
         run_at: raw.3,
-        environment: raw.4,
-        status: raw.5,
-        error: raw.6,
-        parent_id: raw.7,
-        patches: raw.8,
+        sigverify: raw.4 != 0,
+        blockhash_check: raw.5 != 0,
+        status: raw.6,
+        error: raw.7,
+        parent_id: raw.8,
         source: raw.9,
     })
 }

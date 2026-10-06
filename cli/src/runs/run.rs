@@ -1,11 +1,13 @@
-use anyhow::{bail, Context, Result};
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
 use solana_account::Account;
 use solana_address::Address;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use storage::Storage;
 
-use crate::environment::Environment;
+use super::source::Source;
 use crate::state_accounts::{Patch, StateAccounts};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,7 +16,11 @@ pub struct Request {
     pub signature: Option<Signature>,
     pub from: Option<i64>,
     pub url: Option<String>,
-    pub environment: Option<Environment>,
+    pub historical: bool,
+    pub zst: Option<std::path::PathBuf>,
+    pub server_url: String,
+    pub sigverify: Option<bool>,
+    pub blockhash_check: Option<bool>,
     pub patch: Option<Patch>,
 }
 
@@ -22,38 +28,94 @@ struct Resolved {
     tx_hash: [u8; 32],
     state_hash: [u8; 32],
     parent_id: Option<i64>,
-    environment: String,
-    source: String,
+    sigverify: bool,
+    blockhash_check: bool,
+    source: Source,
 }
 
-pub fn execute(storage: &Storage, req: Request) -> Result<i64> {
-    let mut got = resolve(storage, &req)?;
+pub fn execute(storage: Arc<Storage>, req: Request) -> Result<i64> {
+    let mut got = resolve(&storage, &req)?;
     if let Some(patch) = &req.patch {
         let mut state = StateAccounts::from_bytes(&storage.blob.read(&got.state_hash)?)?;
         state.patch(&storage.blob, patch)?;
-        got.state_hash = super::store::store_state(storage, &state)?;
+        got.state_hash = super::store::store_state(&storage, &state)?;
     }
-    let environment = match &req.environment {
-        Some(env) => merge_environment(&got.environment, env)?,
-        None => got.environment,
-    };
-    let patches = match &req.patch {
-        Some(patch) => patch.json()?,
-        None => "[]".into(),
-    };
     run_simulation(
         storage,
         &got.tx_hash,
         &got.state_hash,
-        &environment,
+        req.sigverify.unwrap_or(got.sigverify),
+        req.blockhash_check.unwrap_or(got.blockhash_check),
         got.parent_id,
-        &patches,
-        &got.source,
+        &got.source.to_string(),
     )
 }
 
+fn resolve_historical(storage: &Storage, req: &Request, signature: &Signature) -> Result<Resolved> {
+    let sig = signature_bytes(signature);
+    if let Some((tx_hash, state_hash)) = storage.db.lookup_sig(&sig, Some("mainnet"))? {
+        return Ok(Resolved {
+            tx_hash,
+            state_hash,
+            parent_id: None,
+            sigverify: false,
+            blockhash_check: false,
+            source: Source::Sig {
+                signature: *signature,
+                historical: true,
+            },
+        });
+    }
+    let url = req.url.as_deref().context("--sig requires --url")?;
+    let (tx, _) = crate::network::get_transaction(url, signature)?;
+    let captured = crate::captures::fetch_capture(&req.server_url, signature)?;
+    let tx_hash = super::store::store_transaction(storage, &tx)?;
+    let state_hash = super::store::store_captured_accounts(storage, &tx, &captured)?;
+    super::store::store_simulation(storage, &tx_hash, &state_hash)?;
+    storage
+        .db
+        .insert_historical(&tx_hash, &state_hash, "mainnet", &sig)?;
+    Ok(Resolved {
+        tx_hash,
+        state_hash,
+        parent_id: None,
+        sigverify: false,
+        blockhash_check: false,
+        source: Source::Sig {
+            signature: *signature,
+            historical: true,
+        },
+    })
+}
+
+fn signature_bytes(signature: &Signature) -> [u8; 64] {
+    let bytes: &[u8] = signature.as_ref();
+    bytes.try_into().expect("ed25519 signature is 64 bytes")
+}
+
+fn resolve_zst(storage: &Storage, req: &Request) -> Result<Resolved> {
+    let path = req.zst.as_deref().context("--zst")?;
+    let url = req.url.as_deref().context("--zst requires --url")?;
+    let (signature, captured) = crate::captures::load_zst(path)?;
+    let (tx, _) = crate::network::get_transaction(url, &signature)?;
+    Ok(Resolved {
+        tx_hash: super::store::store_transaction(storage, &tx)?,
+        state_hash: super::store::store_captured_accounts(storage, &tx, &captured)?,
+        parent_id: None,
+        sigverify: false,
+        blockhash_check: false,
+        source: Source::Zst,
+    })
+}
+
 fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
+    if req.zst.is_some() {
+        return resolve_zst(storage, req);
+    }
     if let Some(signature) = &req.signature {
+        if req.historical {
+            return resolve_historical(storage, req, signature);
+        }
         let url = req.url.as_deref().context("--sig requires --url")?;
         let (tx, loaded) = crate::network::get_transaction(url, signature)?;
         return Ok(Resolved {
@@ -65,8 +127,12 @@ fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
                 loaded.as_ref(),
             )?,
             parent_id: None,
-            environment: "{}".into(),
-            source: format!("sig:{signature}"),
+            sigverify: false,
+            blockhash_check: false,
+            source: Source::Sig {
+                signature: *signature,
+                historical: false,
+            },
         });
     }
     if let Some(from) = req.from {
@@ -76,15 +142,16 @@ fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
             None => parent.transaction_blob_hash,
         };
         let source = if req.tx.is_some() {
-            format!("tx,from:{from}")
+            Source::TxFrom(from)
         } else {
-            format!("from:{from}")
+            Source::From(from)
         };
         return Ok(Resolved {
             tx_hash,
             state_hash: parent.state_blob_hash,
             parent_id: Some(from),
-            environment: parent.environment,
+            sigverify: parent.sigverify,
+            blockhash_check: parent.blockhash_check,
             source,
         });
     }
@@ -94,25 +161,27 @@ fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
         tx_hash: super::store::store_transaction(storage, tx)?,
         state_hash: super::store::store_transaction_accounts(storage, tx, url, None)?,
         parent_id: None,
-        environment: "{}".into(),
-        source: "tx".into(),
+        sigverify: false,
+        blockhash_check: false,
+        source: Source::Tx,
     })
 }
 
 fn run_simulation(
-    storage: &Storage,
+    storage: Arc<Storage>,
     tx_hash: &[u8; 32],
     state_hash: &[u8; 32],
-    environment: &str,
+    sigverify: bool,
+    blockhash_check: bool,
     parent_id: Option<i64>,
-    patches: &str,
     source: &str,
 ) -> Result<i64> {
-    super::store::store_simulation(storage, tx_hash, state_hash)?;
+    super::store::store_simulation(&storage, tx_hash, state_hash)?;
     let tx: VersionedTransaction = bincode::deserialize(&storage.blob.read(tx_hash)?)?;
     let state = StateAccounts::from_bytes(&storage.blob.read(state_hash)?)?;
-    let parsed: Environment = serde_json::from_str(environment)?;
-    let mut svm = parsed.apply();
+    let mut svm = litesvm::LiteSVM::new()
+        .with_sigverify(sigverify)
+        .with_blockhash_check(blockhash_check);
     for executable in [false, true] {
         for (pubkey, account) in &state.0 {
             if account.executable != executable {
@@ -132,17 +201,21 @@ fn run_simulation(
             )?;
         }
     }
-    parsed.airdrop(&mut svm)?;
     let fee_payer = tx
         .message
         .static_account_keys()
         .first()
         .context("transaction has no account keys")?;
-    let run_id =
-        storage
-            .db
-            .insert_run(tx_hash, state_hash, environment, parent_id, patches, source)?;
-    trace::init(fee_payer.to_bytes(), storage)?;
+    let run_id = storage.db.insert_run(
+        tx_hash,
+        state_hash,
+        sigverify,
+        blockhash_check,
+        parent_id,
+        source,
+    )?;
+    let drops_before = trace::dropped_hooks();
+    trace::init(fee_payer.to_bytes(), Arc::clone(&storage))?;
     trace::set(run_id);
     let error = svm
         .send_transaction(tx)
@@ -150,42 +223,23 @@ fn run_simulation(
         .map(|failed| failed.err.to_string());
     trace::unset();
     storage.db.finish_run(run_id, error.as_deref())?;
-    Ok(run_id)
-}
-
-fn merge_environment(parent: &str, env: &Environment) -> Result<String> {
-    let mut base: serde_json::Value =
-        serde_json::from_str(parent).unwrap_or_else(|_| serde_json::json!({}));
-    let serde_json::Value::Object(over) = serde_json::to_value(env)? else {
-        bail!("environment must be an object");
-    };
-    let serde_json::Value::Object(base) = &mut base else {
-        return serde_json::to_string(&over).map_err(Into::into);
-    };
-    for (k, v) in over {
-        base.insert(k, v);
+    let n = trace::dropped_hooks().saturating_sub(drops_before);
+    if n > 0 {
+        trace::seer_warn!("dropped_hooks {n}");
     }
-    Ok(serde_json::to_string(&base)?)
+    match error.as_deref() {
+        Some(err) => trace::seer_warn!("run {run_id} {err}"),
+        None => trace::seer_warn!("run {run_id}"),
+    }
+    Ok(run_id)
 }
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::*;
     use solana_pubkey::Pubkey;
-
-    #[test]
-    fn merge_environment_keeps_parent_keys() {
-        let parent = r#"{"slot":1,"sigverify":true}"#;
-        let env = Environment {
-            epoch: Some(2),
-            ..Environment::default()
-        };
-        let got: serde_json::Value =
-            serde_json::from_str(&merge_environment(parent, &env).unwrap()).unwrap();
-        assert_eq!(got["slot"], 1);
-        assert_eq!(got["epoch"], 2);
-        assert_eq!(got["sigverify"], true);
-    }
 
     #[test]
     fn execute_from_patches_parent() {
@@ -197,7 +251,7 @@ mod test {
                 .unwrap()
                 .as_nanos()
         ));
-        let storage = storage::Storage::open_at(&dir).unwrap();
+        let storage = Arc::new(storage::Storage::open_at(&dir).unwrap());
         let payer = Pubkey::from([1u8; 32]);
         let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(
             solana_message::Message::new(&[], Some(&payer)),
@@ -217,17 +271,28 @@ mod test {
         crate::runs::store::store_simulation(&storage, &tx_hash, &state_hash).unwrap();
         let parent = storage
             .db
-            .insert_run(&tx_hash, &state_hash, "{}", None, "[]", "tx")
+            .insert_run(
+                &tx_hash,
+                &state_hash,
+                true,
+                false,
+                None,
+                &Source::Tx.to_string(),
+            )
             .unwrap();
         storage.db.finish_run(parent, None).unwrap();
         let child = execute(
-            &storage,
+            Arc::clone(&storage),
             Request {
                 tx: None,
                 signature: None,
                 from: Some(parent),
                 url: None,
-                environment: None,
+                historical: false,
+                zst: None,
+                server_url: crate::captures::CAPTURES_URL.into(),
+                sigverify: None,
+                blockhash_check: None,
                 patch: Some(Patch {
                     account: payer,
                     lamports: Some(0),
@@ -239,13 +304,40 @@ mod test {
         )
         .unwrap();
         let row = storage.db.get_run(child).unwrap();
+        assert!(row.sigverify);
+        assert!(!row.blockhash_check);
         assert_eq!(row.parent_id, Some(parent));
-        assert_eq!(row.source, format!("from:{parent}"));
-        assert!(row.patches.contains("lamports"));
+        assert_eq!(row.source, Source::From(parent).to_string());
         assert_ne!(row.state_blob_hash, state_hash);
         let patched =
             StateAccounts::from_bytes(&storage.blob.read(&row.state_blob_hash).unwrap()).unwrap();
         assert_eq!(patched.0[&payer].lamports, 0);
+        assert_eq!(
+            crate::state_accounts::changes(&state, &patched),
+            serde_json::json!([{
+                "account": payer.to_string(),
+                "lamports": 0,
+            }])
+        );
+        let overridden = execute(
+            Arc::clone(&storage),
+            Request {
+                tx: None,
+                signature: None,
+                from: Some(parent),
+                url: None,
+                historical: false,
+                zst: None,
+                server_url: crate::captures::CAPTURES_URL.into(),
+                sigverify: Some(false),
+                blockhash_check: Some(true),
+                patch: None,
+            },
+        )
+        .unwrap();
+        let row = storage.db.get_run(overridden).unwrap();
+        assert!(!row.sigverify);
+        assert!(row.blockhash_check);
         std::fs::remove_dir_all(dir).ok();
     }
 }

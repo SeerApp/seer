@@ -17,7 +17,6 @@ solana-instruction-error = { version = "2.0.0", features = ["serde"] }
 hooks = { workspace = true }
 gimli = "0.32.3"
 rustc-demangle = "0.1.26"
-anyhow = "1.0.99"
 hex = "0.4.3"
 object = "0.38.0"
 serde = { version = "1.0.219", features = ["derive"] }
@@ -32,8 +31,8 @@ log = "0.4.27"
 solana-account = { version = ">=4.3.1,<4.4.0", features = ["serde"] }
 path-clean = "1.0.1"
 serde_with = "3.16.1"
-chrono = "0.4.42"
 pathdiff = "0.2"
+logger = { path = "../logger" }
 thiserror = "2.0.18"
 solana-loader-v3-interface = { version = "8.0.1", features = ["serde"] }
 storage = { path = "../storage" }

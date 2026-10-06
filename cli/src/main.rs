@@ -1,10 +1,11 @@
+mod captures;
 mod cli;
-mod environment;
 mod network;
 mod print;
 mod report;
 mod runs;
 mod state_accounts;
+mod sysvars;
 
 fn main() {
     trace::install_vm_hooks();

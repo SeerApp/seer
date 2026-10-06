@@ -3,19 +3,16 @@ pub mod contexts;
 pub mod dwarf;
 pub mod entrypoint_lookup;
 pub mod errors;
-pub mod failure;
-pub mod logger;
-pub mod meta;
 pub mod path_resolver;
 pub mod program_elf;
 pub mod program_manager;
-pub mod register_trace;
 pub mod sources;
 pub mod step_mirror;
 pub mod target_reader;
 pub mod tree;
 
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::{env, path::PathBuf};
 
 use solana_pubkey::Pubkey;
@@ -23,14 +20,15 @@ use storage::Storage;
 
 use crate::contexts::seer::SeerContext;
 use crate::errors::IrrecoverableError;
-pub use crate::failure::{Failure, FailureKind};
-pub use crate::logger::{
-    init_seer_logger, seer_logger, SeerLogFormat, SeerLogger, SeerLoggerLevel,
+pub use logger::{
+    init_seer_logger, seer_debug, seer_info, seer_logger, seer_warn, SeerLogFormat, SeerLogger,
+    SeerLoggerLevel,
 };
 
 pub struct SeerSingleton {
     context: Option<SeerContext>,
     active: bool,
+    dropped_hooks: u64,
 }
 
 impl Default for SeerSingleton {
@@ -44,6 +42,7 @@ impl SeerSingleton {
         Self {
             context: None,
             active: false,
+            dropped_hooks: 0,
         }
     }
 
@@ -76,7 +75,7 @@ thread_local! {
     static SEER: RefCell<SeerSingleton> = RefCell::new(SeerSingleton::new());
 }
 
-pub fn init(authority: [u8; 32], storage: &Storage) -> Result<(), IrrecoverableError> {
+pub fn init(authority: [u8; 32], storage: Arc<Storage>) -> Result<(), IrrecoverableError> {
     init_seer_logger(SeerLogger::from_env());
 
     let ctx = SeerContext::new(Pubkey::new_from_array(authority), storage)?;
@@ -98,9 +97,15 @@ where
         if seer.is_active() {
             if let Some(ctx) = &mut seer.context {
                 f(ctx);
+                return;
             }
         }
+        seer.dropped_hooks = seer.dropped_hooks.saturating_add(1);
     });
+}
+
+pub fn dropped_hooks() -> u64 {
+    SEER.with(|seer| seer.borrow().dropped_hooks)
 }
 
 pub fn set(run_id: i64) {
@@ -116,28 +121,6 @@ pub fn unset() {
         let mut seer = seer.borrow_mut();
         seer.unset();
     })
-}
-
-/// Record a tx-scoped execution failure if the active tx does not already have one.
-pub fn record_execution_failure_if_empty(
-    code: impl Into<String>,
-    message: impl Into<String>,
-    component: impl Into<String>,
-) {
-    let code = code.into();
-    let message = message.into();
-    let component = component.into();
-    get(|ctx| {
-        ctx.record_execution_failure_if_empty(&code, message.clone(), &component);
-    });
-}
-
-/// Append a warning to the active tx's in-memory notes. No-op if no tx is active.
-pub fn push_warning(warning: impl Into<String>) {
-    let warning = warning.into();
-    get(|ctx| {
-        ctx.push_warning(warning.clone());
-    });
 }
 
 pub fn get_cwd() -> PathBuf {
@@ -156,4 +139,40 @@ pub fn install_vm_hooks() {
         log: |msg| get(|s| s.log(msg)),
         step: |pc, mem, reg| get(|s| s.step(pc, mem, reg)),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dropped_hooks, get, seer_warn};
+    use logger::{init_seer_logger, start_capture, take_capture, SeerLogger, SeerLoggerLevel};
+
+    #[test]
+    fn inactive_get_counts_a_drop() {
+        let before = dropped_hooks();
+        let mut ran = false;
+        get(|_| ran = true);
+        assert!(!ran);
+        assert_eq!(dropped_hooks(), before.saturating_add(1));
+    }
+
+    #[test]
+    fn inactive_get_warns_once_and_stays_silent_at_zero() {
+        let silent = SeerLogger::from_verbosity(0);
+        assert!(!silent.enabled(SeerLoggerLevel::Warn));
+
+        init_seer_logger(SeerLogger::from_verbosity(1));
+        start_capture();
+        let before = dropped_hooks();
+        let mut ran = false;
+        get(|_| ran = true);
+        assert!(!ran);
+        assert_eq!(dropped_hooks(), before.saturating_add(1));
+        let n = dropped_hooks().saturating_sub(before);
+        if n > 0 {
+            seer_warn!("dropped_hooks {n}");
+        }
+        let lines = take_capture();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("dropped_hooks 1"), "{lines:?}");
+    }
 }

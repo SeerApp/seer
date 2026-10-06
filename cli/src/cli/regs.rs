@@ -2,8 +2,9 @@ use anyhow::{bail, Result};
 use solana_pubkey::Pubkey;
 use storage::Storage;
 
+use super::args::Command;
 use super::format::slice_skip_head_tail;
-use super::{emit, Command};
+use super::present::emit;
 
 pub(super) fn cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
     let Command::Regs {

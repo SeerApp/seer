@@ -97,6 +97,15 @@ impl SymbolicState {
         }
     }
 
+    pub fn mov32_from_reg(&mut self, dst: usize, src: usize) {
+        self.registers.copy(dst, src);
+        let Some(v) = self.registers[dst].clone() else {
+            return;
+        };
+        let ext = low32(&v.bv, false);
+        self.registers[dst] = Some(v.with_bv(crate::rewrite::alu(&ext, &self.ledger.load_defs)));
+    }
+
     pub fn alu(&mut self, op: BinOp, dst: usize, src: &Operand, bits32: bool, pre: &[u64; 11]) {
         let Some((dst_sym, src_sym)) = self.registers.operands(dst, src) else {
             self.registers.clear(dst);
@@ -112,7 +121,8 @@ impl SymbolicState {
             .unwrap_or_else(|| BV::from_u64(src.concrete(pre), WORD_BITS));
         let mut r = op.apply(&a, &b);
         if bits32 {
-            r = truncate32(r);
+            let sign = matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul);
+            r = low32(&r, sign);
         }
         self.registers[dst] = Some(SymVal::combine(
             dst_sym.as_ref(),
@@ -130,7 +140,7 @@ impl SymbolicState {
         }
         let mut r = v.bv.bvneg();
         if bits32 {
-            r = truncate32(r);
+            r = low32(&r, false);
         }
         self.registers[dst] = Some(v.with_bv(crate::rewrite::alu(&r, &self.ledger.load_defs)));
     }
@@ -214,15 +224,35 @@ impl RelOp {
     }
 }
 
-fn truncate32(v: BV) -> BV {
-    v.extract(31, 0).zero_ext(32)
+fn low32(v: &BV, sign: bool) -> BV {
+    let lo = v.extract(31, 0);
+    if sign {
+        lo.sign_ext(32)
+    } else {
+        lo.zero_ext(32)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::regions::INPUT_BASE;
-    use z3::ast::BV;
+    use z3::ast::{Ast, BV};
+
+    #[test]
+    fn mov32_clears_the_high_half() {
+        let mut state = SymbolicState::new();
+        state.registers[1] = Some(SymVal::env(BV::from_u64(0x1111_1111_8000_0001, 64)));
+        state.mov32_from_reg(0, 1);
+        let got = state.registers[0].as_ref().unwrap().bv.simplify().as_u64();
+        assert_eq!(got, Some(0x0000_0000_8000_0001));
+    }
+
+    #[test]
+    fn add32_sign_extends_bit_31() {
+        let wide = low32(&BV::from_u64(0x0000_0000_8000_0000, 64), true);
+        assert_eq!(wide.simplify().as_u64(), Some(0xffff_ffff_8000_0000));
+    }
 
     #[test]
     fn mint_names_num_accounts_only_lineage() {

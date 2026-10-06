@@ -82,10 +82,10 @@ impl DwarfManager {
             };
 
             let runtime_path = if resolved_path.is_absolute() {
-                if let Ok(runtime_path) = path_resolver.dwarf_path_to_runtime_path(&resolved_path) {
-                    runtime_path
-                } else {
-                    continue;
+                match path_resolver.dwarf_path_to_runtime_path(&resolved_path) {
+                    Ok(runtime_path) => runtime_path,
+                    Err(IrrecoverableError::DwarfPath { .. }) => continue,
+                    Err(err) => panic!("dwarf path resolution failed: {err}"),
                 }
             } else {
                 path_resolver.relative_path_to_runtime_path(&resolved_path)

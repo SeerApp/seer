@@ -1,7 +1,8 @@
 use anyhow::{bail, Result};
 use storage::Storage;
 
-use super::{emit, Command};
+use super::args::Command;
+use super::present::emit;
 
 pub(super) fn cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
     let Command::Glassbox {

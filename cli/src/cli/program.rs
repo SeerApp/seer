@@ -1,11 +1,12 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use solana_pubkey::Pubkey;
 use storage::{ProgramChunk, Storage};
 
 use crate::state_accounts::StateAccounts;
 
+use super::args::{parse_pubkey, Command};
 use super::format::slice_skip_head_tail;
-use super::parse_pubkey;
+use super::present::emit;
 
 pub(super) struct ProgramRequest {
     pub hash: [u8; 32],
@@ -17,6 +18,56 @@ pub(super) struct ProgramRequest {
     pub end: Option<u64>,
     pub pc: Option<u64>,
     pub contains: Option<String>,
+}
+
+pub(super) fn cmd(storage: &Storage, cmd: Command, short: bool) -> Result<()> {
+    let Command::Program {
+        target,
+        run,
+        disasm,
+        skip,
+        head,
+        tail,
+        start,
+        end,
+        pc,
+        contains,
+    } = cmd
+    else {
+        bail!("internal: program");
+    };
+    let hash = resolve_hash(storage, target.as_deref(), run)?;
+    let value = emit_body(
+        storage,
+        &ProgramRequest {
+            hash,
+            disasm,
+            skip,
+            head,
+            tail,
+            start,
+            end,
+            pc,
+            contains: contains.clone(),
+        },
+    )?;
+    let flag = if disasm { "--disasm" } else { "--lifted" };
+    let mut next = format!("seer program {} {flag}", hex::encode(hash));
+    if let Some(pc) = pc {
+        next.push_str(&format!(" --pc {pc}"));
+    }
+    if let Some(contains) = contains {
+        next.push_str(&format!(" --contains {contains}"));
+    }
+    if head != 0 && tail.is_none() {
+        next.push_str(&format!(
+            " --skip {} --head {head}",
+            skip.saturating_add(head)
+        ));
+    } else {
+        next = format!("seer show {}", run.unwrap_or(1));
+    }
+    emit(value, &[next], short)
 }
 
 pub(super) fn resolve_hash(

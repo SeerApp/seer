@@ -79,9 +79,9 @@ impl Db {
     }
 
     pub fn glassbox_blob_hash(&self, run_id: i64, ix: i64) -> Result<Option<[u8; 32]>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT glassbox_blob_hash FROM glassbox WHERE run_id = ?1 AND ix = ?2",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT glassbox_blob_hash FROM glassbox WHERE run_id = ?1 AND ix = ?2")?;
         let mut rows = stmt.query(rusqlite::params![run_id, ix])?;
         let Some(row) = rows.next()? else {
             return Ok(None);
