@@ -94,6 +94,8 @@ struct RunCli {
         help = "Accounts from the signature's historical state. Requires --sig and --url"
     )]
     historical: bool,
+    #[arg(long, hide = true, value_name = "FILE")]
+    zst: Option<std::path::PathBuf>,
     #[arg(long, hide = true, default_value = crate::captures::CAPTURES_URL)]
     server_url: String,
     #[arg(
@@ -542,7 +544,15 @@ impl TryFrom<RunCli> for Request {
         if args.historical && args.sig.is_none() {
             bail!("--historical requires --sig");
         }
-        if args.sig.is_none() && args.tx.is_none() && args.from.is_none() {
+        if args.zst.is_some()
+            && (args.sig.is_some() || args.tx.is_some() || args.from.is_some() || args.historical)
+        {
+            bail!("--zst cannot be combined with --sig, --tx, --from, or --historical");
+        }
+        if args.zst.is_some() && args.url.is_none() {
+            bail!("--zst requires --url");
+        }
+        if args.sig.is_none() && args.tx.is_none() && args.from.is_none() && args.zst.is_none() {
             bail!("need --sig, --tx, or --from");
         }
         if args.account.is_none()
@@ -589,6 +599,7 @@ impl TryFrom<RunCli> for Request {
             from: args.from,
             url: args.url,
             historical: args.historical,
+            zst: args.zst,
             server_url: args.server_url,
             sigverify: args.sigverify,
             blockhash_check: args.blockhash_check,

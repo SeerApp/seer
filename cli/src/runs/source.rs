@@ -11,6 +11,7 @@ pub(super) enum Source {
         historical: bool,
     },
     Tx,
+    Zst,
     From(i64),
     TxFrom(i64),
 }
@@ -27,6 +28,7 @@ impl fmt::Display for Source {
                 historical: true,
             } => write!(f, "sig:{signature},historical"),
             Source::Tx => write!(f, "tx"),
+            Source::Zst => write!(f, "zst"),
             Source::From(id) => write!(f, "from:{id}"),
             Source::TxFrom(id) => write!(f, "tx,from:{id}"),
         }
@@ -55,6 +57,9 @@ impl FromStr for Source {
         }
         if text == "tx" {
             return Ok(Self::Tx);
+        }
+        if text == "zst" {
+            return Ok(Self::Zst);
         }
         if let Some(raw) = text.strip_prefix("from:") {
             return Ok(Self::From(run_id(text, raw)?));
@@ -90,6 +95,7 @@ mod test {
                 historical: true,
             },
             Source::Tx,
+            Source::Zst,
             Source::From(7),
             Source::TxFrom(7),
         ];

@@ -4019,6 +4019,7 @@ dependencies = [
  "hex",
  "idl",
  "litesvm",
+ "prost",
  "rusqlite",
  "rustls",
  "seer_protos_community_neoeinstein-prost",
@@ -4059,6 +4060,7 @@ dependencies = [
  "tonic",
  "trace",
  "wincode",
+ "zstd",
 ]
 
 [[package]]

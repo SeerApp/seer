@@ -17,6 +17,7 @@ pub struct Request {
     pub from: Option<i64>,
     pub url: Option<String>,
     pub historical: bool,
+    pub zst: Option<std::path::PathBuf>,
     pub server_url: String,
     pub sigverify: Option<bool>,
     pub blockhash_check: Option<bool>,
@@ -92,7 +93,25 @@ fn signature_bytes(signature: &Signature) -> [u8; 64] {
     bytes.try_into().expect("ed25519 signature is 64 bytes")
 }
 
+fn resolve_zst(storage: &Storage, req: &Request) -> Result<Resolved> {
+    let path = req.zst.as_deref().context("--zst")?;
+    let url = req.url.as_deref().context("--zst requires --url")?;
+    let (signature, captured) = crate::captures::load_zst(path)?;
+    let (tx, _) = crate::network::get_transaction(url, &signature)?;
+    Ok(Resolved {
+        tx_hash: super::store::store_transaction(storage, &tx)?,
+        state_hash: super::store::store_captured_accounts(storage, &tx, &captured)?,
+        parent_id: None,
+        sigverify: false,
+        blockhash_check: false,
+        source: Source::Zst,
+    })
+}
+
 fn resolve(storage: &Storage, req: &Request) -> Result<Resolved> {
+    if req.zst.is_some() {
+        return resolve_zst(storage, req);
+    }
     if let Some(signature) = &req.signature {
         if req.historical {
             return resolve_historical(storage, req, signature);
@@ -270,6 +289,7 @@ mod test {
                 from: Some(parent),
                 url: None,
                 historical: false,
+                zst: None,
                 server_url: crate::captures::CAPTURES_URL.into(),
                 sigverify: None,
                 blockhash_check: None,
@@ -307,6 +327,7 @@ mod test {
                 from: Some(parent),
                 url: None,
                 historical: false,
+                zst: None,
                 server_url: crate::captures::CAPTURES_URL.into(),
                 sigverify: Some(false),
                 blockhash_check: Some(true),

@@ -80,6 +80,7 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     let help = Cli::command().render_help().to_string();
     assert!(help.contains("--historical"), "{help}");
     assert!(!help.contains("server-url"), "{help}");
+    assert!(!help.contains("--zst"), "{help}");
     let mut cmd = Cli::command();
     let run_help = cmd
         .find_subcommand_mut("run")
@@ -93,6 +94,7 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     );
     assert!(run_help.contains("--sigverify"), "{run_help}");
     assert!(run_help.contains("--blockhash-check"), "{run_help}");
+    assert!(!run_help.contains("--zst"), "{run_help}");
     let Command::Run(historical) = parse_from([
         "seer",
         "run",
@@ -118,6 +120,40 @@ fn parses_run_sig_tx_from_show_ls_diff() {
     assert_eq!(latest.server_url, crate::captures::CAPTURES_URL);
     assert!(parse_from(["seer", "run", "--sig", &sig, "--historical"]).is_err());
     assert!(parse_from(["seer", "run", "--historical", "--from", "1"]).is_err());
+    let Command::Run(from_zst) = parse_from([
+        "seer",
+        "run",
+        "--zst",
+        "capture.zst",
+        "--url",
+        "http://rpc.test",
+    ])
+    .unwrap()
+    else {
+        panic!("expected run --zst");
+    };
+    assert_eq!(
+        from_zst.zst.as_deref(),
+        Some(std::path::Path::new("capture.zst"))
+    );
+    assert_eq!(from_zst.url.as_deref(), Some("http://rpc.test"));
+    assert!(from_zst.signature.is_none());
+    assert!(!from_zst.historical);
+    assert!(parse_from(["seer", "run", "--zst", "capture.zst"]).is_err());
+    assert!(parse_from([
+        "seer", "run", "--zst", "capture.zst", "--url", "http://rpc.test", "--sig", &sig,
+    ])
+    .is_err());
+    assert!(parse_from([
+        "seer",
+        "run",
+        "--zst",
+        "capture.zst",
+        "--url",
+        "http://rpc.test",
+        "--historical",
+    ])
+    .is_err());
 
     let pk = "11111111111111111111111111111111";
     let Command::Run(Request { from, patch, .. }) = parse_from([
