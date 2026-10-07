@@ -32,13 +32,16 @@ pub fn run() -> Result<()> {
     if let Command::Skill { install } = cmd {
         return skill::cmd(install, short);
     }
+    if let Command::Login { api_key } = cmd {
+        return crate::auth::login_command(api_key);
+    }
     let home = match storage_home {
         Some(path) => path,
         None => storage::default_root()?,
     };
     let storage = Arc::new(Storage::open_at(home)?);
     match cmd {
-        Command::Skill { .. } => unreachable!(),
+        Command::Skill { .. } | Command::Login { .. } => unreachable!(),
         Command::Run(req) => {
             let id = execute(Arc::clone(&storage), req)?;
             emit_run(&storage, id, short)

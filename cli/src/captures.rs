@@ -95,9 +95,20 @@ fn captured_account(state: &AccountState) -> Result<(Pubkey, Option<Account>)> {
 fn capture_status(signature: &Signature, status: Status) -> anyhow::Error {
     if status.code() == tonic::Code::NotFound {
         anyhow::anyhow!("transaction {signature} was not captured")
+    } else if is_auth_failure(&status) {
+        anyhow::anyhow!(crate::auth::AUTH_FAILED)
     } else {
         anyhow::Error::from(status)
     }
+}
+
+fn is_auth_failure(status: &Status) -> bool {
+    if status.code() == tonic::Code::Unauthenticated {
+        return true;
+    }
+    let msg = status.message();
+    msg.contains("invalid compression flag")
+        && (msg.contains("401") || msg.contains("Unauthorized"))
 }
 
 struct Bearer {
@@ -126,15 +137,12 @@ async fn connect(
             .context("captures tls")?;
     }
     let channel = endpoint.connect().await.context("connect to captures")?;
-    let token = std::env::var("SEER_API_KEY")
-        .ok()
-        .filter(|key| !key.is_empty());
-    let token = token
-        .map(|key| format!("Bearer {key}").parse().context("SEER_API_KEY"))
-        .transpose()?;
+    let token = format!("Bearer {}", crate::auth::load_api_key()?)
+        .parse()
+        .context("API key")?;
     Ok(CapturesServiceClient::with_interceptor(
         channel,
-        Bearer { token },
+        Bearer { token: Some(token) },
     ))
 }
 
@@ -177,5 +185,20 @@ mod test {
         assert_eq!(account.lamports, 5);
         assert_eq!(account.data, vec![1, 2, 3]);
         assert_eq!(account.rent_epoch, 1);
+    }
+
+    #[test]
+    fn unauthorized_capture_tells_the_user_to_create_a_key_at_seer_run() {
+        let signature = Signature::from([1u8; 64]);
+        let http = Status::internal(
+            "protocol error: received message with invalid compression flag: 85 (valid flags are 0 and 1) while receiving response with status: 401 Unauthorized",
+        );
+        let grpc = Status::unauthenticated("nope");
+        for status in [http, grpc] {
+            let msg = capture_status(&signature, status).to_string();
+            assert!(msg.contains("seer.run"), "{msg}");
+            assert!(msg.contains("seer login"), "{msg}");
+            assert!(!msg.contains("compression flag"), "{msg}");
+        }
     }
 }

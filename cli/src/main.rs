@@ -1,3 +1,4 @@
+mod auth;
 mod captures;
 mod cli;
 mod network;

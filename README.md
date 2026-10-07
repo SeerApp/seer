@@ -55,7 +55,7 @@ Live accounts, as that RPC sees them now:
 seer run --sig <SIGNATURE> --url https://api.mainnet-beta.solana.com
 ```
 
-Accounts from the signature's historical state. The RPC is used only for the transaction message. Accounts come from a local mainnet cache, or from `https://tx.seer.run`. A missing account fails the run.
+Accounts from the signature's historical state. The RPC is used only for the transaction message. Accounts come from a local mainnet cache, or from `https://tx.seer.run`. Create an API key at seer.run, then `seer login` or set `SEER_API_KEY`. A missing account fails the run.
 
 ```
 seer run --sig <SIGNATURE> --url https://api.mainnet-beta.solana.com --historical
