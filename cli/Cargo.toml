@@ -10,6 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.99"
+directories = "6.0.0"
+rpassword = "7.4.0"
 prost = "0.14.4"
 tokio = { version = "1", features = ["rt", "macros", "time", "net"] }
 zstd = "0.13.3"

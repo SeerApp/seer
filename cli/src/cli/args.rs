@@ -11,6 +11,7 @@ use crate::state_accounts::Patch;
 const ORIENT: &str = "\
 Seer replays Solana transactions locally. You work in runs.
 
+  seer login <API_KEY>
   seer run --sig <SIGNATURE> --url <RPC>
   seer run --sig <SIGNATURE> --url <RPC> --historical
   seer show 1
@@ -54,6 +55,8 @@ enum CliCommand {
     Regs(RegsCli),
     Glassbox(GlassboxCli),
     Skill(SkillCli),
+    #[command(about = "Save an API key from seer.run")]
+    Login(LoginCli),
 }
 
 #[derive(Parser, Debug)]
@@ -69,6 +72,12 @@ struct SkillCli {
 enum SkillCmd {
     #[command(about = "Write SKILL.md into user-level skill directories")]
     Install,
+}
+
+#[derive(Parser, Debug)]
+struct LoginCli {
+    #[arg(value_name = "API_KEY", help = "API key. Omit to type it hidden")]
+    api_key: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -411,6 +420,9 @@ pub enum Command {
     Skill {
         install: bool,
     },
+    Login {
+        api_key: Option<String>,
+    },
 }
 
 impl TryFrom<Cli> for Command {
@@ -526,6 +538,9 @@ impl TryFrom<Cli> for Command {
             }
             CliCommand::Skill(args) => Ok(Self::Skill {
                 install: matches!(args.cmd, Some(SkillCmd::Install)),
+            }),
+            CliCommand::Login(args) => Ok(Self::Login {
+                api_key: args.api_key,
             }),
         }
     }

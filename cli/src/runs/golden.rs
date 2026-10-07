@@ -31,7 +31,14 @@ fn load_blobs(storage: &Storage, dir: &Path) -> Result<()> {
 }
 
 fn replay(name: &str, dir: &Path) -> Result<(i64, Arc<Storage>, PathBuf)> {
-    let tmp = std::env::temp_dir().join(format!("seer-golden-{}-{}", std::process::id(), name));
+    // Two tests replay the same golden in one process. The directory has to differ per call.
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = std::env::temp_dir().join(format!(
+        "seer-golden-{}-{}-{n}",
+        std::process::id(),
+        name
+    ));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp)?;
     let storage = Arc::new(Storage::open_at(&tmp)?);
