@@ -48,7 +48,7 @@ pub fn fetch_capture(
 }
 
 async fn fetch(endpoint: &str, signature: &Signature) -> Result<BTreeMap<Pubkey, Option<Account>>> {
-    let mut client = connect(endpoint).await?;
+    let mut client = connect(endpoint).await?.max_decoding_message_size(15 * 1024 * 1024);
     let response = client
         .get_capture(GetCaptureRequest {
             signature: signature.to_string(),
