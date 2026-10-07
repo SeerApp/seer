@@ -16,6 +16,8 @@ use tonic::transport::{Channel, ClientTlsConfig};
 use tonic::{Request, Status};
 
 pub const CAPTURES_URL: &str = "https://tx.seer.run";
+const CAPTURE_MAX_BYTES: usize = 15 * 1024 * 1024;
+const CAPTURE_TOO_LARGE: &str = "Current version of Seer only supports data under 15 MB";
 
 pub fn load_zst(path: &Path) -> Result<(Signature, BTreeMap<Pubkey, Option<Account>>)> {
     let compressed = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
@@ -48,7 +50,9 @@ pub fn fetch_capture(
 }
 
 async fn fetch(endpoint: &str, signature: &Signature) -> Result<BTreeMap<Pubkey, Option<Account>>> {
-    let mut client = connect(endpoint).await?.max_decoding_message_size(15 * 1024 * 1024);
+    let mut client = connect(endpoint)
+        .await?
+        .max_decoding_message_size(CAPTURE_MAX_BYTES);
     let response = client
         .get_capture(GetCaptureRequest {
             signature: signature.to_string(),
@@ -97,9 +101,15 @@ fn capture_status(signature: &Signature, status: Status) -> anyhow::Error {
         anyhow::anyhow!("transaction {signature} was not captured")
     } else if is_auth_failure(&status) {
         anyhow::anyhow!(crate::auth::AUTH_FAILED)
+    } else if is_too_large(&status) {
+        anyhow::anyhow!(CAPTURE_TOO_LARGE)
     } else {
         anyhow::Error::from(status)
     }
+}
+
+fn is_too_large(status: &Status) -> bool {
+    status.message().contains("decoded message length too large")
 }
 
 fn is_auth_failure(status: &Status) -> bool {
@@ -200,5 +210,14 @@ mod test {
             assert!(msg.contains("seer login"), "{msg}");
             assert!(!msg.contains("compression flag"), "{msg}");
         }
+    }
+
+    #[test]
+    fn oversized_capture_names_the_15_mb_limit() {
+        let status = Status::out_of_range(
+            "Error, decoded message length too large: found 20000000 bytes, the limit is: 15728640 bytes",
+        );
+        let msg = capture_status(&Signature::from([1u8; 64]), status).to_string();
+        assert_eq!(msg, CAPTURE_TOO_LARGE);
     }
 }
